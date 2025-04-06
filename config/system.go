@@ -7,7 +7,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-type ServerConfig struct {
+type SystemConfig struct {
 	Addresses []ServerAddress `json:"addresses"`
 	LogLevel  string          `json:"logLevel,omitempty"`
 }
@@ -17,13 +17,13 @@ type ServerAddress struct {
 	Unix string `json:"unix,omitempty"`
 }
 
-func LoadAndParseServerConfig(filePath string) (*ServerConfig, error) {
+func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	var config ServerConfig
+	var config SystemConfig
 	err = yaml.Unmarshal(file, &config)
 	if err != nil {
 		return nil, err

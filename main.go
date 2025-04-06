@@ -19,7 +19,7 @@ import (
 )
 
 func main() {
-	serverConfig, err := config.LoadAndParseServerConfig("server.yml")
+	serverConfig, err := config.LoadAndParseSystemConfig("server.yml")
 	if err != nil {
 		slog.Error("failed to load config", "err", err)
 	}

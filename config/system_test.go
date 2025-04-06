@@ -6,14 +6,14 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestLoadAndParseServerConfig(t *testing.T) {
+func TestLoadAndParseSystemConfig(t *testing.T) {
 	type args struct {
 		filePath string
 	}
 	tests := []struct {
 		name    string
 		args    args
-		want    *ServerConfig
+		want    *SystemConfig
 		wantErr bool
 	}{
 		{
@@ -21,7 +21,7 @@ func TestLoadAndParseServerConfig(t *testing.T) {
 			args: args{
 				filePath: "testdata/empty.yml",
 			},
-			want: &ServerConfig{
+			want: &SystemConfig{
 				Addresses: []ServerAddress{
 					{
 						Http: "localhost:40772",
@@ -34,9 +34,9 @@ func TestLoadAndParseServerConfig(t *testing.T) {
 		{
 			name: "Multiple http addresses",
 			args: args{
-				filePath: "testdata/server-multiple-http.yml",
+				filePath: "testdata/system-multiple-http.yml",
 			},
-			want: &ServerConfig{
+			want: &SystemConfig{
 				Addresses: []ServerAddress{
 					{
 						Http: "test:1",
@@ -55,9 +55,9 @@ func TestLoadAndParseServerConfig(t *testing.T) {
 		{
 			name: "Multiple unix addresses",
 			args: args{
-				filePath: "testdata/server-multiple-unix.yml",
+				filePath: "testdata/system-multiple-unix.yml",
 			},
-			want: &ServerConfig{
+			want: &SystemConfig{
 				Addresses: []ServerAddress{
 					{
 						Unix: "/test1.sock",
@@ -76,7 +76,7 @@ func TestLoadAndParseServerConfig(t *testing.T) {
 		{
 			name: "Both http and unix addresses",
 			args: args{
-				filePath: "testdata/server-http-and-unix.yml",
+				filePath: "testdata/system-http-and-unix.yml",
 			},
 			want:    nil,
 			wantErr: true,
@@ -84,9 +84,9 @@ func TestLoadAndParseServerConfig(t *testing.T) {
 		{
 			name: "Verbose log level",
 			args: args{
-				filePath: "testdata/server-verbose.yml",
+				filePath: "testdata/system-verbose.yml",
 			},
-			want: &ServerConfig{
+			want: &SystemConfig{
 				Addresses: []ServerAddress{
 					{
 						Http: "localhost:40772",
@@ -99,7 +99,7 @@ func TestLoadAndParseServerConfig(t *testing.T) {
 		{
 			name: "Invalid log level",
 			args: args{
-				filePath: "testdata/server-invalid-log-level.yml",
+				filePath: "testdata/system-invalid-log-level.yml",
 			},
 			want:    nil,
 			wantErr: true,
@@ -107,13 +107,13 @@ func TestLoadAndParseServerConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := LoadAndParseServerConfig(tt.args.filePath)
+			got, err := LoadAndParseSystemConfig(tt.args.filePath)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("LoadAndParseServerConfig() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("LoadAndParseSystemConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("LoadAndParseServerConfig() mismatch (-want +got):\n%s", diff)
+				t.Errorf("LoadAndParseSystemConfig() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
