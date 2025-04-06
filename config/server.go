@@ -9,12 +9,12 @@ import (
 
 type ServerConfig struct {
 	Addresses []ServerAddress `json:"addresses"`
-	LogLevel  string          `json:"logLevel"`
+	LogLevel  string          `json:"logLevel,omitempty"`
 }
 
 type ServerAddress struct {
-	Http string `json:"http"`
-	Unix string `json:"unix"`
+	Http string `json:"http,omitempty"`
+	Unix string `json:"unix,omitempty"`
 }
 
 func LoadAndParseServerConfig(filePath string) (*ServerConfig, error) {

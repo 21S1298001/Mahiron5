@@ -1,8 +1,9 @@
 package config
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestLoadAndParseServerConfig(t *testing.T) {
@@ -111,8 +112,8 @@ func TestLoadAndParseServerConfig(t *testing.T) {
 				t.Errorf("LoadAndParseServerConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("LoadAndParseServerConfig() = %v, want %v", got, tt.want)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("LoadAndParseServerConfig() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
