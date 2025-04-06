@@ -1,0 +1,85 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+)
+
+type ListenAddress struct {
+	Http string
+	Unix string
+}
+
+type Server struct {
+	addresses []ListenAddress
+	handlers  map[string]http.HandlerFunc
+	servers   []*http.Server
+}
+
+func NewServer(addresses []ListenAddress, handlers map[string]http.HandlerFunc) *Server {
+	return &Server{
+		addresses: addresses,
+		handlers:  handlers,
+		servers:   make([]*http.Server, len(addresses)),
+	}
+}
+
+func (s *Server) ListenAndServe() {
+	mux := http.NewServeMux()
+	for path, handler := range s.handlers {
+		mux.HandleFunc(path, handler)
+	}
+
+	for i, addr := range s.addresses {
+		if addr.Http != "" {
+			srv := &http.Server{
+				Addr:    addr.Http,
+				Handler: mux,
+			}
+			s.servers[i] = srv
+			slog.Info("starting HTTP server", "address", addr.Http)
+			go func(srv *http.Server) {
+				err := srv.ListenAndServe()
+				if err != nil && !errors.Is(err, http.ErrServerClosed) {
+					slog.Error("failed to start HTTP server", "address", addr.Http, "err", err)
+					return
+				}
+			}(srv)
+		}
+
+		if addr.Unix != "" {
+			srv := &http.Server{
+				Handler: mux,
+			}
+			s.servers[i] = srv
+			slog.Info("starting Unix socket server", "address", addr.Unix)
+			go func(addr string) {
+				l, err := net.Listen("unix", addr)
+				if err != nil {
+					slog.Error("failed to listen UNIX domain socket", "address", addr, "err", err)
+					return
+				}
+				defer l.Close()
+
+				err = srv.Serve(l)
+				if err != nil && !errors.Is(err, http.ErrServerClosed) {
+					slog.Error("failed to start UNIX domain socket server", "address", addr, "err", err)
+					return
+				}
+			}(addr.Unix)
+		}
+	}
+}
+
+func (s *Server) Shutdown(ctx context.Context) {
+	for _, srv := range s.servers {
+		if srv != nil {
+			if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+				slog.Error("failed to shut down server gracefully", "address", srv.Addr, "err", err)
+			}
+		}
+	}
+}

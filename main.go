@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/config"
+	"github.com/21S1298001/Mahiron5/server"
 	"github.com/21S1298001/Mahiron5/util/dynamicmultiwriter"
 	"github.com/asticode/go-astits"
 )
@@ -38,65 +38,32 @@ func main() {
 	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
 	slog.SetDefault(slog.New(h))
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", stream)
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt, os.Kill)
+	signalCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt, os.Kill)
 	defer stop()
 
-	servers := make([]*http.Server, len(serverConfig.Addresses))
+	addresses := make([]server.ListenAddress, len(serverConfig.Addresses))
 	for i, addr := range serverConfig.Addresses {
-		if addr.Http != "" {
-			srv := &http.Server{
-				Addr:    addr.Http,
-				Handler: mux,
-			}
-			servers[i] = srv
-			slog.Info("starting HTTP server", "address", addr.Http)
-			go func(srv *http.Server) {
-				err := srv.ListenAndServe()
-				if err != nil && !errors.Is(err, http.ErrServerClosed) {
-					slog.Error("failed to start HTTP server", "address", addr.Http, "err", err)
-					return
-				}
-			}(srv)
-		}
-
-		if addr.Unix != "" {
-			srv := &http.Server{
-				Handler: mux,
-			}
-			servers[i] = srv
-			slog.Info("starting Unix socket server", "address", addr.Unix)
-			go func(addr string) {
-				l, err := net.Listen("unix", addr)
-				if err != nil {
-					slog.Error("failed to listen UNIX domain socket", "address", addr, "err", err)
-					return
-				}
-				defer l.Close()
-
-				err = srv.Serve(l)
-				if err != nil && !errors.Is(err, http.ErrServerClosed) {
-					slog.Error("failed to start UNIX domain socket server", "address", addr, "err", err)
-					return
-				}
-			}(addr.Unix)
+		addresses[i] = server.ListenAddress{
+			Http: addr.Http,
+			Unix: addr.Unix,
 		}
 	}
 
-	<-ctx.Done()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	handlers := map[string]http.HandlerFunc{
+		"/": stream,
+	}
+
+	slog.Info("starting servers")
+	s := server.NewServer(addresses, handlers)
+	s.ListenAndServe()
+
+	<-signalCtx.Done()
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	slog.Info("shutting down servers")
-	for _, srv := range servers {
-		if srv != nil {
-			if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
-				slog.Error("failed to shut down server gracefully", "address", srv.Addr, "err", err)
-			}
-		}
-	}
+	s.Shutdown(timeoutCtx)
+
 	slog.Info("all servers shut down")
 	slog.Info("exiting")
 	os.Exit(0)
