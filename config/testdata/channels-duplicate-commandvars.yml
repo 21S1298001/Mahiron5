@@ -1,0 +1,10 @@
+- name: Channel5
+  type: CS
+  channel: CS05
+  serviceId: 65534
+  commandVars:
+    extra-args: --extra-arg
+  satellite: SOMESAT
+  space: 1
+  freq: 12345
+  polarity: H

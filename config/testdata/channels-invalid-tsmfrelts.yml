@@ -1,0 +1,5 @@
+- name: Channel
+  type: CATV
+  channel: CATV01
+  serviceId: 12345
+  tsmfRelTs: 32

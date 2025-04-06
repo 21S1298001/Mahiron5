@@ -1,0 +1,36 @@
+- name: Channel1
+  type: GR
+  channel: GR01
+
+- name: Channel2
+  type: SKY
+  channel: SKY02
+  serviceId: 25565
+
+- name: Channel3
+  type: CATV
+  channel: CATV03
+  serviceId: 12345
+  tsmfRelTs: 15
+
+- name: Channel4
+  type: BS
+  channel: BS04
+  commandVars:
+    extra-args: --extra-arg
+
+- name: Channel5
+  type: CS
+  channel: CS05
+  serviceId: 65534
+  satellite: SOMESAT
+  space: 1
+  freq: 12345
+  polarity: H
+
+- name: Channel6
+  type: GR
+  channel: GR06
+  tunerGroups:
+    - GR_KANAGAWA
+  isDisabled: true
