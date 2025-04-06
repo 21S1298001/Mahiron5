@@ -16,7 +16,7 @@ func TestLoadAndParseTunerConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    []TunerConfig
+		want    TunerConfig
 		wantErr bool
 	}{
 		{
@@ -24,7 +24,7 @@ func TestLoadAndParseTunerConfig(t *testing.T) {
 			args: args{
 				filePath: "testdata/tuners-valid.yml",
 			},
-			want: []TunerConfig{
+			want: TunerConfig{
 				{
 					Name:                   "Tuner1",
 					Types:                  []string{"GR"},
