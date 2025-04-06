@@ -1,0 +1,4 @@
+- name: Tuner
+  types:
+    - SKY
+  dvbDevicePath: /dev/dvb/adapter0

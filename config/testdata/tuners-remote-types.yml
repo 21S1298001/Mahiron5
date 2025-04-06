@@ -1,0 +1,6 @@
+- name: Tuner4
+  types:
+    - GR_TOKYO
+    - BS
+  remote:
+    url: http://localhost:40772/api

@@ -1,0 +1,171 @@
+package config
+
+import (
+	"testing"
+
+	"github.com/google/go-cmp/cmp"
+)
+
+func TestLoadAndParseTunerConfig(t *testing.T) {
+	tr := true
+	fa := false
+
+	type args struct {
+		filePath string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []TunerConfig
+		wantErr bool
+	}{
+		{
+			name: "Valid config",
+			args: args{
+				filePath: "testdata/tuners-valid.yml",
+			},
+			want: []TunerConfig{
+				{
+					Name:                   "Tuner1",
+					Types:                  []string{"GR"},
+					Command:                "echo \"Hello World\"",
+					DvbDevicePath:          "",
+					RemoteMirakurunHost:    "",
+					RemoteMirakurunPort:    0,
+					RemoteMirakurunDecoder: &tr,
+					Decoder:                "test",
+					IsDisabled:             false,
+					TunerGroups:            nil,
+					Remote:                 nil,
+				},
+				{
+					Name:                   "Tuner2",
+					Types:                  []string{"SKY"},
+					Command:                "echo \"Hello World\"",
+					DvbDevicePath:          "/dev/dvb/adapter0",
+					RemoteMirakurunHost:    "",
+					RemoteMirakurunPort:    0,
+					RemoteMirakurunDecoder: &tr,
+					Decoder:                "",
+					IsDisabled:             false,
+					TunerGroups:            nil,
+					Remote:                 nil,
+				},
+				{
+					Name:                   "Tuner3",
+					Types:                  []string{"BS"},
+					Command:                "",
+					DvbDevicePath:          "",
+					RemoteMirakurunHost:    "localhost",
+					RemoteMirakurunPort:    40772,
+					RemoteMirakurunDecoder: &fa,
+					Decoder:                "",
+					IsDisabled:             true,
+					TunerGroups:            nil,
+					Remote:                 nil,
+				},
+				{
+					Name:                   "Tuner4",
+					Types:                  nil,
+					Command:                "",
+					DvbDevicePath:          "",
+					RemoteMirakurunHost:    "",
+					RemoteMirakurunPort:    0,
+					RemoteMirakurunDecoder: &tr,
+					Decoder:                "",
+					IsDisabled:             false,
+					TunerGroups:            []string{"GR_TOKYO", "BS"},
+					Remote: &Remote{
+						Url:   "http://localhost:40772/api",
+						Types: map[string]string{"BS": "BS", "GR_TOKYO": "GR"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Empty file",
+			args: args{
+				filePath: "testdata/empty.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Empty tuner name",
+			args: args{
+				filePath: "testdata/tuners-empty-name.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Empty tuner source",
+			args: args{
+				filePath: "testdata/tuners-empty-source.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Empty tuner types and tunerGroups",
+			args: args{
+				filePath: "testdata/tuners-empty-grouping.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Multiple tuner sources",
+			args: args{
+				filePath: "testdata/tuners-multiple-sources.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Only specified remoteMirakurunHost",
+			args: args{
+				filePath: "testdata/tuners-mirakurun-host.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Only specified remoteMirakurunPort",
+			args: args{
+				filePath: "testdata/tuners-mirakurun-port.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Only specified dvbDevicePath",
+			args: args{
+				filePath: "testdata/tuners-dvb-path.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Specified remote and types",
+			args: args{
+				filePath: "testdata/tuners-remote-types.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := LoadAndParseTunerConfig(tt.args.filePath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("LoadAndParseTunerConfig() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("LoadAndParseTunerConfig() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

@@ -1,0 +1,4 @@
+- name: Tuner
+  types:
+    - GR
+  remoteMirakurunPort: 40772

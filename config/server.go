@@ -7,10 +7,6 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-var (
-	ErrInvalidConfig = errors.New("invalid config")
-)
-
 type ServerConfig struct {
 	Addresses []ServerAddress `json:"addresses"`
 	LogLevel  string          `json:"logLevel"`
@@ -43,10 +39,10 @@ func LoadAndParseServerConfig(filePath string) (*ServerConfig, error) {
 
 	for _, addr := range config.Addresses {
 		if addr.Http == "" && addr.Unix == "" {
-			return nil, ErrInvalidConfig
+			return nil, errors.New("at least one address is required")
 		}
 		if addr.Http != "" && addr.Unix != "" {
-			return nil, ErrInvalidConfig
+			return nil, errors.New("only one address type is allowed")
 		}
 	}
 
@@ -56,9 +52,8 @@ func LoadAndParseServerConfig(filePath string) (*ServerConfig, error) {
 
 	switch config.LogLevel {
 	case "debug", "info", "warn", "error":
-		// valid log level
 	default:
-		return nil, ErrInvalidConfig
+		return nil, errors.New("invalid log level")
 	}
 
 	return &config, nil

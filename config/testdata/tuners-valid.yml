@@ -1,0 +1,30 @@
+- name: Tuner1
+  types:
+    - GR
+  command: echo "Hello World"
+  decoder: test
+
+- name: Tuner2
+  types:
+    - SKY
+  command: echo "Hello World"
+  dvbDevicePath: /dev/dvb/adapter0
+  isDisabled: false
+
+- name: Tuner3
+  types:
+    - BS
+  remoteMirakurunHost: localhost
+  remoteMirakurunPort: 40772
+  remoteMirakurunDecoder: false
+  isDisabled: true
+
+- name: Tuner4
+  tunerGroups:
+    - GR_TOKYO
+    - BS
+  remote:
+    url: http://localhost:40772/api
+    types:
+      BS: BS
+      GR_TOKYO: GR
