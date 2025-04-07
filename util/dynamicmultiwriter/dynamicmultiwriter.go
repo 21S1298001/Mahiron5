@@ -5,6 +5,8 @@ import (
 	"io"
 	"slices"
 	"sync"
+
+	"github.com/hashicorp/go-multierror"
 )
 
 type DynamicMultiWriter struct {
@@ -54,19 +56,28 @@ func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
+	var meg multierror.Group
 	for _, w := range d.writers {
-		n, err = w.Write(p)
-		if errors.Is(err, io.ErrClosedPipe) {
-			d.Detach(w)
-			continue
-		}
-		if err != nil {
-			return
-		}
-		if n != len(p) {
-			err = io.ErrShortWrite
-			return
-		}
+		meg.Go(func() error {
+			n, err = w.Write(p)
+			if errors.Is(err, io.ErrClosedPipe) {
+				d.Detach(w)
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if n != len(p) {
+				return io.ErrShortWrite
+			}
+			return nil
+		})
+	}
+	if err := meg.Wait(); err != nil {
+		return 0, err
+	}
+	if len(d.writers) == 0 {
+		return 0, io.ErrClosedPipe
 	}
 
 	return len(p), nil
