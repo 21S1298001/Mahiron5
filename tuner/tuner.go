@@ -10,22 +10,6 @@ import (
 	"github.com/21S1298001/Mahiron5/util/dynamicmultiwriter"
 )
 
-type TunerCommand interface {
-	Name() string
-}
-
-type TunerCommandStart struct{}
-
-func (c TunerCommandStart) Name() string {
-	return "start"
-}
-
-type TunerCommandStop struct{}
-
-func (c TunerCommandStop) Name() string {
-	return "stop"
-}
-
 type Tuner struct {
 	name      string
 	ctx       context.Context
