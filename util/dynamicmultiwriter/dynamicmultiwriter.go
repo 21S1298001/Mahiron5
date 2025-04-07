@@ -40,6 +40,13 @@ func (d *DynamicMultiWriter) Detach(writer io.Writer) {
 	}
 }
 
+func (d *DynamicMultiWriter) Count() int {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+
+	return len(d.writers)
+}
+
 func (d *DynamicMultiWriter) Close() {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
@@ -53,9 +60,6 @@ func (d *DynamicMultiWriter) Close() {
 }
 
 func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
 	var meg multierror.Group
 	for _, w := range d.writers {
 		meg.Go(func() error {
@@ -81,11 +85,4 @@ func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 	}
 
 	return len(p), nil
-}
-
-func (d *DynamicMultiWriter) Count() int {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
-	return len(d.writers)
 }
