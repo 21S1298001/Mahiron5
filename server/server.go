@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 )
 
 type ListenAddress struct {
@@ -75,11 +76,17 @@ func (s *Server) ListenAndServe() {
 }
 
 func (s *Server) Shutdown(ctx context.Context) {
+	var wg sync.WaitGroup
 	for _, srv := range s.servers {
 		if srv != nil {
-			if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
-				slog.Error("failed to shut down server gracefully", "address", srv.Addr, "err", err)
-			}
+			wg.Add(1)
+			go func(srv *http.Server) {
+				defer wg.Done()
+				if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+					slog.Error("failed to shut down server gracefully", "address", srv.Addr, "err", err)
+				}
+			}(srv)
 		}
 	}
+	wg.Wait()
 }
