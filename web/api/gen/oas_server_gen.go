@@ -8,10 +8,28 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// AbortJob implements abortJob operation.
+	//
+	// Request to abort a job.
+	//
+	// PUT /jobs/{id}/abort
+	AbortJob(ctx context.Context, params AbortJobParams) (AbortJobRes, error)
+	// ChannelsTypeChannelServicesIDStreamHead implements HEAD /channels/{type}/{channel}/services/{id}/stream operation.
+	//
+	// HEAD /channels/{type}/{channel}/services/{id}/stream
+	ChannelsTypeChannelServicesIDStreamHead(ctx context.Context, params ChannelsTypeChannelServicesIDStreamHeadParams) (ChannelsTypeChannelServicesIDStreamHeadRes, error)
+	// ChannelsTypeChannelStreamHead implements HEAD /channels/{type}/{channel}/stream operation.
+	//
+	// HEAD /channels/{type}/{channel}/stream
+	ChannelsTypeChannelStreamHead(ctx context.Context, params ChannelsTypeChannelStreamHeadParams) (ChannelsTypeChannelStreamHeadRes, error)
 	// CheckVersion implements checkVersion operation.
 	//
 	// GET /version
 	CheckVersion(ctx context.Context) (CheckVersionRes, error)
+	// GetApiDocumentation implements getApiDocumentation operation.
+	//
+	// GET /docs
+	GetApiDocumentation(ctx context.Context) (GetApiDocumentationRes, error)
 	// GetChannel implements getChannel operation.
 	//
 	// GET /channels/{type}/{channel}
@@ -36,6 +54,14 @@ type Handler interface {
 	//
 	// GET /events/stream
 	GetEventsStream(ctx context.Context, params GetEventsStreamParams) (GetEventsStreamRes, error)
+	// GetJobSchedules implements getJobSchedules operation.
+	//
+	// GET /job-schedules
+	GetJobSchedules(ctx context.Context) (GetJobSchedulesRes, error)
+	// GetJobs implements getJobs operation.
+	//
+	// GET /jobs
+	GetJobs(ctx context.Context) (GetJobsRes, error)
 	// GetLog implements getLog operation.
 	//
 	// GET /log
@@ -126,12 +152,44 @@ type Handler interface {
 	//
 	// GET /iptv/lineup_status.json
 	IptvLineupStatusJSONGet(ctx context.Context) (IptvLineupStatusJSONGetRes, error)
+	// IptvPlaylistGet implements GET /iptv/playlist operation.
+	//
+	// IPTV - M3U Playlist.
+	//
+	// GET /iptv/playlist
+	IptvPlaylistGet(ctx context.Context) (IptvPlaylistGetRes, error)
+	// IptvXmltvGet implements GET /iptv/xmltv operation.
+	//
+	// IPTV - XMLTV EPG Data.
+	//
+	// GET /iptv/xmltv
+	IptvXmltvGet(ctx context.Context) (IptvXmltvGetRes, error)
 	// KillTunerProcess implements killTunerProcess operation.
 	//
 	// Kill Tuner Process.
 	//
 	// DELETE /tuners/{index}/process
 	KillTunerProcess(ctx context.Context, params KillTunerProcessParams) (KillTunerProcessRes, error)
+	// ProgramsIDStreamHead implements HEAD /programs/{id}/stream operation.
+	//
+	// HEAD /programs/{id}/stream
+	ProgramsIDStreamHead(ctx context.Context, params ProgramsIDStreamHeadParams) (ProgramsIDStreamHeadRes, error)
+	// RerunJob implements rerunJob operation.
+	//
+	// Request to rerun a job.
+	//
+	// PUT /jobs/{id}/rerun
+	RerunJob(ctx context.Context, params RerunJobParams) (RerunJobRes, error)
+	// RunJobSchedule implements runJobSchedule operation.
+	//
+	// Request to run a job schedule.
+	//
+	// PUT /job-schedules/{key}/run
+	RunJobSchedule(ctx context.Context, params RunJobScheduleParams) (RunJobScheduleRes, error)
+	// ServicesIDStreamHead implements HEAD /services/{id}/stream operation.
+	//
+	// HEAD /services/{id}/stream
+	ServicesIDStreamHead(ctx context.Context, params ServicesIDStreamHeadParams) (ServicesIDStreamHeadRes, error)
 }
 
 // Server implements http server based on OpenAPI v3 specification and

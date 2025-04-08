@@ -3,6 +3,7 @@
 package apigen
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/go-faster/errors"
@@ -15,9 +16,229 @@ import (
 	"github.com/ogen-go/ogen/uri"
 )
 
+func encodeAbortJobResponse(response AbortJobRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *AbortJobAccepted:
+		w.WriteHeader(202)
+		span.SetStatus(codes.Ok, http.StatusText(202))
+
+		return nil
+
+	case *Error:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(409)
+		span.SetStatus(codes.Error, http.StatusText(409))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeChannelsTypeChannelServicesIDStreamHeadResponse(response ChannelsTypeChannelServicesIDStreamHeadRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ChannelsTypeChannelServicesIDStreamHeadOK:
+		// Encoding response headers.
+		{
+			h := uri.NewHeaderEncoder(w.Header())
+			// Encode "X-Mirakurun-Tuner-User-ID" header.
+			{
+				cfg := uri.HeaderParameterEncodingConfig{
+					Name:    "X-Mirakurun-Tuner-User-ID",
+					Explode: false,
+				}
+				if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+					if val, ok := response.XMirakurunTunerUserID.Get(); ok {
+						return e.EncodeValue(conv.StringToString(val))
+					}
+					return nil
+				}); err != nil {
+					return errors.Wrap(err, "encode X-Mirakurun-Tuner-User-ID header")
+				}
+			}
+		}
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		return nil
+
+	case *ChannelsTypeChannelServicesIDStreamHeadNotFound:
+		w.WriteHeader(404)
+		span.SetStatus(codes.Error, http.StatusText(404))
+
+		return nil
+
+	case *ChannelsTypeChannelServicesIDStreamHeadServiceUnavailable:
+		w.WriteHeader(503)
+		span.SetStatus(codes.Error, http.StatusText(503))
+
+		return nil
+
+	case *ChannelsTypeChannelServicesIDStreamHeadDef:
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeChannelsTypeChannelStreamHeadResponse(response ChannelsTypeChannelStreamHeadRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ChannelsTypeChannelStreamHeadOK:
+		// Encoding response headers.
+		{
+			h := uri.NewHeaderEncoder(w.Header())
+			// Encode "X-Mirakurun-Tuner-User-ID" header.
+			{
+				cfg := uri.HeaderParameterEncodingConfig{
+					Name:    "X-Mirakurun-Tuner-User-ID",
+					Explode: false,
+				}
+				if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+					if val, ok := response.XMirakurunTunerUserID.Get(); ok {
+						return e.EncodeValue(conv.StringToString(val))
+					}
+					return nil
+				}); err != nil {
+					return errors.Wrap(err, "encode X-Mirakurun-Tuner-User-ID header")
+				}
+			}
+		}
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		return nil
+
+	case *ChannelsTypeChannelStreamHeadNotFound:
+		w.WriteHeader(404)
+		span.SetStatus(codes.Error, http.StatusText(404))
+
+		return nil
+
+	case *ChannelsTypeChannelStreamHeadServiceUnavailable:
+		w.WriteHeader(503)
+		span.SetStatus(codes.Error, http.StatusText(503))
+
+		return nil
+
+	case *ChannelsTypeChannelStreamHeadDef:
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
 func encodeCheckVersionResponse(response CheckVersionRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *Version:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetApiDocumentationResponse(response GetApiDocumentationRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *GetApiDocumentationOK:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
@@ -120,7 +341,8 @@ func encodeGetChannelResponse(response GetChannelRes, w http.ResponseWriter, spa
 
 func encodeGetChannelStreamResponse(response GetChannelStreamRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *GetChannelStreamOK:
+	case *GetChannelStreamOKHeaders:
+		w.Header().Set("Content-Type", "video/mp2t")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -142,6 +364,11 @@ func encodeGetChannelStreamResponse(response GetChannelStreamRes, w http.Respons
 		}
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		writer := w
+		if _, err := io.Copy(writer, response.Response); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -322,6 +549,96 @@ func encodeGetEventsStreamResponse(response GetEventsStreamRes, w http.ResponseW
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
 
+		e := jx.NewStreamingEncoder(w, -1)
+		response.Encode(e)
+		if err := e.Close(); err != nil {
+			return errors.Wrap(err, "flush streaming")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetJobSchedulesResponse(response GetJobSchedulesRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *GetJobSchedulesOKApplicationJSON:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetJobsResponse(response GetJobsRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *GetJobsOKApplicationJSON:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
 		e := new(jx.Encoder)
 		response.Encode(e)
 		if _, err := e.WriteTo(w); err != nil {
@@ -363,8 +680,14 @@ func encodeGetEventsStreamResponse(response GetEventsStreamRes, w http.ResponseW
 func encodeGetLogResponse(response GetLogRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *GetLogOK:
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		writer := w
+		if _, err := io.Copy(writer, response); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -394,8 +717,14 @@ func encodeGetLogResponse(response GetLogRes, w http.ResponseWriter, span trace.
 func encodeGetLogStreamResponse(response GetLogStreamRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *GetLogStreamOK:
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		writer := w
+		if _, err := io.Copy(writer, response); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -425,8 +754,14 @@ func encodeGetLogStreamResponse(response GetLogStreamRes, w http.ResponseWriter,
 func encodeGetLogoImageResponse(response GetLogoImageRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *GetLogoImageOK:
+		w.Header().Set("Content-Type", "image/png")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		writer := w
+		if _, err := io.Copy(writer, response); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -525,7 +860,8 @@ func encodeGetProgramResponse(response GetProgramRes, w http.ResponseWriter, spa
 
 func encodeGetProgramStreamResponse(response GetProgramStreamRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *GetProgramStreamOK:
+	case *GetProgramStreamOKHeaders:
+		w.Header().Set("Content-Type", "video/mp2t")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -547,6 +883,11 @@ func encodeGetProgramStreamResponse(response GetProgramStreamRes, w http.Respons
 		}
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		writer := w
+		if _, err := io.Copy(writer, response.Response); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -780,7 +1121,8 @@ func encodeGetServiceProgramsResponse(response GetServiceProgramsRes, w http.Res
 
 func encodeGetServiceStreamResponse(response GetServiceStreamRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *GetServiceStreamOK:
+	case *GetServiceStreamOKHeaders:
+		w.Header().Set("Content-Type", "video/mp2t")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -802,6 +1144,11 @@ func encodeGetServiceStreamResponse(response GetServiceStreamRes, w http.Respons
 		}
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		writer := w
+		if _, err := io.Copy(writer, response.Response); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -842,7 +1189,8 @@ func encodeGetServiceStreamResponse(response GetServiceStreamRes, w http.Respons
 
 func encodeGetServiceStreamByChannelResponse(response GetServiceStreamByChannelRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *GetServiceStreamByChannelOK:
+	case *GetServiceStreamByChannelOKHeaders:
+		w.Header().Set("Content-Type", "video/mp2t")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -864,6 +1212,11 @@ func encodeGetServiceStreamByChannelResponse(response GetServiceStreamByChannelR
 		}
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		writer := w
+		if _, err := io.Copy(writer, response.Response); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -1200,9 +1553,16 @@ func encodeGetTunersResponse(response GetTunersRes, w http.ResponseWriter, span 
 
 func encodeIptvDiscoverJSONGetResponse(response IptvDiscoverJSONGetRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *IptvDiscoverJSONGetOK:
+	case *IptvDiscoverJSONGetOKApplicationJSON:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -1238,9 +1598,16 @@ func encodeIptvDiscoverJSONGetResponse(response IptvDiscoverJSONGetRes, w http.R
 
 func encodeIptvLineupJSONGetResponse(response IptvLineupJSONGetRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *IptvLineupJSONGetOK:
+	case *IptvLineupJSONGetOKApplicationJSON:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -1276,9 +1643,104 @@ func encodeIptvLineupJSONGetResponse(response IptvLineupJSONGetRes, w http.Respo
 
 func encodeIptvLineupStatusJSONGetResponse(response IptvLineupStatusJSONGetRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *IptvLineupStatusJSONGetOK:
+	case *IptvLineupStatusJSONGetOKApplicationJSON:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
 		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeIptvPlaylistGetResponse(response IptvPlaylistGetRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *IptvPlaylistGetOK:
+		w.Header().Set("Content-Type", "application/x-mpegurl")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		writer := w
+		if _, err := io.Copy(writer, response); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeIptvXmltvGetResponse(response IptvXmltvGetRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *IptvXmltvGetOK:
+		w.Header().Set("Content-Type", "text/xml")
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		writer := w
+		if _, err := io.Copy(writer, response); err != nil {
+			return errors.Wrap(err, "write")
+		}
 
 		return nil
 
@@ -1314,16 +1776,9 @@ func encodeIptvLineupStatusJSONGetResponse(response IptvLineupStatusJSONGetRes, 
 
 func encodeKillTunerProcessResponse(response KillTunerProcessRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *KillTunerProcessOK:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
-
-		e := new(jx.Encoder)
-		response.Encode(e)
-		if _, err := e.WriteTo(w); err != nil {
-			return errors.Wrap(err, "write")
-		}
+	case *KillTunerProcessNoContent:
+		w.WriteHeader(204)
+		span.SetStatus(codes.Ok, http.StatusText(204))
 
 		return nil
 
@@ -1358,6 +1813,232 @@ func encodeKillTunerProcessResponse(response KillTunerProcessRes, w http.Respons
 		response.Response.Encode(e)
 		if _, err := e.WriteTo(w); err != nil {
 			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeProgramsIDStreamHeadResponse(response ProgramsIDStreamHeadRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ProgramsIDStreamHeadOK:
+		// Encoding response headers.
+		{
+			h := uri.NewHeaderEncoder(w.Header())
+			// Encode "X-Mirakurun-Tuner-User-ID" header.
+			{
+				cfg := uri.HeaderParameterEncodingConfig{
+					Name:    "X-Mirakurun-Tuner-User-ID",
+					Explode: false,
+				}
+				if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+					if val, ok := response.XMirakurunTunerUserID.Get(); ok {
+						return e.EncodeValue(conv.StringToString(val))
+					}
+					return nil
+				}); err != nil {
+					return errors.Wrap(err, "encode X-Mirakurun-Tuner-User-ID header")
+				}
+			}
+		}
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		return nil
+
+	case *ProgramsIDStreamHeadNotFound:
+		w.WriteHeader(404)
+		span.SetStatus(codes.Error, http.StatusText(404))
+
+		return nil
+
+	case *ProgramsIDStreamHeadServiceUnavailable:
+		w.WriteHeader(503)
+		span.SetStatus(codes.Error, http.StatusText(503))
+
+		return nil
+
+	case *ProgramsIDStreamHeadDef:
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeRerunJobResponse(response RerunJobRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *RerunJobAccepted:
+		w.WriteHeader(202)
+		span.SetStatus(codes.Ok, http.StatusText(202))
+
+		return nil
+
+	case *Error:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(409)
+		span.SetStatus(codes.Error, http.StatusText(409))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeRunJobScheduleResponse(response RunJobScheduleRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *RunJobScheduleAccepted:
+		w.WriteHeader(202)
+		span.SetStatus(codes.Ok, http.StatusText(202))
+
+		return nil
+
+	case *Error:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(404)
+		span.SetStatus(codes.Error, http.StatusText(404))
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeServicesIDStreamHeadResponse(response ServicesIDStreamHeadRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ServicesIDStreamHeadOK:
+		// Encoding response headers.
+		{
+			h := uri.NewHeaderEncoder(w.Header())
+			// Encode "X-Mirakurun-Tuner-User-ID" header.
+			{
+				cfg := uri.HeaderParameterEncodingConfig{
+					Name:    "X-Mirakurun-Tuner-User-ID",
+					Explode: false,
+				}
+				if err := h.EncodeParam(cfg, func(e uri.Encoder) error {
+					if val, ok := response.XMirakurunTunerUserID.Get(); ok {
+						return e.EncodeValue(conv.StringToString(val))
+					}
+					return nil
+				}); err != nil {
+					return errors.Wrap(err, "encode X-Mirakurun-Tuner-User-ID header")
+				}
+			}
+		}
+		w.WriteHeader(200)
+		span.SetStatus(codes.Ok, http.StatusText(200))
+
+		return nil
+
+	case *ServicesIDStreamHeadNotFound:
+		w.WriteHeader(404)
+		span.SetStatus(codes.Error, http.StatusText(404))
+
+		return nil
+
+	case *ServicesIDStreamHeadServiceUnavailable:
+		w.WriteHeader(503)
+		span.SetStatus(codes.Error, http.StatusText(503))
+
+		return nil
+
+	case *ServicesIDStreamHeadDef:
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if st := http.StatusText(code); code >= http.StatusBadRequest {
+			span.SetStatus(codes.Error, st)
+		} else {
+			span.SetStatus(codes.Ok, st)
 		}
 
 		if code >= http.StatusInternalServerError {

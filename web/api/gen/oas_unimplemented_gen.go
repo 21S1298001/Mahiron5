@@ -13,10 +13,40 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// AbortJob implements abortJob operation.
+//
+// Request to abort a job.
+//
+// PUT /jobs/{id}/abort
+func (UnimplementedHandler) AbortJob(ctx context.Context, params AbortJobParams) (r AbortJobRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ChannelsTypeChannelServicesIDStreamHead implements HEAD /channels/{type}/{channel}/services/{id}/stream operation.
+//
+// HEAD /channels/{type}/{channel}/services/{id}/stream
+func (UnimplementedHandler) ChannelsTypeChannelServicesIDStreamHead(ctx context.Context, params ChannelsTypeChannelServicesIDStreamHeadParams) (r ChannelsTypeChannelServicesIDStreamHeadRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ChannelsTypeChannelStreamHead implements HEAD /channels/{type}/{channel}/stream operation.
+//
+// HEAD /channels/{type}/{channel}/stream
+func (UnimplementedHandler) ChannelsTypeChannelStreamHead(ctx context.Context, params ChannelsTypeChannelStreamHeadParams) (r ChannelsTypeChannelStreamHeadRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // CheckVersion implements checkVersion operation.
 //
 // GET /version
 func (UnimplementedHandler) CheckVersion(ctx context.Context) (r CheckVersionRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetApiDocumentation implements getApiDocumentation operation.
+//
+// GET /docs
+func (UnimplementedHandler) GetApiDocumentation(ctx context.Context) (r GetApiDocumentationRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -59,6 +89,20 @@ func (UnimplementedHandler) GetEvents(ctx context.Context) (r GetEventsRes, _ er
 //
 // GET /events/stream
 func (UnimplementedHandler) GetEventsStream(ctx context.Context, params GetEventsStreamParams) (r GetEventsStreamRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetJobSchedules implements getJobSchedules operation.
+//
+// GET /job-schedules
+func (UnimplementedHandler) GetJobSchedules(ctx context.Context) (r GetJobSchedulesRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetJobs implements getJobs operation.
+//
+// GET /jobs
+func (UnimplementedHandler) GetJobs(ctx context.Context) (r GetJobsRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -212,11 +256,61 @@ func (UnimplementedHandler) IptvLineupStatusJSONGet(ctx context.Context) (r Iptv
 	return r, ht.ErrNotImplemented
 }
 
+// IptvPlaylistGet implements GET /iptv/playlist operation.
+//
+// IPTV - M3U Playlist.
+//
+// GET /iptv/playlist
+func (UnimplementedHandler) IptvPlaylistGet(ctx context.Context) (r IptvPlaylistGetRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// IptvXmltvGet implements GET /iptv/xmltv operation.
+//
+// IPTV - XMLTV EPG Data.
+//
+// GET /iptv/xmltv
+func (UnimplementedHandler) IptvXmltvGet(ctx context.Context) (r IptvXmltvGetRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // KillTunerProcess implements killTunerProcess operation.
 //
 // Kill Tuner Process.
 //
 // DELETE /tuners/{index}/process
 func (UnimplementedHandler) KillTunerProcess(ctx context.Context, params KillTunerProcessParams) (r KillTunerProcessRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ProgramsIDStreamHead implements HEAD /programs/{id}/stream operation.
+//
+// HEAD /programs/{id}/stream
+func (UnimplementedHandler) ProgramsIDStreamHead(ctx context.Context, params ProgramsIDStreamHeadParams) (r ProgramsIDStreamHeadRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// RerunJob implements rerunJob operation.
+//
+// Request to rerun a job.
+//
+// PUT /jobs/{id}/rerun
+func (UnimplementedHandler) RerunJob(ctx context.Context, params RerunJobParams) (r RerunJobRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// RunJobSchedule implements runJobSchedule operation.
+//
+// Request to run a job schedule.
+//
+// PUT /job-schedules/{key}/run
+func (UnimplementedHandler) RunJobSchedule(ctx context.Context, params RunJobScheduleParams) (r RunJobScheduleRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// ServicesIDStreamHead implements HEAD /services/{id}/stream operation.
+//
+// HEAD /services/{id}/stream
+func (UnimplementedHandler) ServicesIDStreamHead(ctx context.Context, params ServicesIDStreamHeadParams) (r ServicesIDStreamHeadRes, _ error) {
 	return r, ht.ErrNotImplemented
 }

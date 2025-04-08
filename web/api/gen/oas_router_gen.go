@@ -224,8 +224,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 													args[1],
 													args[2],
 												}, elemIsEscaped, w, r)
+											case "HEAD":
+												s.handleChannelsTypeChannelServicesIDStreamHeadRequest([3]string{
+													args[0],
+													args[1],
+													args[2],
+												}, elemIsEscaped, w, r)
 											default:
-												s.notAllowed(w, r, "GET")
+												s.notAllowed(w, r, "GET,HEAD")
 											}
 
 											return
@@ -251,8 +257,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 											args[0],
 											args[1],
 										}, elemIsEscaped, w, r)
+									case "HEAD":
+										s.handleChannelsTypeChannelStreamHeadRequest([2]string{
+											args[0],
+											args[1],
+										}, elemIsEscaped, w, r)
 									default:
-										s.notAllowed(w, r, "GET")
+										s.notAllowed(w, r, "GET,HEAD")
 									}
 
 									return
@@ -264,6 +275,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 					}
 
+				}
+
+			case 'd': // Prefix: "docs"
+
+				if l := len("docs"); len(elem) >= l && elem[0:l] == "docs" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					// Leaf node.
+					switch r.Method {
+					case "GET":
+						s.handleGetApiDocumentationRequest([0]string{}, elemIsEscaped, w, r)
+					default:
+						s.notAllowed(w, r, "GET")
+					}
+
+					return
 				}
 
 			case 'e': // Prefix: "events"
@@ -393,6 +424,228 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 					}
 
+				case 'p': // Prefix: "playlist"
+
+					if l := len("playlist"); len(elem) >= l && elem[0:l] == "playlist" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleIptvPlaylistGetRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "GET")
+						}
+
+						return
+					}
+
+				case 'x': // Prefix: "xmltv"
+
+					if l := len("xmltv"); len(elem) >= l && elem[0:l] == "xmltv" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "GET":
+							s.handleIptvXmltvGetRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "GET")
+						}
+
+						return
+					}
+
+				}
+
+			case 'j': // Prefix: "job"
+
+				if l := len("job"); len(elem) >= l && elem[0:l] == "job" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case '-': // Prefix: "-schedules"
+
+					if l := len("-schedules"); len(elem) >= l && elem[0:l] == "-schedules" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						switch r.Method {
+						case "GET":
+							s.handleGetJobSchedulesRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "GET")
+						}
+
+						return
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/"
+
+						if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						// Param: "key"
+						// Match until "/"
+						idx := strings.IndexByte(elem, '/')
+						if idx < 0 {
+							idx = len(elem)
+						}
+						args[0] = elem[:idx]
+						elem = elem[idx:]
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case '/': // Prefix: "/run"
+
+							if l := len("/run"); len(elem) >= l && elem[0:l] == "/run" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch r.Method {
+								case "PUT":
+									s.handleRunJobScheduleRequest([1]string{
+										args[0],
+									}, elemIsEscaped, w, r)
+								default:
+									s.notAllowed(w, r, "PUT")
+								}
+
+								return
+							}
+
+						}
+
+					}
+
+				case 's': // Prefix: "s"
+
+					if l := len("s"); len(elem) >= l && elem[0:l] == "s" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						switch r.Method {
+						case "GET":
+							s.handleGetJobsRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, "GET")
+						}
+
+						return
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/"
+
+						if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						// Param: "id"
+						// Match until "/"
+						idx := strings.IndexByte(elem, '/')
+						if idx < 0 {
+							idx = len(elem)
+						}
+						args[0] = elem[:idx]
+						elem = elem[idx:]
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case '/': // Prefix: "/"
+
+							if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								break
+							}
+							switch elem[0] {
+							case 'a': // Prefix: "abort"
+
+								if l := len("abort"); len(elem) >= l && elem[0:l] == "abort" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch r.Method {
+									case "PUT":
+										s.handleAbortJobRequest([1]string{
+											args[0],
+										}, elemIsEscaped, w, r)
+									default:
+										s.notAllowed(w, r, "PUT")
+									}
+
+									return
+								}
+
+							case 'r': // Prefix: "rerun"
+
+								if l := len("rerun"); len(elem) >= l && elem[0:l] == "rerun" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch r.Method {
+									case "PUT":
+										s.handleRerunJobRequest([1]string{
+											args[0],
+										}, elemIsEscaped, w, r)
+									default:
+										s.notAllowed(w, r, "PUT")
+									}
+
+									return
+								}
+
+							}
+
+						}
+
+					}
+
 				}
 
 			case 'l': // Prefix: "log"
@@ -500,8 +753,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 								s.handleGetProgramStreamRequest([1]string{
 									args[0],
 								}, elemIsEscaped, w, r)
+							case "HEAD":
+								s.handleProgramsIDStreamHeadRequest([1]string{
+									args[0],
+								}, elemIsEscaped, w, r)
 							default:
-								s.notAllowed(w, r, "GET")
+								s.notAllowed(w, r, "GET,HEAD")
 							}
 
 							return
@@ -643,8 +900,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 										s.handleGetServiceStreamRequest([1]string{
 											args[0],
 										}, elemIsEscaped, w, r)
+									case "HEAD":
+										s.handleServicesIDStreamHeadRequest([1]string{
+											args[0],
+										}, elemIsEscaped, w, r)
 									default:
-										s.notAllowed(w, r, "GET")
+										s.notAllowed(w, r, "GET,HEAD")
 									}
 
 									return
@@ -1044,6 +1305,14 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 												r.args = args
 												r.count = 3
 												return r, true
+											case "HEAD":
+												r.name = ChannelsTypeChannelServicesIDStreamHeadOperation
+												r.summary = ""
+												r.operationID = ""
+												r.pathPattern = "/channels/{type}/{channel}/services/{id}/stream"
+												r.args = args
+												r.count = 3
+												return r, true
 											default:
 												return
 											}
@@ -1072,6 +1341,14 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 										r.args = args
 										r.count = 2
 										return r, true
+									case "HEAD":
+										r.name = ChannelsTypeChannelStreamHeadOperation
+										r.summary = ""
+										r.operationID = ""
+										r.pathPattern = "/channels/{type}/{channel}/stream"
+										r.args = args
+										r.count = 2
+										return r, true
 									default:
 										return
 									}
@@ -1083,6 +1360,30 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 
 					}
 
+				}
+
+			case 'd': // Prefix: "docs"
+
+				if l := len("docs"); len(elem) >= l && elem[0:l] == "docs" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					// Leaf node.
+					switch method {
+					case "GET":
+						r.name = GetApiDocumentationOperation
+						r.summary = ""
+						r.operationID = "getApiDocumentation"
+						r.pathPattern = "/docs"
+						r.args = args
+						r.count = 0
+						return r, true
+					default:
+						return
+					}
 				}
 
 			case 'e': // Prefix: "events"
@@ -1232,6 +1533,250 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 
 					}
 
+				case 'p': // Prefix: "playlist"
+
+					if l := len("playlist"); len(elem) >= l && elem[0:l] == "playlist" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = IptvPlaylistGetOperation
+							r.summary = "IPTV - M3U Playlist"
+							r.operationID = ""
+							r.pathPattern = "/iptv/playlist"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				case 'x': // Prefix: "xmltv"
+
+					if l := len("xmltv"); len(elem) >= l && elem[0:l] == "xmltv" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "GET":
+							r.name = IptvXmltvGetOperation
+							r.summary = "IPTV - XMLTV EPG Data"
+							r.operationID = ""
+							r.pathPattern = "/iptv/xmltv"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				}
+
+			case 'j': // Prefix: "job"
+
+				if l := len("job"); len(elem) >= l && elem[0:l] == "job" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case '-': // Prefix: "-schedules"
+
+					if l := len("-schedules"); len(elem) >= l && elem[0:l] == "-schedules" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						switch method {
+						case "GET":
+							r.name = GetJobSchedulesOperation
+							r.summary = ""
+							r.operationID = "getJobSchedules"
+							r.pathPattern = "/job-schedules"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/"
+
+						if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						// Param: "key"
+						// Match until "/"
+						idx := strings.IndexByte(elem, '/')
+						if idx < 0 {
+							idx = len(elem)
+						}
+						args[0] = elem[:idx]
+						elem = elem[idx:]
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case '/': // Prefix: "/run"
+
+							if l := len("/run"); len(elem) >= l && elem[0:l] == "/run" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch method {
+								case "PUT":
+									r.name = RunJobScheduleOperation
+									r.summary = "Request to run a job schedule"
+									r.operationID = "runJobSchedule"
+									r.pathPattern = "/job-schedules/{key}/run"
+									r.args = args
+									r.count = 1
+									return r, true
+								default:
+									return
+								}
+							}
+
+						}
+
+					}
+
+				case 's': // Prefix: "s"
+
+					if l := len("s"); len(elem) >= l && elem[0:l] == "s" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						switch method {
+						case "GET":
+							r.name = GetJobsOperation
+							r.summary = ""
+							r.operationID = "getJobs"
+							r.pathPattern = "/jobs"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/"
+
+						if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						// Param: "id"
+						// Match until "/"
+						idx := strings.IndexByte(elem, '/')
+						if idx < 0 {
+							idx = len(elem)
+						}
+						args[0] = elem[:idx]
+						elem = elem[idx:]
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case '/': // Prefix: "/"
+
+							if l := len("/"); len(elem) >= l && elem[0:l] == "/" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								break
+							}
+							switch elem[0] {
+							case 'a': // Prefix: "abort"
+
+								if l := len("abort"); len(elem) >= l && elem[0:l] == "abort" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch method {
+									case "PUT":
+										r.name = AbortJobOperation
+										r.summary = "Request to abort a job"
+										r.operationID = "abortJob"
+										r.pathPattern = "/jobs/{id}/abort"
+										r.args = args
+										r.count = 1
+										return r, true
+									default:
+										return
+									}
+								}
+
+							case 'r': // Prefix: "rerun"
+
+								if l := len("rerun"); len(elem) >= l && elem[0:l] == "rerun" {
+									elem = elem[l:]
+								} else {
+									break
+								}
+
+								if len(elem) == 0 {
+									// Leaf node.
+									switch method {
+									case "PUT":
+										r.name = RerunJobOperation
+										r.summary = "Request to rerun a job"
+										r.operationID = "rerunJob"
+										r.pathPattern = "/jobs/{id}/rerun"
+										r.args = args
+										r.count = 1
+										return r, true
+									default:
+										return
+									}
+								}
+
+							}
+
+						}
+
+					}
+
 				}
 
 			case 'l': // Prefix: "log"
@@ -1353,6 +1898,14 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 								r.name = GetProgramStreamOperation
 								r.summary = ""
 								r.operationID = "getProgramStream"
+								r.pathPattern = "/programs/{id}/stream"
+								r.args = args
+								r.count = 1
+								return r, true
+							case "HEAD":
+								r.name = ProgramsIDStreamHeadOperation
+								r.summary = ""
+								r.operationID = ""
 								r.pathPattern = "/programs/{id}/stream"
 								r.args = args
 								r.count = 1
@@ -1508,6 +2061,14 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 										r.name = GetServiceStreamOperation
 										r.summary = ""
 										r.operationID = "getServiceStream"
+										r.pathPattern = "/services/{id}/stream"
+										r.args = args
+										r.count = 1
+										return r, true
+									case "HEAD":
+										r.name = ServicesIDStreamHeadOperation
+										r.summary = ""
+										r.operationID = ""
 										r.pathPattern = "/services/{id}/stream"
 										r.args = args
 										r.count = 1

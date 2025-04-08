@@ -3,20 +3,24 @@
 package apigen
 
 import (
+	"io"
+
 	"github.com/go-faster/errors"
+	"github.com/go-faster/jx"
 )
+
+// AbortJobAccepted is response for AbortJob operation.
+type AbortJobAccepted struct{}
+
+func (*AbortJobAccepted) abortJobRes() {}
 
 // Ref: #/components/schemas/Channel
 type Channel struct {
-	Type      string             `json:"type"`
-	Channel   string             `json:"channel"`
-	Name      OptString          `json:"name"`
-	Satellite OptString          `json:"satellite"`
-	Space     OptInt             `json:"space"`
-	Freq      OptFloat64         `json:"freq"`
-	Polarity  OptChannelPolarity `json:"polarity"`
-	TsmfRelTs OptInt             `json:"tsmfRelTs"`
-	Services  []Service          `json:"services"`
+	Type      string    `json:"type"`
+	Channel   string    `json:"channel"`
+	Name      OptString `json:"name"`
+	TsmfRelTs OptInt    `json:"tsmfRelTs"`
+	Services  []Service `json:"services"`
 }
 
 // GetType returns the value of Type.
@@ -32,26 +36,6 @@ func (s *Channel) GetChannel() string {
 // GetName returns the value of Name.
 func (s *Channel) GetName() OptString {
 	return s.Name
-}
-
-// GetSatellite returns the value of Satellite.
-func (s *Channel) GetSatellite() OptString {
-	return s.Satellite
-}
-
-// GetSpace returns the value of Space.
-func (s *Channel) GetSpace() OptInt {
-	return s.Space
-}
-
-// GetFreq returns the value of Freq.
-func (s *Channel) GetFreq() OptFloat64 {
-	return s.Freq
-}
-
-// GetPolarity returns the value of Polarity.
-func (s *Channel) GetPolarity() OptChannelPolarity {
-	return s.Polarity
 }
 
 // GetTsmfRelTs returns the value of TsmfRelTs.
@@ -79,26 +63,6 @@ func (s *Channel) SetName(val OptString) {
 	s.Name = val
 }
 
-// SetSatellite sets the value of Satellite.
-func (s *Channel) SetSatellite(val OptString) {
-	s.Satellite = val
-}
-
-// SetSpace sets the value of Space.
-func (s *Channel) SetSpace(val OptInt) {
-	s.Space = val
-}
-
-// SetFreq sets the value of Freq.
-func (s *Channel) SetFreq(val OptFloat64) {
-	s.Freq = val
-}
-
-// SetPolarity sets the value of Polarity.
-func (s *Channel) SetPolarity(val OptChannelPolarity) {
-	s.Polarity = val
-}
-
 // SetTsmfRelTs sets the value of TsmfRelTs.
 func (s *Channel) SetTsmfRelTs(val OptInt) {
 	s.TsmfRelTs = val
@@ -111,60 +75,105 @@ func (s *Channel) SetServices(val []Service) {
 
 func (*Channel) getChannelRes() {}
 
-type ChannelPolarity string
-
-const (
-	ChannelPolarityH ChannelPolarity = "H"
-	ChannelPolarityV ChannelPolarity = "V"
-)
-
-// AllValues returns all ChannelPolarity values.
-func (ChannelPolarity) AllValues() []ChannelPolarity {
-	return []ChannelPolarity{
-		ChannelPolarityH,
-		ChannelPolarityV,
-	}
+// ChannelsTypeChannelServicesIDStreamHeadDef is default response for ChannelsTypeChannelServicesIDStreamHead operation.
+type ChannelsTypeChannelServicesIDStreamHeadDef struct {
+	StatusCode int
 }
 
-// MarshalText implements encoding.TextMarshaler.
-func (s ChannelPolarity) MarshalText() ([]byte, error) {
-	switch s {
-	case ChannelPolarityH:
-		return []byte(s), nil
-	case ChannelPolarityV:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
+// GetStatusCode returns the value of StatusCode.
+func (s *ChannelsTypeChannelServicesIDStreamHeadDef) GetStatusCode() int {
+	return s.StatusCode
 }
 
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *ChannelPolarity) UnmarshalText(data []byte) error {
-	switch ChannelPolarity(data) {
-	case ChannelPolarityH:
-		*s = ChannelPolarityH
-		return nil
-	case ChannelPolarityV:
-		*s = ChannelPolarityV
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
+// SetStatusCode sets the value of StatusCode.
+func (s *ChannelsTypeChannelServicesIDStreamHeadDef) SetStatusCode(val int) {
+	s.StatusCode = val
 }
+
+func (*ChannelsTypeChannelServicesIDStreamHeadDef) channelsTypeChannelServicesIDStreamHeadRes() {}
+
+// ChannelsTypeChannelServicesIDStreamHeadNotFound is response for ChannelsTypeChannelServicesIDStreamHead operation.
+type ChannelsTypeChannelServicesIDStreamHeadNotFound struct{}
+
+func (*ChannelsTypeChannelServicesIDStreamHeadNotFound) channelsTypeChannelServicesIDStreamHeadRes() {
+}
+
+// ChannelsTypeChannelServicesIDStreamHeadOK is response for ChannelsTypeChannelServicesIDStreamHead operation.
+type ChannelsTypeChannelServicesIDStreamHeadOK struct {
+	XMirakurunTunerUserID OptString
+}
+
+// GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
+func (s *ChannelsTypeChannelServicesIDStreamHeadOK) GetXMirakurunTunerUserID() OptString {
+	return s.XMirakurunTunerUserID
+}
+
+// SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
+func (s *ChannelsTypeChannelServicesIDStreamHeadOK) SetXMirakurunTunerUserID(val OptString) {
+	s.XMirakurunTunerUserID = val
+}
+
+func (*ChannelsTypeChannelServicesIDStreamHeadOK) channelsTypeChannelServicesIDStreamHeadRes() {}
+
+// ChannelsTypeChannelServicesIDStreamHeadServiceUnavailable is response for ChannelsTypeChannelServicesIDStreamHead operation.
+type ChannelsTypeChannelServicesIDStreamHeadServiceUnavailable struct{}
+
+func (*ChannelsTypeChannelServicesIDStreamHeadServiceUnavailable) channelsTypeChannelServicesIDStreamHeadRes() {
+}
+
+// ChannelsTypeChannelStreamHeadDef is default response for ChannelsTypeChannelStreamHead operation.
+type ChannelsTypeChannelStreamHeadDef struct {
+	StatusCode int
+}
+
+// GetStatusCode returns the value of StatusCode.
+func (s *ChannelsTypeChannelStreamHeadDef) GetStatusCode() int {
+	return s.StatusCode
+}
+
+// SetStatusCode sets the value of StatusCode.
+func (s *ChannelsTypeChannelStreamHeadDef) SetStatusCode(val int) {
+	s.StatusCode = val
+}
+
+func (*ChannelsTypeChannelStreamHeadDef) channelsTypeChannelStreamHeadRes() {}
+
+// ChannelsTypeChannelStreamHeadNotFound is response for ChannelsTypeChannelStreamHead operation.
+type ChannelsTypeChannelStreamHeadNotFound struct{}
+
+func (*ChannelsTypeChannelStreamHeadNotFound) channelsTypeChannelStreamHeadRes() {}
+
+// ChannelsTypeChannelStreamHeadOK is response for ChannelsTypeChannelStreamHead operation.
+type ChannelsTypeChannelStreamHeadOK struct {
+	XMirakurunTunerUserID OptString
+}
+
+// GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
+func (s *ChannelsTypeChannelStreamHeadOK) GetXMirakurunTunerUserID() OptString {
+	return s.XMirakurunTunerUserID
+}
+
+// SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
+func (s *ChannelsTypeChannelStreamHeadOK) SetXMirakurunTunerUserID(val OptString) {
+	s.XMirakurunTunerUserID = val
+}
+
+func (*ChannelsTypeChannelStreamHeadOK) channelsTypeChannelStreamHeadRes() {}
+
+// ChannelsTypeChannelStreamHeadServiceUnavailable is response for ChannelsTypeChannelStreamHead operation.
+type ChannelsTypeChannelStreamHeadServiceUnavailable struct{}
+
+func (*ChannelsTypeChannelStreamHeadServiceUnavailable) channelsTypeChannelStreamHeadRes() {}
 
 // Ref: #/components/schemas/ConfigChannelsItem
 type ConfigChannelsItem struct {
-	Name            string                        `json:"name"`
-	Type            string                        `json:"type"`
-	Channel         string                        `json:"channel"`
-	ServiceId       OptServiceId                  `json:"serviceId"`
-	Satellite       OptString                     `json:"satellite"`
-	Space           OptInt                        `json:"space"`
-	Freq            OptFloat64                    `json:"freq"`
-	Polarity        OptConfigChannelsItemPolarity `json:"polarity"`
-	IsDisabled      OptBool                       `json:"isDisabled"`
-	ServicesCommand OptString                     `json:"servicesCommand"`
-	ProgramsCommand OptString                     `json:"programsCommand"`
+	Name        string                         `json:"name"`
+	Type        string                         `json:"type"`
+	Channel     string                         `json:"channel"`
+	ServiceId   OptServiceId                   `json:"serviceId"`
+	TsmfRelTs   OptInt                         `json:"tsmfRelTs"`
+	CommandVars *ConfigChannelsItemCommandVars `json:"commandVars"`
+	IsDisabled  OptBool                        `json:"isDisabled"`
 }
 
 // GetName returns the value of Name.
@@ -187,39 +196,19 @@ func (s *ConfigChannelsItem) GetServiceId() OptServiceId {
 	return s.ServiceId
 }
 
-// GetSatellite returns the value of Satellite.
-func (s *ConfigChannelsItem) GetSatellite() OptString {
-	return s.Satellite
+// GetTsmfRelTs returns the value of TsmfRelTs.
+func (s *ConfigChannelsItem) GetTsmfRelTs() OptInt {
+	return s.TsmfRelTs
 }
 
-// GetSpace returns the value of Space.
-func (s *ConfigChannelsItem) GetSpace() OptInt {
-	return s.Space
-}
-
-// GetFreq returns the value of Freq.
-func (s *ConfigChannelsItem) GetFreq() OptFloat64 {
-	return s.Freq
-}
-
-// GetPolarity returns the value of Polarity.
-func (s *ConfigChannelsItem) GetPolarity() OptConfigChannelsItemPolarity {
-	return s.Polarity
+// GetCommandVars returns the value of CommandVars.
+func (s *ConfigChannelsItem) GetCommandVars() *ConfigChannelsItemCommandVars {
+	return s.CommandVars
 }
 
 // GetIsDisabled returns the value of IsDisabled.
 func (s *ConfigChannelsItem) GetIsDisabled() OptBool {
 	return s.IsDisabled
-}
-
-// GetServicesCommand returns the value of ServicesCommand.
-func (s *ConfigChannelsItem) GetServicesCommand() OptString {
-	return s.ServicesCommand
-}
-
-// GetProgramsCommand returns the value of ProgramsCommand.
-func (s *ConfigChannelsItem) GetProgramsCommand() OptString {
-	return s.ProgramsCommand
 }
 
 // SetName sets the value of Name.
@@ -242,24 +231,14 @@ func (s *ConfigChannelsItem) SetServiceId(val OptServiceId) {
 	s.ServiceId = val
 }
 
-// SetSatellite sets the value of Satellite.
-func (s *ConfigChannelsItem) SetSatellite(val OptString) {
-	s.Satellite = val
+// SetTsmfRelTs sets the value of TsmfRelTs.
+func (s *ConfigChannelsItem) SetTsmfRelTs(val OptInt) {
+	s.TsmfRelTs = val
 }
 
-// SetSpace sets the value of Space.
-func (s *ConfigChannelsItem) SetSpace(val OptInt) {
-	s.Space = val
-}
-
-// SetFreq sets the value of Freq.
-func (s *ConfigChannelsItem) SetFreq(val OptFloat64) {
-	s.Freq = val
-}
-
-// SetPolarity sets the value of Polarity.
-func (s *ConfigChannelsItem) SetPolarity(val OptConfigChannelsItemPolarity) {
-	s.Polarity = val
+// SetCommandVars sets the value of CommandVars.
+func (s *ConfigChannelsItem) SetCommandVars(val *ConfigChannelsItemCommandVars) {
+	s.CommandVars = val
 }
 
 // SetIsDisabled sets the value of IsDisabled.
@@ -267,56 +246,7 @@ func (s *ConfigChannelsItem) SetIsDisabled(val OptBool) {
 	s.IsDisabled = val
 }
 
-// SetServicesCommand sets the value of ServicesCommand.
-func (s *ConfigChannelsItem) SetServicesCommand(val OptString) {
-	s.ServicesCommand = val
-}
-
-// SetProgramsCommand sets the value of ProgramsCommand.
-func (s *ConfigChannelsItem) SetProgramsCommand(val OptString) {
-	s.ProgramsCommand = val
-}
-
-type ConfigChannelsItemPolarity string
-
-const (
-	ConfigChannelsItemPolarityH ConfigChannelsItemPolarity = "H"
-	ConfigChannelsItemPolarityV ConfigChannelsItemPolarity = "V"
-)
-
-// AllValues returns all ConfigChannelsItemPolarity values.
-func (ConfigChannelsItemPolarity) AllValues() []ConfigChannelsItemPolarity {
-	return []ConfigChannelsItemPolarity{
-		ConfigChannelsItemPolarityH,
-		ConfigChannelsItemPolarityV,
-	}
-}
-
-// MarshalText implements encoding.TextMarshaler.
-func (s ConfigChannelsItemPolarity) MarshalText() ([]byte, error) {
-	switch s {
-	case ConfigChannelsItemPolarityH:
-		return []byte(s), nil
-	case ConfigChannelsItemPolarityV:
-		return []byte(s), nil
-	default:
-		return nil, errors.Errorf("invalid value: %q", s)
-	}
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler.
-func (s *ConfigChannelsItemPolarity) UnmarshalText(data []byte) error {
-	switch ConfigChannelsItemPolarity(data) {
-	case ConfigChannelsItemPolarityH:
-		*s = ConfigChannelsItemPolarityH
-		return nil
-	case ConfigChannelsItemPolarityV:
-		*s = ConfigChannelsItemPolarityV
-		return nil
-	default:
-		return errors.Errorf("invalid value: %q", data)
-	}
-}
+type ConfigChannelsItemCommandVars struct{}
 
 // Ref: #/components/schemas/Error
 type Error struct {
@@ -355,12 +285,15 @@ func (s *Error) SetErrors(val []ErrorOfOpenAPI) {
 	s.Errors = val
 }
 
+func (*Error) abortJobRes()         {}
 func (*Error) getChannelRes()       {}
 func (*Error) getProgramRes()       {}
 func (*Error) getServiceRes()       {}
 func (*Error) getTunerProcessRes()  {}
 func (*Error) getTunerRes()         {}
 func (*Error) killTunerProcessRes() {}
+func (*Error) rerunJobRes()         {}
+func (*Error) runJobScheduleRes()   {}
 
 // Ref: #/components/schemas/ErrorOfOpenAPI
 type ErrorOfOpenAPI struct {
@@ -425,12 +358,16 @@ func (s *ErrorStatusCode) SetResponse(val Error) {
 	s.Response = val
 }
 
+func (*ErrorStatusCode) abortJobRes()                {}
 func (*ErrorStatusCode) checkVersionRes()            {}
+func (*ErrorStatusCode) getApiDocumentationRes()     {}
 func (*ErrorStatusCode) getChannelRes()              {}
 func (*ErrorStatusCode) getChannelsByTypeRes()       {}
 func (*ErrorStatusCode) getChannelsRes()             {}
 func (*ErrorStatusCode) getEventsRes()               {}
 func (*ErrorStatusCode) getEventsStreamRes()         {}
+func (*ErrorStatusCode) getJobSchedulesRes()         {}
+func (*ErrorStatusCode) getJobsRes()                 {}
 func (*ErrorStatusCode) getProgramRes()              {}
 func (*ErrorStatusCode) getProgramsRes()             {}
 func (*ErrorStatusCode) getServiceByChannelRes()     {}
@@ -445,7 +382,11 @@ func (*ErrorStatusCode) getTunersRes()               {}
 func (*ErrorStatusCode) iptvDiscoverJSONGetRes()     {}
 func (*ErrorStatusCode) iptvLineupJSONGetRes()       {}
 func (*ErrorStatusCode) iptvLineupStatusJSONGetRes() {}
+func (*ErrorStatusCode) iptvPlaylistGetRes()         {}
+func (*ErrorStatusCode) iptvXmltvGetRes()            {}
 func (*ErrorStatusCode) killTunerProcessRes()        {}
+func (*ErrorStatusCode) rerunJobRes()                {}
+func (*ErrorStatusCode) runJobScheduleRes()          {}
 
 // Ref: #/components/schemas/Event
 type Event struct {
@@ -597,6 +538,19 @@ func (s *EventType) UnmarshalText(data []byte) error {
 	}
 }
 
+type GetApiDocumentationOK map[string]jx.Raw
+
+func (s *GetApiDocumentationOK) init() GetApiDocumentationOK {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
+func (*GetApiDocumentationOK) getApiDocumentationRes() {}
+
 // GetChannelStreamDef is default response for GetChannelStream operation.
 type GetChannelStreamDef struct {
 	StatusCode int
@@ -619,22 +573,47 @@ type GetChannelStreamNotFound struct{}
 
 func (*GetChannelStreamNotFound) getChannelStreamRes() {}
 
-// GetChannelStreamOK is response for GetChannelStream operation.
 type GetChannelStreamOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetChannelStreamOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+// GetChannelStreamOKHeaders wraps GetChannelStreamOK with response headers.
+type GetChannelStreamOKHeaders struct {
 	XMirakurunTunerUserID OptString
+	Response              GetChannelStreamOK
 }
 
 // GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
-func (s *GetChannelStreamOK) GetXMirakurunTunerUserID() OptString {
+func (s *GetChannelStreamOKHeaders) GetXMirakurunTunerUserID() OptString {
 	return s.XMirakurunTunerUserID
 }
 
+// GetResponse returns the value of Response.
+func (s *GetChannelStreamOKHeaders) GetResponse() GetChannelStreamOK {
+	return s.Response
+}
+
 // SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
-func (s *GetChannelStreamOK) SetXMirakurunTunerUserID(val OptString) {
+func (s *GetChannelStreamOKHeaders) SetXMirakurunTunerUserID(val OptString) {
 	s.XMirakurunTunerUserID = val
 }
 
-func (*GetChannelStreamOK) getChannelStreamRes() {}
+// SetResponse sets the value of Response.
+func (s *GetChannelStreamOKHeaders) SetResponse(val GetChannelStreamOK) {
+	s.Response = val
+}
+
+func (*GetChannelStreamOKHeaders) getChannelStreamRes() {}
 
 // GetChannelStreamServiceUnavailable is response for GetChannelStream operation.
 type GetChannelStreamServiceUnavailable struct{}
@@ -753,6 +732,14 @@ func (s *GetEventsStreamType) UnmarshalText(data []byte) error {
 	}
 }
 
+type GetJobSchedulesOKApplicationJSON []JobScheduleItem
+
+func (*GetJobSchedulesOKApplicationJSON) getJobSchedulesRes() {}
+
+type GetJobsOKApplicationJSON []JobItem
+
+func (*GetJobsOKApplicationJSON) getJobsRes() {}
+
 // GetLogDef is default response for GetLog operation.
 type GetLogDef struct {
 	StatusCode int
@@ -770,8 +757,19 @@ func (s *GetLogDef) SetStatusCode(val int) {
 
 func (*GetLogDef) getLogRes() {}
 
-// GetLogOK is response for GetLog operation.
-type GetLogOK struct{}
+type GetLogOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetLogOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
 
 func (*GetLogOK) getLogRes() {}
 
@@ -792,8 +790,19 @@ func (s *GetLogStreamDef) SetStatusCode(val int) {
 
 func (*GetLogStreamDef) getLogStreamRes() {}
 
-// GetLogStreamOK is response for GetLogStream operation.
-type GetLogStreamOK struct{}
+type GetLogStreamOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetLogStreamOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
 
 func (*GetLogStreamOK) getLogStreamRes() {}
 
@@ -819,8 +828,19 @@ type GetLogoImageNotFound struct{}
 
 func (*GetLogoImageNotFound) getLogoImageRes() {}
 
-// GetLogoImageOK is response for GetLogoImage operation.
-type GetLogoImageOK struct{}
+type GetLogoImageOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetLogoImageOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
 
 func (*GetLogoImageOK) getLogoImageRes() {}
 
@@ -851,22 +871,47 @@ type GetProgramStreamNotFound struct{}
 
 func (*GetProgramStreamNotFound) getProgramStreamRes() {}
 
-// GetProgramStreamOK is response for GetProgramStream operation.
 type GetProgramStreamOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetProgramStreamOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+// GetProgramStreamOKHeaders wraps GetProgramStreamOK with response headers.
+type GetProgramStreamOKHeaders struct {
 	XMirakurunTunerUserID OptString
+	Response              GetProgramStreamOK
 }
 
 // GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
-func (s *GetProgramStreamOK) GetXMirakurunTunerUserID() OptString {
+func (s *GetProgramStreamOKHeaders) GetXMirakurunTunerUserID() OptString {
 	return s.XMirakurunTunerUserID
 }
 
+// GetResponse returns the value of Response.
+func (s *GetProgramStreamOKHeaders) GetResponse() GetProgramStreamOK {
+	return s.Response
+}
+
 // SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
-func (s *GetProgramStreamOK) SetXMirakurunTunerUserID(val OptString) {
+func (s *GetProgramStreamOKHeaders) SetXMirakurunTunerUserID(val OptString) {
 	s.XMirakurunTunerUserID = val
 }
 
-func (*GetProgramStreamOK) getProgramStreamRes() {}
+// SetResponse sets the value of Response.
+func (s *GetProgramStreamOKHeaders) SetResponse(val GetProgramStreamOK) {
+	s.Response = val
+}
+
+func (*GetProgramStreamOKHeaders) getProgramStreamRes() {}
 
 // GetProgramStreamServiceUnavailable is response for GetProgramStream operation.
 type GetProgramStreamServiceUnavailable struct{}
@@ -907,22 +952,47 @@ type GetServiceStreamByChannelNotFound struct{}
 
 func (*GetServiceStreamByChannelNotFound) getServiceStreamByChannelRes() {}
 
-// GetServiceStreamByChannelOK is response for GetServiceStreamByChannel operation.
 type GetServiceStreamByChannelOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetServiceStreamByChannelOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+// GetServiceStreamByChannelOKHeaders wraps GetServiceStreamByChannelOK with response headers.
+type GetServiceStreamByChannelOKHeaders struct {
 	XMirakurunTunerUserID OptString
+	Response              GetServiceStreamByChannelOK
 }
 
 // GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
-func (s *GetServiceStreamByChannelOK) GetXMirakurunTunerUserID() OptString {
+func (s *GetServiceStreamByChannelOKHeaders) GetXMirakurunTunerUserID() OptString {
 	return s.XMirakurunTunerUserID
 }
 
+// GetResponse returns the value of Response.
+func (s *GetServiceStreamByChannelOKHeaders) GetResponse() GetServiceStreamByChannelOK {
+	return s.Response
+}
+
 // SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
-func (s *GetServiceStreamByChannelOK) SetXMirakurunTunerUserID(val OptString) {
+func (s *GetServiceStreamByChannelOKHeaders) SetXMirakurunTunerUserID(val OptString) {
 	s.XMirakurunTunerUserID = val
 }
 
-func (*GetServiceStreamByChannelOK) getServiceStreamByChannelRes() {}
+// SetResponse sets the value of Response.
+func (s *GetServiceStreamByChannelOKHeaders) SetResponse(val GetServiceStreamByChannelOK) {
+	s.Response = val
+}
+
+func (*GetServiceStreamByChannelOKHeaders) getServiceStreamByChannelRes() {}
 
 // GetServiceStreamByChannelServiceUnavailable is response for GetServiceStreamByChannel operation.
 type GetServiceStreamByChannelServiceUnavailable struct{}
@@ -951,22 +1021,47 @@ type GetServiceStreamNotFound struct{}
 
 func (*GetServiceStreamNotFound) getServiceStreamRes() {}
 
-// GetServiceStreamOK is response for GetServiceStream operation.
 type GetServiceStreamOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetServiceStreamOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+// GetServiceStreamOKHeaders wraps GetServiceStreamOK with response headers.
+type GetServiceStreamOKHeaders struct {
 	XMirakurunTunerUserID OptString
+	Response              GetServiceStreamOK
 }
 
 // GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
-func (s *GetServiceStreamOK) GetXMirakurunTunerUserID() OptString {
+func (s *GetServiceStreamOKHeaders) GetXMirakurunTunerUserID() OptString {
 	return s.XMirakurunTunerUserID
 }
 
+// GetResponse returns the value of Response.
+func (s *GetServiceStreamOKHeaders) GetResponse() GetServiceStreamOK {
+	return s.Response
+}
+
 // SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
-func (s *GetServiceStreamOK) SetXMirakurunTunerUserID(val OptString) {
+func (s *GetServiceStreamOKHeaders) SetXMirakurunTunerUserID(val OptString) {
 	s.XMirakurunTunerUserID = val
 }
 
-func (*GetServiceStreamOK) getServiceStreamRes() {}
+// SetResponse sets the value of Response.
+func (s *GetServiceStreamOKHeaders) SetResponse(val GetServiceStreamOK) {
+	s.Response = val
+}
+
+func (*GetServiceStreamOKHeaders) getServiceStreamRes() {}
 
 // GetServiceStreamServiceUnavailable is response for GetServiceStream operation.
 type GetServiceStreamServiceUnavailable struct{}
@@ -985,24 +1080,395 @@ type GetTunersOKApplicationJSON []TunerDevice
 
 func (*GetTunersOKApplicationJSON) getTunersRes() {}
 
-// IptvDiscoverJSONGetOK is response for IptvDiscoverJSONGet operation.
-type IptvDiscoverJSONGetOK struct{}
+type IptvDiscoverJSONGetOKApplicationJSON string
 
-func (*IptvDiscoverJSONGetOK) iptvDiscoverJSONGetRes() {}
+func (*IptvDiscoverJSONGetOKApplicationJSON) iptvDiscoverJSONGetRes() {}
 
-// IptvLineupJSONGetOK is response for IptvLineupJSONGet operation.
-type IptvLineupJSONGetOK struct{}
+type IptvLineupJSONGetOKApplicationJSON string
 
-func (*IptvLineupJSONGetOK) iptvLineupJSONGetRes() {}
+func (*IptvLineupJSONGetOKApplicationJSON) iptvLineupJSONGetRes() {}
 
-// IptvLineupStatusJSONGetOK is response for IptvLineupStatusJSONGet operation.
-type IptvLineupStatusJSONGetOK struct{}
+type IptvLineupStatusJSONGetOKApplicationJSON string
 
-func (*IptvLineupStatusJSONGetOK) iptvLineupStatusJSONGetRes() {}
+func (*IptvLineupStatusJSONGetOKApplicationJSON) iptvLineupStatusJSONGetRes() {}
 
-type KillTunerProcessOK struct{}
+type IptvPlaylistGetOK struct {
+	Data io.Reader
+}
 
-func (*KillTunerProcessOK) killTunerProcessRes() {}
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s IptvPlaylistGetOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*IptvPlaylistGetOK) iptvPlaylistGetRes() {}
+
+type IptvXmltvGetOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s IptvXmltvGetOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*IptvXmltvGetOK) iptvXmltvGetRes() {}
+
+// Ref: #/components/schemas/JobItem
+type JobItem struct {
+	Key          string        `json:"key"`
+	Name         string        `json:"name"`
+	ID           string        `json:"id"`
+	Status       JobItemStatus `json:"status"`
+	RetryCount   int           `json:"retryCount"`
+	IsRerunnable OptBool       `json:"isRerunnable"`
+	RetryOnAbort OptBool       `json:"retryOnAbort"`
+	RetryOnFail  OptBool       `json:"retryOnFail"`
+	RetryMax     OptInt        `json:"retryMax"`
+	RetryDelay   OptInt        `json:"retryDelay"`
+	IsAborting   bool          `json:"isAborting"`
+	HasAborted   OptBool       `json:"hasAborted"`
+	HasSkipped   OptBool       `json:"hasSkipped"`
+	HasFailed    OptBool       `json:"hasFailed"`
+	Error        OptString     `json:"error"`
+	CreatedAt    UnixtimeMS    `json:"createdAt"`
+	UpdatedAt    UnixtimeMS    `json:"updatedAt"`
+	StartedAt    OptUnixtimeMS `json:"startedAt"`
+	FinishedAt   OptUnixtimeMS `json:"finishedAt"`
+	Duration     OptInt        `json:"duration"`
+}
+
+// GetKey returns the value of Key.
+func (s *JobItem) GetKey() string {
+	return s.Key
+}
+
+// GetName returns the value of Name.
+func (s *JobItem) GetName() string {
+	return s.Name
+}
+
+// GetID returns the value of ID.
+func (s *JobItem) GetID() string {
+	return s.ID
+}
+
+// GetStatus returns the value of Status.
+func (s *JobItem) GetStatus() JobItemStatus {
+	return s.Status
+}
+
+// GetRetryCount returns the value of RetryCount.
+func (s *JobItem) GetRetryCount() int {
+	return s.RetryCount
+}
+
+// GetIsRerunnable returns the value of IsRerunnable.
+func (s *JobItem) GetIsRerunnable() OptBool {
+	return s.IsRerunnable
+}
+
+// GetRetryOnAbort returns the value of RetryOnAbort.
+func (s *JobItem) GetRetryOnAbort() OptBool {
+	return s.RetryOnAbort
+}
+
+// GetRetryOnFail returns the value of RetryOnFail.
+func (s *JobItem) GetRetryOnFail() OptBool {
+	return s.RetryOnFail
+}
+
+// GetRetryMax returns the value of RetryMax.
+func (s *JobItem) GetRetryMax() OptInt {
+	return s.RetryMax
+}
+
+// GetRetryDelay returns the value of RetryDelay.
+func (s *JobItem) GetRetryDelay() OptInt {
+	return s.RetryDelay
+}
+
+// GetIsAborting returns the value of IsAborting.
+func (s *JobItem) GetIsAborting() bool {
+	return s.IsAborting
+}
+
+// GetHasAborted returns the value of HasAborted.
+func (s *JobItem) GetHasAborted() OptBool {
+	return s.HasAborted
+}
+
+// GetHasSkipped returns the value of HasSkipped.
+func (s *JobItem) GetHasSkipped() OptBool {
+	return s.HasSkipped
+}
+
+// GetHasFailed returns the value of HasFailed.
+func (s *JobItem) GetHasFailed() OptBool {
+	return s.HasFailed
+}
+
+// GetError returns the value of Error.
+func (s *JobItem) GetError() OptString {
+	return s.Error
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *JobItem) GetCreatedAt() UnixtimeMS {
+	return s.CreatedAt
+}
+
+// GetUpdatedAt returns the value of UpdatedAt.
+func (s *JobItem) GetUpdatedAt() UnixtimeMS {
+	return s.UpdatedAt
+}
+
+// GetStartedAt returns the value of StartedAt.
+func (s *JobItem) GetStartedAt() OptUnixtimeMS {
+	return s.StartedAt
+}
+
+// GetFinishedAt returns the value of FinishedAt.
+func (s *JobItem) GetFinishedAt() OptUnixtimeMS {
+	return s.FinishedAt
+}
+
+// GetDuration returns the value of Duration.
+func (s *JobItem) GetDuration() OptInt {
+	return s.Duration
+}
+
+// SetKey sets the value of Key.
+func (s *JobItem) SetKey(val string) {
+	s.Key = val
+}
+
+// SetName sets the value of Name.
+func (s *JobItem) SetName(val string) {
+	s.Name = val
+}
+
+// SetID sets the value of ID.
+func (s *JobItem) SetID(val string) {
+	s.ID = val
+}
+
+// SetStatus sets the value of Status.
+func (s *JobItem) SetStatus(val JobItemStatus) {
+	s.Status = val
+}
+
+// SetRetryCount sets the value of RetryCount.
+func (s *JobItem) SetRetryCount(val int) {
+	s.RetryCount = val
+}
+
+// SetIsRerunnable sets the value of IsRerunnable.
+func (s *JobItem) SetIsRerunnable(val OptBool) {
+	s.IsRerunnable = val
+}
+
+// SetRetryOnAbort sets the value of RetryOnAbort.
+func (s *JobItem) SetRetryOnAbort(val OptBool) {
+	s.RetryOnAbort = val
+}
+
+// SetRetryOnFail sets the value of RetryOnFail.
+func (s *JobItem) SetRetryOnFail(val OptBool) {
+	s.RetryOnFail = val
+}
+
+// SetRetryMax sets the value of RetryMax.
+func (s *JobItem) SetRetryMax(val OptInt) {
+	s.RetryMax = val
+}
+
+// SetRetryDelay sets the value of RetryDelay.
+func (s *JobItem) SetRetryDelay(val OptInt) {
+	s.RetryDelay = val
+}
+
+// SetIsAborting sets the value of IsAborting.
+func (s *JobItem) SetIsAborting(val bool) {
+	s.IsAborting = val
+}
+
+// SetHasAborted sets the value of HasAborted.
+func (s *JobItem) SetHasAborted(val OptBool) {
+	s.HasAborted = val
+}
+
+// SetHasSkipped sets the value of HasSkipped.
+func (s *JobItem) SetHasSkipped(val OptBool) {
+	s.HasSkipped = val
+}
+
+// SetHasFailed sets the value of HasFailed.
+func (s *JobItem) SetHasFailed(val OptBool) {
+	s.HasFailed = val
+}
+
+// SetError sets the value of Error.
+func (s *JobItem) SetError(val OptString) {
+	s.Error = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *JobItem) SetCreatedAt(val UnixtimeMS) {
+	s.CreatedAt = val
+}
+
+// SetUpdatedAt sets the value of UpdatedAt.
+func (s *JobItem) SetUpdatedAt(val UnixtimeMS) {
+	s.UpdatedAt = val
+}
+
+// SetStartedAt sets the value of StartedAt.
+func (s *JobItem) SetStartedAt(val OptUnixtimeMS) {
+	s.StartedAt = val
+}
+
+// SetFinishedAt sets the value of FinishedAt.
+func (s *JobItem) SetFinishedAt(val OptUnixtimeMS) {
+	s.FinishedAt = val
+}
+
+// SetDuration sets the value of Duration.
+func (s *JobItem) SetDuration(val OptInt) {
+	s.Duration = val
+}
+
+type JobItemStatus string
+
+const (
+	JobItemStatusQueued   JobItemStatus = "queued"
+	JobItemStatusStandby  JobItemStatus = "standby"
+	JobItemStatusRunning  JobItemStatus = "running"
+	JobItemStatusFinished JobItemStatus = "finished"
+)
+
+// AllValues returns all JobItemStatus values.
+func (JobItemStatus) AllValues() []JobItemStatus {
+	return []JobItemStatus{
+		JobItemStatusQueued,
+		JobItemStatusStandby,
+		JobItemStatusRunning,
+		JobItemStatusFinished,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s JobItemStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case JobItemStatusQueued:
+		return []byte(s), nil
+	case JobItemStatusStandby:
+		return []byte(s), nil
+	case JobItemStatusRunning:
+		return []byte(s), nil
+	case JobItemStatusFinished:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *JobItemStatus) UnmarshalText(data []byte) error {
+	switch JobItemStatus(data) {
+	case JobItemStatusQueued:
+		*s = JobItemStatusQueued
+		return nil
+	case JobItemStatusStandby:
+		*s = JobItemStatusStandby
+		return nil
+	case JobItemStatusRunning:
+		*s = JobItemStatusRunning
+		return nil
+	case JobItemStatusFinished:
+		*s = JobItemStatusFinished
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/JobScheduleItem
+type JobScheduleItem struct {
+	Key      string             `json:"key"`
+	Schedule string             `json:"schedule"`
+	Job      JobScheduleItemJob `json:"job"`
+}
+
+// GetKey returns the value of Key.
+func (s *JobScheduleItem) GetKey() string {
+	return s.Key
+}
+
+// GetSchedule returns the value of Schedule.
+func (s *JobScheduleItem) GetSchedule() string {
+	return s.Schedule
+}
+
+// GetJob returns the value of Job.
+func (s *JobScheduleItem) GetJob() JobScheduleItemJob {
+	return s.Job
+}
+
+// SetKey sets the value of Key.
+func (s *JobScheduleItem) SetKey(val string) {
+	s.Key = val
+}
+
+// SetSchedule sets the value of Schedule.
+func (s *JobScheduleItem) SetSchedule(val string) {
+	s.Schedule = val
+}
+
+// SetJob sets the value of Job.
+func (s *JobScheduleItem) SetJob(val JobScheduleItemJob) {
+	s.Job = val
+}
+
+type JobScheduleItemJob struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
+}
+
+// GetKey returns the value of Key.
+func (s *JobScheduleItemJob) GetKey() string {
+	return s.Key
+}
+
+// GetName returns the value of Name.
+func (s *JobScheduleItemJob) GetName() string {
+	return s.Name
+}
+
+// SetKey sets the value of Key.
+func (s *JobScheduleItemJob) SetKey(val string) {
+	s.Key = val
+}
+
+// SetName sets the value of Name.
+func (s *JobScheduleItemJob) SetName(val string) {
+	s.Name = val
+}
+
+// KillTunerProcessNoContent is response for KillTunerProcess operation.
+type KillTunerProcessNoContent struct{}
+
+func (*KillTunerProcessNoContent) killTunerProcessRes() {}
 
 type NetworkId int
 
@@ -1092,98 +1558,6 @@ func (o OptChannel) Get() (v Channel, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptChannel) Or(d Channel) Channel {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
-// NewOptChannelPolarity returns new OptChannelPolarity with value set to v.
-func NewOptChannelPolarity(v ChannelPolarity) OptChannelPolarity {
-	return OptChannelPolarity{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptChannelPolarity is optional ChannelPolarity.
-type OptChannelPolarity struct {
-	Value ChannelPolarity
-	Set   bool
-}
-
-// IsSet returns true if OptChannelPolarity was set.
-func (o OptChannelPolarity) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptChannelPolarity) Reset() {
-	var v ChannelPolarity
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptChannelPolarity) SetTo(v ChannelPolarity) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptChannelPolarity) Get() (v ChannelPolarity, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptChannelPolarity) Or(d ChannelPolarity) ChannelPolarity {
-	if v, ok := o.Get(); ok {
-		return v
-	}
-	return d
-}
-
-// NewOptConfigChannelsItemPolarity returns new OptConfigChannelsItemPolarity with value set to v.
-func NewOptConfigChannelsItemPolarity(v ConfigChannelsItemPolarity) OptConfigChannelsItemPolarity {
-	return OptConfigChannelsItemPolarity{
-		Value: v,
-		Set:   true,
-	}
-}
-
-// OptConfigChannelsItemPolarity is optional ConfigChannelsItemPolarity.
-type OptConfigChannelsItemPolarity struct {
-	Value ConfigChannelsItemPolarity
-	Set   bool
-}
-
-// IsSet returns true if OptConfigChannelsItemPolarity was set.
-func (o OptConfigChannelsItemPolarity) IsSet() bool { return o.Set }
-
-// Reset unsets value.
-func (o *OptConfigChannelsItemPolarity) Reset() {
-	var v ConfigChannelsItemPolarity
-	o.Value = v
-	o.Set = false
-}
-
-// SetTo sets value to v.
-func (o *OptConfigChannelsItemPolarity) SetTo(v ConfigChannelsItemPolarity) {
-	o.Set = true
-	o.Value = v
-}
-
-// Get returns value and boolean that denotes whether value was set.
-func (o OptConfigChannelsItemPolarity) Get() (v ConfigChannelsItemPolarity, ok bool) {
-	if !o.Set {
-		return v, false
-	}
-	return o.Value, true
-}
-
-// Or returns value if set, or given parameter if does not.
-func (o OptConfigChannelsItemPolarity) Or(d ConfigChannelsItemPolarity) ConfigChannelsItemPolarity {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -3098,6 +3472,50 @@ func (s *ProgramVideoType) UnmarshalText(data []byte) error {
 	}
 }
 
+// ProgramsIDStreamHeadDef is default response for ProgramsIDStreamHead operation.
+type ProgramsIDStreamHeadDef struct {
+	StatusCode int
+}
+
+// GetStatusCode returns the value of StatusCode.
+func (s *ProgramsIDStreamHeadDef) GetStatusCode() int {
+	return s.StatusCode
+}
+
+// SetStatusCode sets the value of StatusCode.
+func (s *ProgramsIDStreamHeadDef) SetStatusCode(val int) {
+	s.StatusCode = val
+}
+
+func (*ProgramsIDStreamHeadDef) programsIDStreamHeadRes() {}
+
+// ProgramsIDStreamHeadNotFound is response for ProgramsIDStreamHead operation.
+type ProgramsIDStreamHeadNotFound struct{}
+
+func (*ProgramsIDStreamHeadNotFound) programsIDStreamHeadRes() {}
+
+// ProgramsIDStreamHeadOK is response for ProgramsIDStreamHead operation.
+type ProgramsIDStreamHeadOK struct {
+	XMirakurunTunerUserID OptString
+}
+
+// GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
+func (s *ProgramsIDStreamHeadOK) GetXMirakurunTunerUserID() OptString {
+	return s.XMirakurunTunerUserID
+}
+
+// SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
+func (s *ProgramsIDStreamHeadOK) SetXMirakurunTunerUserID(val OptString) {
+	s.XMirakurunTunerUserID = val
+}
+
+func (*ProgramsIDStreamHeadOK) programsIDStreamHeadRes() {}
+
+// ProgramsIDStreamHeadServiceUnavailable is response for ProgramsIDStreamHead operation.
+type ProgramsIDStreamHeadServiceUnavailable struct{}
+
+func (*ProgramsIDStreamHeadServiceUnavailable) programsIDStreamHeadRes() {}
+
 // Ref: #/components/schemas/RelatedItem
 type RelatedItem struct {
 	Type      OptRelatedItemType `json:"type"`
@@ -3194,6 +3612,16 @@ func (s *RelatedItemType) UnmarshalText(data []byte) error {
 	}
 }
 
+// RerunJobAccepted is response for RerunJob operation.
+type RerunJobAccepted struct{}
+
+func (*RerunJobAccepted) rerunJobRes() {}
+
+// RunJobScheduleAccepted is response for RunJobSchedule operation.
+type RunJobScheduleAccepted struct{}
+
+func (*RunJobScheduleAccepted) runJobScheduleRes() {}
+
 // Ref: #/components/schemas/Service
 type Service struct {
 	ID                 ServiceItemId        `json:"id"`
@@ -3208,7 +3636,6 @@ type Service struct {
 	EpgReady           OptBool              `json:"epgReady"`
 	EpgUpdatedAt       OptUnixtimeMS        `json:"epgUpdatedAt"`
 	Channel            OptChannel           `json:"channel"`
-	LogoData           OptString            `json:"logoData"`
 }
 
 // GetID returns the value of ID.
@@ -3271,11 +3698,6 @@ func (s *Service) GetChannel() OptChannel {
 	return s.Channel
 }
 
-// GetLogoData returns the value of LogoData.
-func (s *Service) GetLogoData() OptString {
-	return s.LogoData
-}
-
 // SetID sets the value of ID.
 func (s *Service) SetID(val ServiceItemId) {
 	s.ID = val
@@ -3336,16 +3758,55 @@ func (s *Service) SetChannel(val OptChannel) {
 	s.Channel = val
 }
 
-// SetLogoData sets the value of LogoData.
-func (s *Service) SetLogoData(val OptString) {
-	s.LogoData = val
-}
-
 func (*Service) getServiceRes() {}
 
 type ServiceId int
 
 type ServiceItemId int
+
+// ServicesIDStreamHeadDef is default response for ServicesIDStreamHead operation.
+type ServicesIDStreamHeadDef struct {
+	StatusCode int
+}
+
+// GetStatusCode returns the value of StatusCode.
+func (s *ServicesIDStreamHeadDef) GetStatusCode() int {
+	return s.StatusCode
+}
+
+// SetStatusCode sets the value of StatusCode.
+func (s *ServicesIDStreamHeadDef) SetStatusCode(val int) {
+	s.StatusCode = val
+}
+
+func (*ServicesIDStreamHeadDef) servicesIDStreamHeadRes() {}
+
+// ServicesIDStreamHeadNotFound is response for ServicesIDStreamHead operation.
+type ServicesIDStreamHeadNotFound struct{}
+
+func (*ServicesIDStreamHeadNotFound) servicesIDStreamHeadRes() {}
+
+// ServicesIDStreamHeadOK is response for ServicesIDStreamHead operation.
+type ServicesIDStreamHeadOK struct {
+	XMirakurunTunerUserID OptString
+}
+
+// GetXMirakurunTunerUserID returns the value of XMirakurunTunerUserID.
+func (s *ServicesIDStreamHeadOK) GetXMirakurunTunerUserID() OptString {
+	return s.XMirakurunTunerUserID
+}
+
+// SetXMirakurunTunerUserID sets the value of XMirakurunTunerUserID.
+func (s *ServicesIDStreamHeadOK) SetXMirakurunTunerUserID(val OptString) {
+	s.XMirakurunTunerUserID = val
+}
+
+func (*ServicesIDStreamHeadOK) servicesIDStreamHeadRes() {}
+
+// ServicesIDStreamHeadServiceUnavailable is response for ServicesIDStreamHead operation.
+type ServicesIDStreamHeadServiceUnavailable struct{}
+
+func (*ServicesIDStreamHeadServiceUnavailable) servicesIDStreamHeadRes() {}
 
 // Ref: #/components/schemas/Status
 type Status struct {

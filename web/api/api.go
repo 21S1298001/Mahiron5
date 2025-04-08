@@ -15,12 +15,24 @@ func NewHandler() *Handler {
 	return &Handler{}
 }
 
+func (h *Handler) AbortJob(ctx context.Context, params apigen.AbortJobParams) (apigen.AbortJobRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) ChannelsTypeChannelServicesIDStreamHead(ctx context.Context, params apigen.ChannelsTypeChannelServicesIDStreamHeadParams) (apigen.ChannelsTypeChannelServicesIDStreamHeadRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) ChannelsTypeChannelStreamHead(ctx context.Context, params apigen.ChannelsTypeChannelStreamHeadParams) (apigen.ChannelsTypeChannelStreamHeadRes, error) {
+	panic("implement me")
+}
+
 func (h *Handler) CheckVersion(ctx context.Context) (apigen.CheckVersionRes, error) {
 	return CheckVersion(ctx, h)
 }
 
-func (h *Handler) GetApiDocumentation(ctx context.Context) (string, error) {
-	panic("implement me")
+func (h *Handler) GetApiDocumentation(ctx context.Context) (apigen.GetApiDocumentationRes, error) {
+	return GetApiDocumentation(ctx, h)
 }
 
 func (h *Handler) GetChannel(ctx context.Context, params apigen.GetChannelParams) (apigen.GetChannelRes, error) {
@@ -44,6 +56,14 @@ func (h *Handler) GetEvents(ctx context.Context) (apigen.GetEventsRes, error) {
 }
 
 func (h *Handler) GetEventsStream(ctx context.Context, params apigen.GetEventsStreamParams) (apigen.GetEventsStreamRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) GetJobSchedules(ctx context.Context) (apigen.GetJobSchedulesRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) GetJobs(ctx context.Context) (apigen.GetJobsRes, error) {
 	panic("implement me")
 }
 
@@ -127,6 +147,30 @@ func (h *Handler) IptvLineupStatusJSONGet(ctx context.Context) (apigen.IptvLineu
 	panic("implement me")
 }
 
+func (h *Handler) IptvPlaylistGet(ctx context.Context) (apigen.IptvPlaylistGetRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) IptvXmltvGet(ctx context.Context) (apigen.IptvXmltvGetRes, error) {
+	panic("implement me")
+}
+
 func (h *Handler) KillTunerProcess(ctx context.Context, params apigen.KillTunerProcessParams) (apigen.KillTunerProcessRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) ProgramsIDStreamHead(ctx context.Context, params apigen.ProgramsIDStreamHeadParams) (apigen.ProgramsIDStreamHeadRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) RerunJob(ctx context.Context, params apigen.RerunJobParams) (apigen.RerunJobRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) RunJobSchedule(ctx context.Context, params apigen.RunJobScheduleParams) (apigen.RunJobScheduleRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) ServicesIDStreamHead(ctx context.Context, params apigen.ServicesIDStreamHeadParams) (apigen.ServicesIDStreamHeadRes, error) {
 	panic("implement me")
 }

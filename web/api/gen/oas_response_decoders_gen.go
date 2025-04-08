@@ -3,6 +3,7 @@
 package apigen
 
 import (
+	"bytes"
 	"io"
 	"mime"
 	"net/http"
@@ -15,6 +16,218 @@ import (
 	"github.com/ogen-go/ogen/uri"
 	"github.com/ogen-go/ogen/validate"
 )
+
+func decodeAbortJobResponse(resp *http.Response) (res AbortJobRes, _ error) {
+	switch resp.StatusCode {
+	case 202:
+		// Code 202.
+		return &AbortJobAccepted{}, nil
+	case 409:
+		// Code 409.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response Error
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}
+	// Default response.
+	res, err := func() (res AbortJobRes, err error) {
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response Error
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &ErrorStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeChannelsTypeChannelServicesIDStreamHeadResponse(resp *http.Response) (res ChannelsTypeChannelServicesIDStreamHeadRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		var wrapper ChannelsTypeChannelServicesIDStreamHeadOK
+		h := uri.NewHeaderDecoder(resp.Header)
+		// Parse "X-Mirakurun-Tuner-User-ID" header.
+		{
+			cfg := uri.HeaderParameterDecodingConfig{
+				Name:    "X-Mirakurun-Tuner-User-ID",
+				Explode: false,
+			}
+			if err := func() error {
+				if err := h.HasParam(cfg); err == nil {
+					if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+						var wrapperDotXMirakurunTunerUserIDVal string
+						if err := func() error {
+							val, err := d.DecodeValue()
+							if err != nil {
+								return err
+							}
+
+							c, err := conv.ToString(val)
+							if err != nil {
+								return err
+							}
+
+							wrapperDotXMirakurunTunerUserIDVal = c
+							return nil
+						}(); err != nil {
+							return err
+						}
+						wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
+						return nil
+					}); err != nil {
+						return err
+					}
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
+			}
+		}
+		return &wrapper, nil
+	case 404:
+		// Code 404.
+		return &ChannelsTypeChannelServicesIDStreamHeadNotFound{}, nil
+	case 503:
+		// Code 503.
+		return &ChannelsTypeChannelServicesIDStreamHeadServiceUnavailable{}, nil
+	}
+	// Default response.
+	res, err := func() (res ChannelsTypeChannelServicesIDStreamHeadRes, err error) {
+		return &ChannelsTypeChannelServicesIDStreamHeadDef{
+			StatusCode: resp.StatusCode,
+		}, nil
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeChannelsTypeChannelStreamHeadResponse(resp *http.Response) (res ChannelsTypeChannelStreamHeadRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		var wrapper ChannelsTypeChannelStreamHeadOK
+		h := uri.NewHeaderDecoder(resp.Header)
+		// Parse "X-Mirakurun-Tuner-User-ID" header.
+		{
+			cfg := uri.HeaderParameterDecodingConfig{
+				Name:    "X-Mirakurun-Tuner-User-ID",
+				Explode: false,
+			}
+			if err := func() error {
+				if err := h.HasParam(cfg); err == nil {
+					if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+						var wrapperDotXMirakurunTunerUserIDVal string
+						if err := func() error {
+							val, err := d.DecodeValue()
+							if err != nil {
+								return err
+							}
+
+							c, err := conv.ToString(val)
+							if err != nil {
+								return err
+							}
+
+							wrapperDotXMirakurunTunerUserIDVal = c
+							return nil
+						}(); err != nil {
+							return err
+						}
+						wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
+						return nil
+					}); err != nil {
+						return err
+					}
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
+			}
+		}
+		return &wrapper, nil
+	case 404:
+		// Code 404.
+		return &ChannelsTypeChannelStreamHeadNotFound{}, nil
+	case 503:
+		// Code 503.
+		return &ChannelsTypeChannelStreamHeadServiceUnavailable{}, nil
+	}
+	// Default response.
+	res, err := func() (res ChannelsTypeChannelStreamHeadRes, err error) {
+		return &ChannelsTypeChannelStreamHeadDef{
+			StatusCode: resp.StatusCode,
+		}, nil
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
 
 func decodeCheckVersionResponse(resp *http.Response) (res CheckVersionRes, _ error) {
 	switch resp.StatusCode {
@@ -56,6 +269,89 @@ func decodeCheckVersionResponse(resp *http.Response) (res CheckVersionRes, _ err
 	}
 	// Default response.
 	res, err := func() (res CheckVersionRes, err error) {
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response Error
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &ErrorStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeGetApiDocumentationResponse(resp *http.Response) (res GetApiDocumentationRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response GetApiDocumentationOK
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}
+	// Default response.
+	res, err := func() (res GetApiDocumentationRes, err error) {
 		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 		if err != nil {
 			return res, errors.Wrap(err, "parse media type")
@@ -230,46 +526,63 @@ func decodeGetChannelStreamResponse(resp *http.Response) (res GetChannelStreamRe
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
-		var wrapper GetChannelStreamOK
-		h := uri.NewHeaderDecoder(resp.Header)
-		// Parse "X-Mirakurun-Tuner-User-ID" header.
-		{
-			cfg := uri.HeaderParameterDecodingConfig{
-				Name:    "X-Mirakurun-Tuner-User-ID",
-				Explode: false,
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "video/mp2t":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
 			}
-			if err := func() error {
-				if err := h.HasParam(cfg); err == nil {
-					if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
-						var wrapperDotXMirakurunTunerUserIDVal string
-						if err := func() error {
-							val, err := d.DecodeValue()
-							if err != nil {
+
+			response := GetChannelStreamOK{Data: bytes.NewReader(b)}
+			var wrapper GetChannelStreamOKHeaders
+			wrapper.Response = response
+			h := uri.NewHeaderDecoder(resp.Header)
+			// Parse "X-Mirakurun-Tuner-User-ID" header.
+			{
+				cfg := uri.HeaderParameterDecodingConfig{
+					Name:    "X-Mirakurun-Tuner-User-ID",
+					Explode: false,
+				}
+				if err := func() error {
+					if err := h.HasParam(cfg); err == nil {
+						if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+							var wrapperDotXMirakurunTunerUserIDVal string
+							if err := func() error {
+								val, err := d.DecodeValue()
+								if err != nil {
+									return err
+								}
+
+								c, err := conv.ToString(val)
+								if err != nil {
+									return err
+								}
+
+								wrapperDotXMirakurunTunerUserIDVal = c
+								return nil
+							}(); err != nil {
 								return err
 							}
-
-							c, err := conv.ToString(val)
-							if err != nil {
-								return err
-							}
-
-							wrapperDotXMirakurunTunerUserIDVal = c
+							wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
 							return nil
-						}(); err != nil {
+						}); err != nil {
 							return err
 						}
-						wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
-						return nil
-					}); err != nil {
-						return err
 					}
+					return nil
+				}(); err != nil {
+					return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
 				}
-				return nil
-			}(); err != nil {
-				return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
 			}
+			return &wrapper, nil
+		default:
+			return res, validate.InvalidContentType(ct)
 		}
-		return &wrapper, nil
 	case 404:
 		// Code 404.
 		return &GetChannelStreamNotFound{}, nil
@@ -575,11 +888,7 @@ func decodeGetEventsStreamResponse(resp *http.Response) (res GetEventsStreamRes,
 		}
 		switch {
 		case ct == "application/json":
-			buf, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return res, err
-			}
-			d := jx.DecodeBytes(buf)
+			d := jx.Decode(resp.Body, -1)
 
 			var response GetEventsStreamOKApplicationJSON
 			if err := func() error {
@@ -591,11 +900,6 @@ func decodeGetEventsStreamResponse(resp *http.Response) (res GetEventsStreamRes,
 				}
 				return nil
 			}(); err != nil {
-				err = &ogenerrors.DecodeBodyError{
-					ContentType: ct,
-					Body:        buf,
-					Err:         err,
-				}
 				return res, err
 			}
 			// Validate response.
@@ -657,11 +961,211 @@ func decodeGetEventsStreamResponse(resp *http.Response) (res GetEventsStreamRes,
 	return res, nil
 }
 
+func decodeGetJobSchedulesResponse(resp *http.Response) (res GetJobSchedulesRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response GetJobSchedulesOKApplicationJSON
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			// Validate response.
+			if err := func() error {
+				if err := response.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "validate")
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}
+	// Default response.
+	res, err := func() (res GetJobSchedulesRes, err error) {
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response Error
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &ErrorStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeGetJobsResponse(resp *http.Response) (res GetJobsRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response GetJobsOKApplicationJSON
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			// Validate response.
+			if err := func() error {
+				if err := response.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "validate")
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}
+	// Default response.
+	res, err := func() (res GetJobsRes, err error) {
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response Error
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &ErrorStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
 func decodeGetLogResponse(resp *http.Response) (res GetLogRes, _ error) {
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
-		return &GetLogOK{}, nil
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "text/plain":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
+			}
+
+			response := GetLogOK{Data: bytes.NewReader(b)}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
 	}
 	// Default response.
 	res, err := func() (res GetLogRes, err error) {
@@ -679,7 +1183,23 @@ func decodeGetLogStreamResponse(resp *http.Response) (res GetLogStreamRes, _ err
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
-		return &GetLogStreamOK{}, nil
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "text/plain":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
+			}
+
+			response := GetLogStreamOK{Data: bytes.NewReader(b)}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
 	}
 	// Default response.
 	res, err := func() (res GetLogStreamRes, err error) {
@@ -697,7 +1217,23 @@ func decodeGetLogoImageResponse(resp *http.Response) (res GetLogoImageRes, _ err
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
-		return &GetLogoImageOK{}, nil
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "image/png":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
+			}
+
+			response := GetLogoImageOK{Data: bytes.NewReader(b)}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
 	case 404:
 		// Code 404.
 		return &GetLogoImageNotFound{}, nil
@@ -848,46 +1384,63 @@ func decodeGetProgramStreamResponse(resp *http.Response) (res GetProgramStreamRe
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
-		var wrapper GetProgramStreamOK
-		h := uri.NewHeaderDecoder(resp.Header)
-		// Parse "X-Mirakurun-Tuner-User-ID" header.
-		{
-			cfg := uri.HeaderParameterDecodingConfig{
-				Name:    "X-Mirakurun-Tuner-User-ID",
-				Explode: false,
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "video/mp2t":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
 			}
-			if err := func() error {
-				if err := h.HasParam(cfg); err == nil {
-					if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
-						var wrapperDotXMirakurunTunerUserIDVal string
-						if err := func() error {
-							val, err := d.DecodeValue()
-							if err != nil {
+
+			response := GetProgramStreamOK{Data: bytes.NewReader(b)}
+			var wrapper GetProgramStreamOKHeaders
+			wrapper.Response = response
+			h := uri.NewHeaderDecoder(resp.Header)
+			// Parse "X-Mirakurun-Tuner-User-ID" header.
+			{
+				cfg := uri.HeaderParameterDecodingConfig{
+					Name:    "X-Mirakurun-Tuner-User-ID",
+					Explode: false,
+				}
+				if err := func() error {
+					if err := h.HasParam(cfg); err == nil {
+						if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+							var wrapperDotXMirakurunTunerUserIDVal string
+							if err := func() error {
+								val, err := d.DecodeValue()
+								if err != nil {
+									return err
+								}
+
+								c, err := conv.ToString(val)
+								if err != nil {
+									return err
+								}
+
+								wrapperDotXMirakurunTunerUserIDVal = c
+								return nil
+							}(); err != nil {
 								return err
 							}
-
-							c, err := conv.ToString(val)
-							if err != nil {
-								return err
-							}
-
-							wrapperDotXMirakurunTunerUserIDVal = c
+							wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
 							return nil
-						}(); err != nil {
+						}); err != nil {
 							return err
 						}
-						wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
-						return nil
-					}); err != nil {
-						return err
 					}
+					return nil
+				}(); err != nil {
+					return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
 				}
-				return nil
-			}(); err != nil {
-				return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
 			}
+			return &wrapper, nil
+		default:
+			return res, validate.InvalidContentType(ct)
 		}
-		return &wrapper, nil
 	case 404:
 		// Code 404.
 		return &GetProgramStreamNotFound{}, nil
@@ -1314,46 +1867,63 @@ func decodeGetServiceStreamResponse(resp *http.Response) (res GetServiceStreamRe
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
-		var wrapper GetServiceStreamOK
-		h := uri.NewHeaderDecoder(resp.Header)
-		// Parse "X-Mirakurun-Tuner-User-ID" header.
-		{
-			cfg := uri.HeaderParameterDecodingConfig{
-				Name:    "X-Mirakurun-Tuner-User-ID",
-				Explode: false,
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "video/mp2t":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
 			}
-			if err := func() error {
-				if err := h.HasParam(cfg); err == nil {
-					if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
-						var wrapperDotXMirakurunTunerUserIDVal string
-						if err := func() error {
-							val, err := d.DecodeValue()
-							if err != nil {
+
+			response := GetServiceStreamOK{Data: bytes.NewReader(b)}
+			var wrapper GetServiceStreamOKHeaders
+			wrapper.Response = response
+			h := uri.NewHeaderDecoder(resp.Header)
+			// Parse "X-Mirakurun-Tuner-User-ID" header.
+			{
+				cfg := uri.HeaderParameterDecodingConfig{
+					Name:    "X-Mirakurun-Tuner-User-ID",
+					Explode: false,
+				}
+				if err := func() error {
+					if err := h.HasParam(cfg); err == nil {
+						if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+							var wrapperDotXMirakurunTunerUserIDVal string
+							if err := func() error {
+								val, err := d.DecodeValue()
+								if err != nil {
+									return err
+								}
+
+								c, err := conv.ToString(val)
+								if err != nil {
+									return err
+								}
+
+								wrapperDotXMirakurunTunerUserIDVal = c
+								return nil
+							}(); err != nil {
 								return err
 							}
-
-							c, err := conv.ToString(val)
-							if err != nil {
-								return err
-							}
-
-							wrapperDotXMirakurunTunerUserIDVal = c
+							wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
 							return nil
-						}(); err != nil {
+						}); err != nil {
 							return err
 						}
-						wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
-						return nil
-					}); err != nil {
-						return err
 					}
+					return nil
+				}(); err != nil {
+					return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
 				}
-				return nil
-			}(); err != nil {
-				return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
 			}
+			return &wrapper, nil
+		default:
+			return res, validate.InvalidContentType(ct)
 		}
-		return &wrapper, nil
 	case 404:
 		// Code 404.
 		return &GetServiceStreamNotFound{}, nil
@@ -1377,46 +1947,63 @@ func decodeGetServiceStreamByChannelResponse(resp *http.Response) (res GetServic
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
-		var wrapper GetServiceStreamByChannelOK
-		h := uri.NewHeaderDecoder(resp.Header)
-		// Parse "X-Mirakurun-Tuner-User-ID" header.
-		{
-			cfg := uri.HeaderParameterDecodingConfig{
-				Name:    "X-Mirakurun-Tuner-User-ID",
-				Explode: false,
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "video/mp2t":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
 			}
-			if err := func() error {
-				if err := h.HasParam(cfg); err == nil {
-					if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
-						var wrapperDotXMirakurunTunerUserIDVal string
-						if err := func() error {
-							val, err := d.DecodeValue()
-							if err != nil {
+
+			response := GetServiceStreamByChannelOK{Data: bytes.NewReader(b)}
+			var wrapper GetServiceStreamByChannelOKHeaders
+			wrapper.Response = response
+			h := uri.NewHeaderDecoder(resp.Header)
+			// Parse "X-Mirakurun-Tuner-User-ID" header.
+			{
+				cfg := uri.HeaderParameterDecodingConfig{
+					Name:    "X-Mirakurun-Tuner-User-ID",
+					Explode: false,
+				}
+				if err := func() error {
+					if err := h.HasParam(cfg); err == nil {
+						if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+							var wrapperDotXMirakurunTunerUserIDVal string
+							if err := func() error {
+								val, err := d.DecodeValue()
+								if err != nil {
+									return err
+								}
+
+								c, err := conv.ToString(val)
+								if err != nil {
+									return err
+								}
+
+								wrapperDotXMirakurunTunerUserIDVal = c
+								return nil
+							}(); err != nil {
 								return err
 							}
-
-							c, err := conv.ToString(val)
-							if err != nil {
-								return err
-							}
-
-							wrapperDotXMirakurunTunerUserIDVal = c
+							wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
 							return nil
-						}(); err != nil {
+						}); err != nil {
 							return err
 						}
-						wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
-						return nil
-					}); err != nil {
-						return err
 					}
+					return nil
+				}(); err != nil {
+					return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
 				}
-				return nil
-			}(); err != nil {
-				return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
 			}
+			return &wrapper, nil
+		default:
+			return res, validate.InvalidContentType(ct)
 		}
-		return &wrapper, nil
 	case 404:
 		// Code 404.
 		return &GetServiceStreamByChannelNotFound{}, nil
@@ -2053,7 +2640,39 @@ func decodeIptvDiscoverJSONGetResponse(resp *http.Response) (res IptvDiscoverJSO
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
-		return &IptvDiscoverJSONGetOK{}, nil
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response IptvDiscoverJSONGetOKApplicationJSON
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
 	}
 	// Default response.
 	res, err := func() (res IptvDiscoverJSONGetRes, err error) {
@@ -2104,7 +2723,39 @@ func decodeIptvLineupJSONGetResponse(resp *http.Response) (res IptvLineupJSONGet
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
-		return &IptvLineupJSONGetOK{}, nil
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response IptvLineupJSONGetOKApplicationJSON
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
 	}
 	// Default response.
 	res, err := func() (res IptvLineupJSONGetRes, err error) {
@@ -2155,7 +2806,39 @@ func decodeIptvLineupStatusJSONGetResponse(resp *http.Response) (res IptvLineupS
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
-		return &IptvLineupStatusJSONGetOK{}, nil
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response IptvLineupStatusJSONGetOKApplicationJSON
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
 	}
 	// Default response.
 	res, err := func() (res IptvLineupStatusJSONGetRes, err error) {
@@ -2202,10 +2885,30 @@ func decodeIptvLineupStatusJSONGetResponse(resp *http.Response) (res IptvLineupS
 	return res, nil
 }
 
-func decodeKillTunerProcessResponse(resp *http.Response) (res KillTunerProcessRes, _ error) {
+func decodeIptvPlaylistGetResponse(resp *http.Response) (res IptvPlaylistGetRes, _ error) {
 	switch resp.StatusCode {
 	case 200:
 		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/x-mpegurl":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
+			}
+
+			response := IptvPlaylistGetOK{Data: bytes.NewReader(b)}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}
+	// Default response.
+	res, err := func() (res IptvPlaylistGetRes, err error) {
 		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 		if err != nil {
 			return res, errors.Wrap(err, "parse media type")
@@ -2218,7 +2921,7 @@ func decodeKillTunerProcessResponse(resp *http.Response) (res KillTunerProcessRe
 			}
 			d := jx.DecodeBytes(buf)
 
-			var response KillTunerProcessOK
+			var response Error
 			if err := func() error {
 				if err := response.Decode(d); err != nil {
 					return err
@@ -2235,10 +2938,92 @@ func decodeKillTunerProcessResponse(resp *http.Response) (res KillTunerProcessRe
 				}
 				return res, err
 			}
+			return &ErrorStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeIptvXmltvGetResponse(resp *http.Response) (res IptvXmltvGetRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "text/xml":
+			reader := resp.Body
+			b, err := io.ReadAll(reader)
+			if err != nil {
+				return res, err
+			}
+
+			response := IptvXmltvGetOK{Data: bytes.NewReader(b)}
 			return &response, nil
 		default:
 			return res, validate.InvalidContentType(ct)
 		}
+	}
+	// Default response.
+	res, err := func() (res IptvXmltvGetRes, err error) {
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response Error
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &ErrorStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeKillTunerProcessResponse(resp *http.Response) (res KillTunerProcessRes, _ error) {
+	switch resp.StatusCode {
+	case 204:
+		// Code 204.
+		return &KillTunerProcessNoContent{}, nil
 	case 404:
 		// Code 404.
 		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
@@ -2313,6 +3098,304 @@ func decodeKillTunerProcessResponse(resp *http.Response) (res KillTunerProcessRe
 		default:
 			return res, validate.InvalidContentType(ct)
 		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeProgramsIDStreamHeadResponse(resp *http.Response) (res ProgramsIDStreamHeadRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		var wrapper ProgramsIDStreamHeadOK
+		h := uri.NewHeaderDecoder(resp.Header)
+		// Parse "X-Mirakurun-Tuner-User-ID" header.
+		{
+			cfg := uri.HeaderParameterDecodingConfig{
+				Name:    "X-Mirakurun-Tuner-User-ID",
+				Explode: false,
+			}
+			if err := func() error {
+				if err := h.HasParam(cfg); err == nil {
+					if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+						var wrapperDotXMirakurunTunerUserIDVal string
+						if err := func() error {
+							val, err := d.DecodeValue()
+							if err != nil {
+								return err
+							}
+
+							c, err := conv.ToString(val)
+							if err != nil {
+								return err
+							}
+
+							wrapperDotXMirakurunTunerUserIDVal = c
+							return nil
+						}(); err != nil {
+							return err
+						}
+						wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
+						return nil
+					}); err != nil {
+						return err
+					}
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
+			}
+		}
+		return &wrapper, nil
+	case 404:
+		// Code 404.
+		return &ProgramsIDStreamHeadNotFound{}, nil
+	case 503:
+		// Code 503.
+		return &ProgramsIDStreamHeadServiceUnavailable{}, nil
+	}
+	// Default response.
+	res, err := func() (res ProgramsIDStreamHeadRes, err error) {
+		return &ProgramsIDStreamHeadDef{
+			StatusCode: resp.StatusCode,
+		}, nil
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeRerunJobResponse(resp *http.Response) (res RerunJobRes, _ error) {
+	switch resp.StatusCode {
+	case 202:
+		// Code 202.
+		return &RerunJobAccepted{}, nil
+	case 409:
+		// Code 409.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response Error
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}
+	// Default response.
+	res, err := func() (res RerunJobRes, err error) {
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response Error
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &ErrorStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeRunJobScheduleResponse(resp *http.Response) (res RunJobScheduleRes, _ error) {
+	switch resp.StatusCode {
+	case 202:
+		// Code 202.
+		return &RunJobScheduleAccepted{}, nil
+	case 404:
+		// Code 404.
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response Error
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &response, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}
+	// Default response.
+	res, err := func() (res RunJobScheduleRes, err error) {
+		ct, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return res, errors.Wrap(err, "parse media type")
+		}
+		switch {
+		case ct == "application/json":
+			buf, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return res, err
+			}
+			d := jx.DecodeBytes(buf)
+
+			var response Error
+			if err := func() error {
+				if err := response.Decode(d); err != nil {
+					return err
+				}
+				if err := d.Skip(); err != io.EOF {
+					return errors.New("unexpected trailing data")
+				}
+				return nil
+			}(); err != nil {
+				err = &ogenerrors.DecodeBodyError{
+					ContentType: ct,
+					Body:        buf,
+					Err:         err,
+				}
+				return res, err
+			}
+			return &ErrorStatusCode{
+				StatusCode: resp.StatusCode,
+				Response:   response,
+			}, nil
+		default:
+			return res, validate.InvalidContentType(ct)
+		}
+	}()
+	if err != nil {
+		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)
+	}
+	return res, nil
+}
+
+func decodeServicesIDStreamHeadResponse(resp *http.Response) (res ServicesIDStreamHeadRes, _ error) {
+	switch resp.StatusCode {
+	case 200:
+		// Code 200.
+		var wrapper ServicesIDStreamHeadOK
+		h := uri.NewHeaderDecoder(resp.Header)
+		// Parse "X-Mirakurun-Tuner-User-ID" header.
+		{
+			cfg := uri.HeaderParameterDecodingConfig{
+				Name:    "X-Mirakurun-Tuner-User-ID",
+				Explode: false,
+			}
+			if err := func() error {
+				if err := h.HasParam(cfg); err == nil {
+					if err := h.DecodeParam(cfg, func(d uri.Decoder) error {
+						var wrapperDotXMirakurunTunerUserIDVal string
+						if err := func() error {
+							val, err := d.DecodeValue()
+							if err != nil {
+								return err
+							}
+
+							c, err := conv.ToString(val)
+							if err != nil {
+								return err
+							}
+
+							wrapperDotXMirakurunTunerUserIDVal = c
+							return nil
+						}(); err != nil {
+							return err
+						}
+						wrapper.XMirakurunTunerUserID.SetTo(wrapperDotXMirakurunTunerUserIDVal)
+						return nil
+					}); err != nil {
+						return err
+					}
+				}
+				return nil
+			}(); err != nil {
+				return res, errors.Wrap(err, "parse X-Mirakurun-Tuner-User-ID header")
+			}
+		}
+		return &wrapper, nil
+	case 404:
+		// Code 404.
+		return &ServicesIDStreamHeadNotFound{}, nil
+	case 503:
+		// Code 503.
+		return &ServicesIDStreamHeadServiceUnavailable{}, nil
+	}
+	// Default response.
+	res, err := func() (res ServicesIDStreamHeadRes, err error) {
+		return &ServicesIDStreamHeadDef{
+			StatusCode: resp.StatusCode,
+		}, nil
 	}()
 	if err != nil {
 		return res, errors.Wrapf(err, "default (code %d)", resp.StatusCode)

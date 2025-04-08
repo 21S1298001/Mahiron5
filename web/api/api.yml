@@ -7,13 +7,15 @@ info:
     url: https://github.com/21S1298001
   version: 5.0.0
 servers:
-  - url: /api
+  - url: http://localhost:40772/api
 tags:
   - name: channels
   - name: documents
   - name: events
   - name: iptv
+  - name: job
   - name: log
+  - name: misc
   - name: programs
   - name: services
   - name: status
@@ -48,7 +50,10 @@ paths:
         "200":
           description: OK
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
         default:
           description: Unexpected Error
           content:
@@ -181,7 +186,10 @@ paths:
       responses:
         "200":
           description: OK
-          content: {}
+          content:
+            text/plain:
+              schema:
+                type: string
         default:
           description: Unexpected Error
           content: {}
@@ -193,10 +201,53 @@ paths:
       responses:
         "200":
           description: OK
-          content: {}
+          content:
+            text/plain:
+              schema:
+                type: string
         default:
           description: Unexpected Error
           content: {}
+  /jobs:
+    get:
+      tags:
+        - job
+      operationId: getJobs
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JobItem"
+        default:
+          description: Unexpected Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /job-schedules:
+    get:
+      tags:
+        - job
+      operationId: getJobSchedules
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JobScheduleItem"
+        default:
+          description: Unexpected Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /iptv/xmltv:
     get:
       tags:
@@ -205,11 +256,14 @@ paths:
       responses:
         "200":
           description: OK
-          content: {}
+          content:
+            text/xml:
+              schema:
+                type: string
         default:
           description: Unexpected Error
           content:
-            text/xml:
+            application/json:
               schema:
                 $ref: "#/components/schemas/Error"
   /iptv/playlist:
@@ -220,11 +274,14 @@ paths:
       responses:
         "200":
           description: OK
-          content: {}
+          content:
+            application/x-mpegURL:
+              schema:
+                type: string
         default:
           description: Unexpected Error
           content:
-            application/x-mpegURL:
+            application/json:
               schema:
                 $ref: "#/components/schemas/Error"
   /iptv/lineup.json:
@@ -235,7 +292,10 @@ paths:
       responses:
         "200":
           description: OK
-          content: {}
+          content:
+            application/json:
+              schema:
+                type: string
         default:
           description: Unexpected Error
           content:
@@ -250,7 +310,10 @@ paths:
       responses:
         "200":
           description: OK
-          content: {}
+          content:
+            application/json:
+              schema:
+                type: string
         default:
           description: Unexpected Error
           content:
@@ -265,7 +328,10 @@ paths:
       responses:
         "200":
           description: OK
-          content: {}
+          content:
+            application/json:
+              schema:
+                type: string
         default:
           description: Unexpected Error
           content:
@@ -300,6 +366,7 @@ paths:
           description: OK
           content:
             application/json:
+              x-ogen-json-streaming: true
               schema:
                 type: array
                 items:
@@ -408,12 +475,9 @@ paths:
             minimum: 0
             type: integer
       responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
+        "204":
+          description: Killed
+          content: {}
         "404":
           description: Not Found
           content:
@@ -463,6 +527,49 @@ paths:
         - services
         - stream
       operationId: getServiceStream
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            maximum: 6553565535
+            type: integer
+        - name: X-Mirakurun-Priority
+          in: header
+          schema:
+            minimum: 0
+            type: integer
+        - name: decode
+          in: query
+          schema:
+            maximum: 1
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Mirakurun-Tuner-User-ID:
+              schema:
+                type: string
+          content:
+            video/mp2t:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not Found
+          content: {}
+        "503":
+          description: Tuner Resource Unavailable
+          content: {}
+        default:
+          description: Unexpected Error
+          content: {}
+    head:
+      tags:
+        - services
+        - stream
       parameters:
         - name: id
           in: path
@@ -541,7 +648,11 @@ paths:
       responses:
         "200":
           description: OK
-          content: {}
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
         "404":
           description: Not Found
           content: {}
@@ -614,6 +725,50 @@ paths:
             X-Mirakurun-Tuner-User-ID:
               schema:
                 type: string
+          content:
+            video/mp2t:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not Found
+          content: {}
+        "503":
+          description: Tuner Resource Unavailable
+          content: {}
+        default:
+          description: Unexpected Error
+          content: {}
+    head:
+      tags:
+        - programs
+        - stream
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            maximum: 655356553565535
+            minimum: 10000000000
+            type: integer
+        - name: X-Mirakurun-Priority
+          in: header
+          schema:
+            minimum: 0
+            type: integer
+        - name: decode
+          in: query
+          schema:
+            maximum: 1
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Mirakurun-Tuner-User-ID:
+              schema:
+                type: string
           content: {}
         "404":
           description: Not Found
@@ -644,6 +799,90 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Program"
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: Unexpected Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /jobs/{id}/rerun:
+    put:
+      tags:
+        - job
+      summary: Request to rerun a job
+      operationId: rerunJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Requested
+          content: {}
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: Unexpected Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /jobs/{id}/abort:
+    put:
+      tags:
+        - job
+      summary: Request to abort a job
+      operationId: abortJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Requested
+          content: {}
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: Unexpected Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /job-schedules/{key}/run:
+    put:
+      tags:
+        - job
+      summary: Request to run a job schedule
+      operationId: runJobSchedule
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Requested
+          content: {}
         "404":
           description: Not Found
           content:
@@ -691,6 +930,53 @@ paths:
             X-Mirakurun-Tuner-User-ID:
               schema:
                 type: string
+          content:
+            video/mp2t:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not Found
+          content: {}
+        "503":
+          description: Tuner Resource Unavailable
+          content: {}
+        default:
+          description: Unexpected Error
+          content: {}
+    head:
+      tags:
+        - channels
+        - stream
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: channel
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Mirakurun-Priority
+          in: header
+          schema:
+            minimum: 0
+            type: integer
+        - name: decode
+          in: query
+          schema:
+            maximum: 1
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Mirakurun-Tuner-User-ID:
+              schema:
+                type: string
           content: {}
         "404":
           description: Not Found
@@ -708,6 +994,60 @@ paths:
         - services
         - stream
       operationId: getServiceStreamByChannel
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: channel
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            maximum: 6553565535
+            type: integer
+        - name: X-Mirakurun-Priority
+          in: header
+          schema:
+            minimum: 0
+            type: integer
+        - name: decode
+          in: query
+          schema:
+            maximum: 1
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Mirakurun-Tuner-User-ID:
+              schema:
+                type: string
+          content:
+            video/mp2t:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not Found
+          content: {}
+        "503":
+          description: Tuner Resource Unavailable
+          content: {}
+        default:
+          description: Unexpected Error
+          content: {}
+    head:
+      tags:
+        - channels
+        - services
+        - stream
       parameters:
         - name: type
           in: path
@@ -946,17 +1286,6 @@ components:
           type: string
         name:
           type: string
-        satellite:
-          type: string
-        space:
-          type: integer
-        freq:
-          type: number
-        polarity:
-          type: string
-          enum:
-            - H
-            - V
         tsmfRelTs:
           type: integer
         services:
@@ -996,8 +1325,6 @@ components:
           $ref: "#/components/schemas/UnixtimeMS"
         channel:
           $ref: "#/components/schemas/Channel"
-        logoData:
-          type: string
     Program:
       required:
         - duration
@@ -1256,6 +1583,84 @@ components:
       properties:
         pid:
           type: integer
+    JobScheduleItem:
+      required:
+        - job
+        - key
+        - schedule
+      type: object
+      properties:
+        key:
+          type: string
+        schedule:
+          type: string
+        job:
+          required:
+            - key
+            - name
+          type: object
+          properties:
+            key:
+              type: string
+            name:
+              type: string
+    JobItem:
+      required:
+        - createdAt
+        - id
+        - isAborting
+        - key
+        - name
+        - retryCount
+        - status
+        - updatedAt
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+            - queued
+            - standby
+            - running
+            - finished
+        retryCount:
+          type: integer
+        isRerunnable:
+          type: boolean
+        retryOnAbort:
+          type: boolean
+        retryOnFail:
+          type: boolean
+        retryMax:
+          type: integer
+        retryDelay:
+          type: integer
+        isAborting:
+          type: boolean
+        hasAborted:
+          type: boolean
+        hasSkipped:
+          type: boolean
+        hasFailed:
+          type: boolean
+        error:
+          type: string
+        createdAt:
+          $ref: "#/components/schemas/UnixtimeMS"
+        updatedAt:
+          $ref: "#/components/schemas/UnixtimeMS"
+        startedAt:
+          $ref: "#/components/schemas/UnixtimeMS"
+        finishedAt:
+          $ref: "#/components/schemas/UnixtimeMS"
+        duration:
+          type: integer
     Event:
       required:
         - data
@@ -1305,15 +1710,23 @@ components:
         maxLogHistory:
           minimum: 0
           type: integer
+        jobMaxRunning:
+          maximum: 100
+          minimum: 1
+          type: integer
+        jobMaxStandby:
+          maximum: 100
+          minimum: 1
+          type: integer
         maxBufferBytesBeforeReady:
           type: integer
         eventEndTimeout:
           minimum: 0
           type: integer
-        programGCInterval:
-          type: integer
-        epgGatheringInterval:
-          type: integer
+        programGCJobSchedule:
+          type: string
+        epgGatheringJobSchedule:
+          type: string
         epgRetrievalTime:
           type: integer
         logoDataInterval:
@@ -1330,40 +1743,6 @@ components:
           type: array
           items:
             type: string
-    ConfigTuners:
-      type: array
-      items:
-        $ref: "#/components/schemas/ConfigTunersItem"
-    ConfigTunersItem:
-      required:
-        - name
-        - types
-      type: object
-      properties:
-        name:
-          type: string
-        types:
-          type: array
-          items:
-            type: string
-        command:
-          type: string
-        dvbDevicePath:
-          type: string
-        remoteMirakurunHost:
-          type: string
-        remoteMirakurunPort:
-          type: integer
-        remoteMirakurunDecoder:
-          type: boolean
-        decoder:
-          type: string
-        isDisabled:
-          type: boolean
-    ConfigChannels:
-      type: array
-      items:
-        $ref: "#/components/schemas/ConfigChannelsItem"
     ConfigChannelsItem:
       required:
         - channel
@@ -1379,23 +1758,13 @@ components:
           type: string
         serviceId:
           $ref: "#/components/schemas/ServiceId"
-        satellite:
-          type: string
-        space:
+        tsmfRelTs:
           type: integer
-        freq:
-          type: number
-        polarity:
-          type: string
-          enum:
-            - H
-            - V
+        commandVars:
+          type: object
+          properties: {}
         isDisabled:
           type: boolean
-        servicesCommand:
-          type: string
-        programsCommand:
-          type: string
     Version:
       type: object
       properties:

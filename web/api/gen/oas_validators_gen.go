@@ -17,42 +17,6 @@ func (s *Channel) Validate() error {
 
 	var failures []validate.FieldError
 	if err := func() error {
-		if value, ok := s.Freq.Get(); ok {
-			if err := func() error {
-				if err := (validate.Float{}).Validate(float64(value)); err != nil {
-					return errors.Wrap(err, "float")
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "freq",
-			Error: err,
-		})
-	}
-	if err := func() error {
-		if value, ok := s.Polarity.Get(); ok {
-			if err := func() error {
-				if err := value.Validate(); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "polarity",
-			Error: err,
-		})
-	}
-	if err := func() error {
 		var failures []validate.FieldError
 		for i, elem := range s.Services {
 			if err := func() error {
@@ -83,17 +47,6 @@ func (s *Channel) Validate() error {
 	return nil
 }
 
-func (s ChannelPolarity) Validate() error {
-	switch s {
-	case "H":
-		return nil
-	case "V":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
-}
-
 func (s *ConfigChannelsItem) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -118,57 +71,10 @@ func (s *ConfigChannelsItem) Validate() error {
 			Error: err,
 		})
 	}
-	if err := func() error {
-		if value, ok := s.Freq.Get(); ok {
-			if err := func() error {
-				if err := (validate.Float{}).Validate(float64(value)); err != nil {
-					return errors.Wrap(err, "float")
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "freq",
-			Error: err,
-		})
-	}
-	if err := func() error {
-		if value, ok := s.Polarity.Get(); ok {
-			if err := func() error {
-				if err := value.Validate(); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return err
-			}
-		}
-		return nil
-	}(); err != nil {
-		failures = append(failures, validate.FieldError{
-			Name:  "polarity",
-			Error: err,
-		})
-	}
 	if len(failures) > 0 {
 		return &validate.Error{Fields: failures}
 	}
 	return nil
-}
-
-func (s ConfigChannelsItemPolarity) Validate() error {
-	switch s {
-	case "H":
-		return nil
-	case "V":
-		return nil
-	default:
-		return errors.Errorf("invalid value: %v", s)
-	}
 }
 
 func (s *Event) Validate() error {
@@ -374,6 +280,39 @@ func (s GetEventsStreamType) Validate() error {
 	}
 }
 
+func (s GetJobSchedulesOKApplicationJSON) Validate() error {
+	alias := ([]JobScheduleItem)(s)
+	if alias == nil {
+		return errors.New("nil is invalid value")
+	}
+	return nil
+}
+
+func (s GetJobsOKApplicationJSON) Validate() error {
+	alias := ([]JobItem)(s)
+	if alias == nil {
+		return errors.New("nil is invalid value")
+	}
+	var failures []validate.FieldError
+	for i, elem := range alias {
+		if err := func() error {
+			if err := elem.Validate(); err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			failures = append(failures, validate.FieldError{
+				Name:  fmt.Sprintf("[%d]", i),
+				Error: err,
+			})
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
 func (s GetProgramsOKApplicationJSON) Validate() error {
 	alias := ([]Program)(s)
 	if alias == nil {
@@ -522,6 +461,44 @@ func (s GetTunersOKApplicationJSON) Validate() error {
 		return &validate.Error{Fields: failures}
 	}
 	return nil
+}
+
+func (s *JobItem) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if err := s.Status.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "status",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
+func (s JobItemStatus) Validate() error {
+	switch s {
+	case "queued":
+		return nil
+	case "standby":
+		return nil
+	case "running":
+		return nil
+	case "finished":
+		return nil
+	default:
+		return errors.Errorf("invalid value: %v", s)
+	}
 }
 
 func (s NetworkId) Validate() error {
