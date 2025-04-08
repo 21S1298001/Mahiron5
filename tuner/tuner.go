@@ -62,6 +62,8 @@ func (t *Tuner) Shutdown(ctx context.Context) {
 }
 
 func (t *Tuner) spawn() error {
+	t.streaming = true
+
 	resp, err := http.Get("http://v6.haruka.dns.ggrel.net:40772/api/services/3273601024/stream")
 	if err != nil {
 		return err
@@ -72,8 +74,6 @@ func (t *Tuner) spawn() error {
 
 	defer resp.Body.Close()
 	defer t.writer.Close()
-
-	t.streaming = true
 
 	slog.Info("tuner stream started", "name", t.name)
 	_, err = io.Copy(t.writer, resp.Body)
