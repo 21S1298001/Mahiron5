@@ -5,7 +5,7 @@ info:
   contact:
     name: 21S1298001
     url: https://github.com/21S1298001
-  version: 0.0.0
+  version: 5.0.0
 servers:
   - url: /api
 tags:
