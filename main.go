@@ -49,12 +49,11 @@ func main() {
 
 	t := tuner.NewTuner("tuner")
 
-	handlers := map[string]http.HandlerFunc{
-		"/": stream(t),
-	}
+	handler := http.NewServeMux()
+	handler.HandleFunc("/", stream(t))
 
 	slog.Info("starting servers")
-	s := server.NewServer(addresses, handlers)
+	s := server.NewServer(addresses, handler)
 	s.ListenAndServe()
 
 	<-signalCtx.Done()

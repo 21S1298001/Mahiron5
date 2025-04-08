@@ -14,33 +14,28 @@ type ListenAddress struct {
 	Unix string
 }
 
-type Handlers map[string]http.HandlerFunc
-
 type Server struct {
 	addresses []ListenAddress
-	handlers  Handlers
+	handler   http.Handler
 	servers   []*http.Server
 }
 
-func NewServer(addresses []ListenAddress, handlers Handlers) *Server {
+func NewServer(addresses []ListenAddress, handler http.Handler) *Server {
+	middleware := synthesis()
+
 	return &Server{
 		addresses: addresses,
-		handlers:  handlers,
+		handler:   middleware(handler),
 		servers:   make([]*http.Server, len(addresses)),
 	}
 }
 
 func (s *Server) ListenAndServe() {
-	mux := http.NewServeMux()
-	for path, handler := range s.handlers {
-		mux.HandleFunc(path, handler)
-	}
-
 	for i, addr := range s.addresses {
 		if addr.Http != "" {
 			srv := &http.Server{
 				Addr:    addr.Http,
-				Handler: mux,
+				Handler: s.handler,
 			}
 			s.servers[i] = srv
 			slog.Info("starting HTTP server", "address", addr.Http)
@@ -55,7 +50,7 @@ func (s *Server) ListenAndServe() {
 
 		if addr.Unix != "" {
 			srv := &http.Server{
-				Handler: mux,
+				Handler: s.handler,
 			}
 			s.servers[i] = srv
 			slog.Info("starting Unix socket server", "address", addr.Unix)

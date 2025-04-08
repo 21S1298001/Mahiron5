@@ -1,9 +1,9 @@
 package web
 
-import "github.com/21S1298001/Mahiron5/server"
+import (
+	"net/http"
+)
 
-func NewWeb() server.Handlers {
-	return server.Handlers{
-		"/": nil,
-	}
+func NewWeb() http.Handler {
+	return http.NewServeMux()
 }
