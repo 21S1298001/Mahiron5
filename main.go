@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -14,12 +12,14 @@ import (
 	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/server"
 	"github.com/21S1298001/Mahiron5/tuner"
+	"github.com/21S1298001/Mahiron5/web"
 )
 
 func main() {
 	serverConfig, err := config.LoadAndParseSystemConfig("server.yml")
 	if err != nil {
 		slog.Error("failed to load config", "err", err)
+		os.Exit(1)
 	}
 
 	level := slog.LevelInfo
@@ -36,8 +36,15 @@ func main() {
 	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
 	slog.SetDefault(slog.New(h))
 
-	signalCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt, os.Kill)
-	defer stop()
+	t := tuner.NewTuner("tuner")
+
+	handler, err := web.NewWeb(web.WebConfig{
+		Tuner: t,
+	})
+	if err != nil {
+		slog.Error("failed to create web handler", "err", err)
+		os.Exit(1)
+	}
 
 	addresses := make([]server.ListenAddress, len(serverConfig.Addresses))
 	for i, addr := range serverConfig.Addresses {
@@ -47,12 +54,10 @@ func main() {
 		}
 	}
 
-	t := tuner.NewTuner("tuner")
-
-	handler := http.NewServeMux()
-	handler.HandleFunc("/", stream(t))
-
 	slog.Info("starting servers")
+	signalCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt, os.Kill)
+	defer stop()
+
 	s := server.NewServer(addresses, handler)
 	s.ListenAndServe()
 
@@ -79,17 +84,4 @@ func main() {
 
 	slog.Info("exiting")
 	os.Exit(0)
-}
-
-func stream(t *tuner.Tuner) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-
-		w.Header().Set("Content-Type", "video/mp2t")
-		w.WriteHeader(200)
-
-		t.StartStream(ctx, fmt.Sprintf("http-%s", r.RemoteAddr), w)
-
-		slog.Info("stream ended", "remoteAddr", r.RemoteAddr)
-	}
 }

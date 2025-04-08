@@ -20,7 +20,7 @@ func (h *Handler) ChannelScan(ctx context.Context, params apigen.ChannelScanPara
 }
 
 func (h *Handler) CheckVersion(ctx context.Context) (apigen.CheckVersionRes, error) {
-	panic("implement me")
+	return CheckVersion(ctx, h)
 }
 
 func (h *Handler) GetChannel(ctx context.Context, params apigen.GetChannelParams) (apigen.GetChannelRes, error) {
