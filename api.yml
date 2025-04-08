@@ -10,6 +10,7 @@ servers:
   - url: /api
 tags:
   - name: channels
+  - name: documents
   - name: events
   - name: iptv
   - name: log
@@ -32,6 +33,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Version"
+        default:
+          description: Unexpected Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /docs:
+    get:
+      tags:
+        - documents
+      operationId: getApiDocumentation
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
         default:
           description: Unexpected Error
           content:
