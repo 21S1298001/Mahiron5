@@ -14,13 +14,15 @@ type ListenAddress struct {
 	Unix string
 }
 
+type Handlers map[string]http.HandlerFunc
+
 type Server struct {
 	addresses []ListenAddress
-	handlers  map[string]http.HandlerFunc
+	handlers  Handlers
 	servers   []*http.Server
 }
 
-func NewServer(addresses []ListenAddress, handlers map[string]http.HandlerFunc) *Server {
+func NewServer(addresses []ListenAddress, handlers Handlers) *Server {
 	return &Server{
 		addresses: addresses,
 		handlers:  handlers,
