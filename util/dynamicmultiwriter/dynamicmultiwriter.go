@@ -56,7 +56,7 @@ func (d *DynamicMultiWriter) Close() {
 			c.Close()
 		}
 	}
-	d.writers = nil
+	d.writers = []io.Writer{}
 }
 
 func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
