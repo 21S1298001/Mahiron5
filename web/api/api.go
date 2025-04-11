@@ -3,16 +3,24 @@ package api
 import (
 	"context"
 
+	"github.com/21S1298001/Mahiron5/tuner"
 	apigen "github.com/21S1298001/Mahiron5/web/api/gen"
 )
 
 type Handler struct {
+	tuner *tuner.Tuner
 }
 
 var _ apigen.Handler = (*Handler)(nil)
 
-func NewHandler() *Handler {
-	return &Handler{}
+type HandlerConfig struct {
+	Tuner *tuner.Tuner
+}
+
+func NewHandler(config HandlerConfig) *Handler {
+	return &Handler{
+		tuner: config.Tuner,
+	}
 }
 
 func (h *Handler) AbortJob(ctx context.Context, params apigen.AbortJobParams) (apigen.AbortJobRes, error) {
@@ -104,7 +112,7 @@ func (h *Handler) GetServicePrograms(ctx context.Context, params apigen.GetServi
 }
 
 func (h *Handler) GetServiceStream(ctx context.Context, params apigen.GetServiceStreamParams) (apigen.GetServiceStreamRes, error) {
-	panic("implement me")
+	return GetServiceStream(ctx, h)
 }
 
 func (h *Handler) GetServiceStreamByChannel(ctx context.Context, params apigen.GetServiceStreamByChannelParams) (apigen.GetServiceStreamByChannelRes, error) {
