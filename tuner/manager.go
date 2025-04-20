@@ -1,11 +1,51 @@
 package tuner
 
+import (
+	"context"
+	"log/slog"
+	"sync"
+
+	"github.com/21S1298001/Mahiron5/config"
+)
+
 type TunerManager struct {
 	tuners []*Tuner
 }
 
-func NewTunerManager() *TunerManager {
-	return &TunerManager{
-		tuners: []*Tuner{},
+type TunerManagerConfig struct {
+	TunersConfig config.TunersConfig
+}
+
+func NewTunerManager(config *TunerManagerConfig) *TunerManager {
+	tuners := make([]*Tuner, len(config.TunersConfig))
+	for i, tunerConfig := range config.TunersConfig {
+		tuners[i] = NewTuner(tunerConfig)
 	}
+
+	return &TunerManager{
+		tuners: tuners,
+	}
+}
+
+func (tm *TunerManager) Shutdown(ctx context.Context) {
+	wg := &sync.WaitGroup{}
+	for _, tuner := range tm.tuners {
+		wg.Add(1)
+		go func(t *Tuner) {
+			defer wg.Done()
+			if err := t.Shutdown(ctx); err != nil {
+				slog.Error("failed to shutdown tuner", "name", t.Name(), "err", err)
+			}
+		}(tuner)
+	}
+	wg.Wait()
+}
+
+func (tm *TunerManager) GetTuner(name string) *Tuner {
+	for _, tuner := range tm.tuners {
+		if tuner.Name() == name {
+			return tuner
+		}
+	}
+	return nil
 }

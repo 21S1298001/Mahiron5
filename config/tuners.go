@@ -7,7 +7,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-type TunersConfig []TunerConfig
+type TunersConfig []*TunerConfig
 
 type TunerConfig struct {
 	// https://github.com/Chinachu/Mirakurun/blob/61c4155d2535c56fbf6fd379c5e8aba779fd642b/api.d.ts#L297

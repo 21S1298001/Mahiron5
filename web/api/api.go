@@ -8,18 +8,18 @@ import (
 )
 
 type Handler struct {
-	tuner *tuner.Tuner
+	tunerManager *tuner.TunerManager
 }
 
 var _ apigen.Handler = (*Handler)(nil)
 
 type HandlerConfig struct {
-	Tuner *tuner.Tuner
+	TunerManager *tuner.TunerManager
 }
 
 func NewHandler(config HandlerConfig) *Handler {
 	return &Handler{
-		tuner: config.Tuner,
+		tunerManager: config.TunerManager,
 	}
 }
 

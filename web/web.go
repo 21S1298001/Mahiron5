@@ -9,13 +9,13 @@ import (
 )
 
 type WebConfig struct {
-	Tuner *tuner.Tuner
+	TunerManager *tuner.TunerManager
 }
 
 func NewWeb(config WebConfig) (http.Handler, error) {
 	mux := http.NewServeMux()
 	api, err := apigen.NewServer(api.NewHandler(api.HandlerConfig{
-		Tuner: config.Tuner,
+		TunerManager: config.TunerManager,
 	}))
 	if err != nil {
 		return nil, err

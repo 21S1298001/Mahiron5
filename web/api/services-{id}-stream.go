@@ -10,11 +10,16 @@ import (
 func GetServiceStream(ctx context.Context, h *Handler) (apigen.GetServiceStreamRes, error) {
 	pr, pw := io.Pipe()
 
+	tuner := h.tunerManager.GetTuner("test")
+	if tuner == nil {
+		return &apigen.GetServiceStreamNotFound{}, nil
+	}
+
 	go func() {
 		defer pw.Close()
 		defer pr.Close()
 
-		h.tuner.StartStream(ctx, "http-test", pw)
+		tuner.StartStream(ctx, "http-test", pw)
 	}()
 
 	return &apigen.GetServiceStreamOKHeaders{

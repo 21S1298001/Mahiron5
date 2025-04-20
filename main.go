@@ -36,10 +36,12 @@ func main() {
 	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
 	slog.SetDefault(slog.New(h))
 
-	t := tuner.NewTuner("tuner")
+	tm := tuner.NewTunerManager(&tuner.TunerManagerConfig{
+		TunersConfig: cfg.Tuners,
+	})
 
 	handler, err := web.NewWeb(web.WebConfig{
-		Tuner: t,
+		TunerManager: tm,
 	})
 	if err != nil {
 		slog.Error("failed to create web handler", "err", err)
@@ -66,18 +68,17 @@ func main() {
 	defer cancel()
 
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		slog.Info("shutting down servers")
 		s.Shutdown(timeoutCtx)
 		slog.Info("servers shut down")
 	}()
-	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		slog.Info("shutting down tuner")
-		t.Shutdown(timeoutCtx)
+		tm.Shutdown(timeoutCtx)
 		slog.Info("tuner shut down")
 	}()
 	wg.Wait()
