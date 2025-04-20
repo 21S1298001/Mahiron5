@@ -16,14 +16,14 @@ import (
 )
 
 func main() {
-	serverConfig, err := config.LoadAndParseSystemConfig("server.yml")
+	cfg, err := config.LoadAndParseConfig()
 	if err != nil {
 		slog.Error("failed to load config", "err", err)
 		os.Exit(1)
 	}
 
 	level := slog.LevelInfo
-	switch serverConfig.LogLevel {
+	switch cfg.System.LogLevel {
 	case "debug":
 		level = slog.LevelDebug
 	case "info":
@@ -46,8 +46,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	addresses := make([]server.ListenAddress, len(serverConfig.Addresses))
-	for i, addr := range serverConfig.Addresses {
+	addresses := make([]server.ListenAddress, len(cfg.System.Addresses))
+	for i, addr := range cfg.System.Addresses {
 		addresses[i] = server.ListenAddress{
 			Http: addr.Http,
 			Unix: addr.Unix,

@@ -7,9 +7,9 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-type ChannelConfig []Channel
+type ChannelsConfig []ChannelConfig
 
-type Channel struct {
+type ChannelConfig struct {
 	// https://github.com/Chinachu/Mirakurun/blob/61c4155d2535c56fbf6fd379c5e8aba779fd642b/api.d.ts#L320
 	Name        string         `json:"name"`
 	Type        string         `json:"type"`
@@ -28,13 +28,13 @@ type Channel struct {
 	TunerGroups []string `json:"tunerGroups,omitempty"`
 }
 
-func LoadAndParseChannelConfig(filePath string) (ChannelConfig, error) {
+func LoadAndParseChannelsConfig(filePath string) (ChannelsConfig, error) {
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	var config ChannelConfig
+	var config ChannelsConfig
 	err = yaml.Unmarshal(file, &config)
 	if err != nil {
 		return nil, err

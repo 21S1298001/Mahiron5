@@ -7,9 +7,9 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-type TunerConfig []Tuner
+type TunersConfig []TunerConfig
 
-type Tuner struct {
+type TunerConfig struct {
 	// https://github.com/Chinachu/Mirakurun/blob/61c4155d2535c56fbf6fd379c5e8aba779fd642b/api.d.ts#L297
 	Name                   string   `json:"name"`
 	Types                  []string `json:"types,omitempty"`
@@ -31,13 +31,13 @@ type Remote struct {
 	Types map[string]string `json:"types,omitempty"`
 }
 
-func LoadAndParseTunerConfig(filePath string) (TunerConfig, error) {
+func LoadAndParseTunersConfig(filePath string) (TunersConfig, error) {
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 
-	var config TunerConfig
+	var config TunersConfig
 	err = yaml.Unmarshal(file, &config)
 	if err != nil {
 		return nil, err

@@ -6,7 +6,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestLoadAndParseChannelConfig(t *testing.T) {
+func TestLoadAndParseChannelsConfig(t *testing.T) {
 	yes := true
 	no := false
 
@@ -23,7 +23,7 @@ func TestLoadAndParseChannelConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    ChannelConfig
+		want    ChannelsConfig
 		wantErr bool
 	}{
 		{
@@ -31,7 +31,7 @@ func TestLoadAndParseChannelConfig(t *testing.T) {
 			args: args{
 				filePath: "testdata/channels-valid.yml",
 			},
-			want: ChannelConfig{
+			want: ChannelsConfig{
 				{
 					Name:        "Channel1",
 					Type:        "GR",
@@ -191,13 +191,13 @@ func TestLoadAndParseChannelConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := LoadAndParseChannelConfig(tt.args.filePath)
+			got, err := LoadAndParseChannelsConfig(tt.args.filePath)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("LoadAndParseChannelConfig() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("LoadAndParseChannelsConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("LoadAndParseChannelConfig() mismatch (-want +got):\n%s", diff)
+				t.Errorf("LoadAndParseChannelsConfig() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

@@ -6,7 +6,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestLoadAndParseTunerConfig(t *testing.T) {
+func TestLoadAndParseTunersConfig(t *testing.T) {
 	tr := true
 	fa := false
 
@@ -16,7 +16,7 @@ func TestLoadAndParseTunerConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    TunerConfig
+		want    TunersConfig
 		wantErr bool
 	}{
 		{
@@ -24,7 +24,7 @@ func TestLoadAndParseTunerConfig(t *testing.T) {
 			args: args{
 				filePath: "testdata/tuners-valid.yml",
 			},
-			want: TunerConfig{
+			want: TunersConfig{
 				{
 					Name:                   "Tuner1",
 					Types:                  []string{"GR"},
@@ -158,13 +158,13 @@ func TestLoadAndParseTunerConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := LoadAndParseTunerConfig(tt.args.filePath)
+			got, err := LoadAndParseTunersConfig(tt.args.filePath)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("LoadAndParseTunerConfig() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("LoadAndParseTunersConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("LoadAndParseTunerConfig() mismatch (-want +got):\n%s", diff)
+				t.Errorf("LoadAndParseTunersConfig() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
