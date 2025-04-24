@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -13,8 +14,8 @@ type ServiceFilter struct {
 
 var _ Filter = (*ServiceFilter)(nil)
 
-func NewServiceFilter(ctx context.Context, serviceId string) *ServiceFilter {
-	cmd := exec.CommandContext(ctx, "mirakc-arib", "filter-service", "--sid", serviceId)
+func NewServiceFilter(ctx context.Context, serviceId uint16) *ServiceFilter {
+	cmd := exec.CommandContext(ctx, "mirakc-arib", "filter-service", "--sid", strconv.Itoa(int(serviceId)))
 
 	return &ServiceFilter{
 		cmd: cmd,

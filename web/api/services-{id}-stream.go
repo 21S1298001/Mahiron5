@@ -22,7 +22,7 @@ func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceS
 		return nil, errors.New("tuner not found")
 	}
 
-	filter := filter.NewServiceFilter(ctx, strconv.Itoa(int(service.ServiceId)))
+	filter := filter.NewServiceFilter(ctx, service.ServiceId)
 	fi, fo, err := filter.Pipe()
 	if err != nil {
 		return nil, err
