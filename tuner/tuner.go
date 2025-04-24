@@ -31,6 +31,25 @@ func (t *Tuner) Name() string {
 	return t.config.Name
 }
 
+func (t *Tuner) Groups() []string {
+	groups := map[string]struct{}{}
+	if len(t.config.Types) > 0 {
+		for _, group := range t.config.Types {
+			groups[group] = struct{}{}
+		}
+	} else {
+		for _, group := range t.config.TunerGroups {
+			groups[group] = struct{}{}
+		}
+	}
+
+	groupList := make([]string, 0, len(groups))
+	for group := range groups {
+		groupList = append(groupList, group)
+	}
+	return groupList
+}
+
 func (t *Tuner) Command() string {
 	return t.command
 }
@@ -78,6 +97,13 @@ func (t *Tuner) Shutdown(ctx context.Context) error {
 }
 
 func (t *Tuner) spawn() error {
+	defer func() {
+		t.streaming = false
+		t.command = ""
+		t.process = nil
+		t.writer = dynamicmultiwriter.New([]io.Writer{})
+	}()
+
 	t.streaming = true
 
 	if t.process != nil && t.process.Pid() > 0 {
@@ -126,24 +152,20 @@ func (t *Tuner) spawn() error {
 			slog.Error("failed to stop process", "name", t.Name(), "err", err)
 		}
 		slog.Info("tuner process stopped", "name", t.Name(), "pid", t.process.Pid())
-		t.process = nil
 	}()
 
 	slog.Info("tuner stream started", "name", t.Name())
 	_, err = io.Copy(t.writer, or)
 	if err == nil {
 		slog.Info("tuner stream ended", "name", t.Name())
-		t.streaming = false
 		return nil
 	}
 
 	if errors.Is(err, io.ErrClosedPipe) {
 		slog.Info("tuner stream closed", "name", t.Name())
-		t.streaming = false
 		return nil
 	}
 
 	slog.Error("tuner stream closed unexpectedly", "name", t.Name(), "err", err)
-	t.streaming = false
 	return err
 }

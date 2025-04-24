@@ -3,23 +3,27 @@ package api
 import (
 	"context"
 
+	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/tuner"
 	apigen "github.com/21S1298001/Mahiron5/web/api/gen"
 )
 
 type Handler struct {
-	tunerManager *tuner.TunerManager
+	serviceManager *service.ServiceManager
+	tunerManager   *tuner.TunerManager
 }
 
 var _ apigen.Handler = (*Handler)(nil)
 
 type HandlerConfig struct {
-	TunerManager *tuner.TunerManager
+	ServiceManager *service.ServiceManager
+	TunerManager   *tuner.TunerManager
 }
 
 func NewHandler(config HandlerConfig) *Handler {
 	return &Handler{
-		tunerManager: config.TunerManager,
+		serviceManager: config.ServiceManager,
+		tunerManager:   config.TunerManager,
 	}
 }
 

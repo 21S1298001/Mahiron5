@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -11,12 +12,17 @@ import (
 )
 
 func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceStreamParams) (apigen.GetServiceStreamRes, error) {
-	tuner := h.tunerManager.GetTuner("test")
-	if tuner == nil {
+	service := h.serviceManager.GetServiceById(strconv.FormatInt(params.ID, 10))
+	if service == nil {
 		return &apigen.GetServiceStreamNotFound{}, nil
 	}
 
-	filter := filter.NewServiceFilter(ctx, strconv.FormatInt(params.ID, 10))
+	tuner := h.tunerManager.GetTunerByGroup(service.ChannelType)
+	if tuner == nil {
+		return nil, errors.New("tuner not found")
+	}
+
+	filter := filter.NewServiceFilter(ctx, strconv.Itoa(int(service.ServiceId)))
 	fi, fo, err := filter.Pipe()
 	if err != nil {
 		return nil, err

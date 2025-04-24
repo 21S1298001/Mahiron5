@@ -11,6 +11,7 @@ import (
 
 	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/server"
+	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/tuner"
 	"github.com/21S1298001/Mahiron5/web"
 )
@@ -40,8 +41,13 @@ func main() {
 		TunersConfig: cfg.Tuners,
 	})
 
+	sm := service.NewServiceManager(&service.ServiceManagerConfig{
+		Channels: cfg.Channels,
+	})
+
 	handler, err := web.NewWeb(web.WebConfig{
-		TunerManager: tm,
+		ServiceManager: sm,
+		TunerManager:   tm,
 	})
 	if err != nil {
 		slog.Error("failed to create web handler", "err", err)
@@ -62,6 +68,27 @@ func main() {
 
 	s := server.NewServer(addresses, handler)
 	s.ListenAndServe()
+
+	go func() {
+		slog.Info("starting service scan", "channels", len(cfg.Channels))
+		for _, channel := range cfg.Channels {
+			t := ""
+			tg := channel.TunerGroups
+			if len(tg) == 0 {
+				t = channel.Type
+			} else {
+				t = tg[0]
+			}
+			slog.Info("processing channel", "group", t, "channel", channel.Channel)
+			err := sm.ScanServices(signalCtx, tm.GetTunerByGroup(t), channel.Type, channel.Channel)
+			if err != nil {
+				slog.Error("failed to scan services", "group", t, "channel", channel.Channel, "err", err)
+				continue
+			}
+			slog.Info("scanned services", "group", t, "channel", channel.Channel)
+		}
+		slog.Info("completed scanning services", "discovered", sm.CountServices())
+	}()
 
 	<-signalCtx.Done()
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -3,6 +3,7 @@ package tuner
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"sync"
 
 	"github.com/21S1298001/Mahiron5/config"
@@ -48,4 +49,23 @@ func (tm *TunerManager) GetTuner(name string) *Tuner {
 		}
 	}
 	return nil
+}
+
+func (tm *TunerManager) GetTunerByGroup(group string) *Tuner {
+	for _, tuner := range tm.tuners {
+		if slices.Contains(tuner.Groups(), group) {
+			return tuner
+		}
+	}
+	return nil
+}
+
+func (tm *TunerManager) CountTunersByGroup() map[string]int {
+	counts := make(map[string]int)
+	for _, tuner := range tm.tuners {
+		for _, g := range tuner.Groups() {
+			counts[g]++
+		}
+	}
+	return counts
 }
