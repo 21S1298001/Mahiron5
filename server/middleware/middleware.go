@@ -1,6 +1,8 @@
-package server
+package middleware
 
 import "net/http"
+
+type contextKey string
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
@@ -9,7 +11,7 @@ type Middleware struct {
 	Handler MiddlewareFunc
 }
 
-func synthesis(middlewares ...Middleware) func(http.Handler) http.Handler {
+func Synthesis(middlewares ...*Middleware) func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		for i := range middlewares {
 			h = middlewares[len(middlewares)-i-1].Handler(h)

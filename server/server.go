@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"sync"
+
+	"github.com/21S1298001/Mahiron5/server/middleware"
 )
 
 type ListenAddress struct {
@@ -21,7 +23,9 @@ type Server struct {
 }
 
 func NewServer(addresses []ListenAddress, handler http.Handler) *Server {
-	middleware := synthesis()
+	middleware := middleware.Synthesis(
+		middleware.RequestInfoMiddleware(),
+	)
 
 	return &Server{
 		addresses: addresses,
