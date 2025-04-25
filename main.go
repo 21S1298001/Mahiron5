@@ -99,13 +99,17 @@ func main() {
 	go func() {
 		defer wg.Done()
 		slog.Info("shutting down servers")
-		s.Shutdown(timeoutCtx)
+		if err := s.Shutdown(timeoutCtx); err != nil {
+			slog.Error("failed to shutdown servers", "err", err)
+		}
 		slog.Info("servers shut down")
 	}()
 	go func() {
 		defer wg.Done()
 		slog.Info("shutting down tuner")
-		tm.Shutdown(timeoutCtx)
+		if err := tm.Shutdown(timeoutCtx); err != nil {
+			slog.Error("failed to shutdown tuner", "err", err)
+		}
 		slog.Info("tuner shut down")
 	}()
 	wg.Wait()

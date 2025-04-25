@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"sync"
 
 	"github.com/21S1298001/Mahiron5/server/middleware"
+	"golang.org/x/sync/errgroup"
 )
 
 type ListenAddress struct {
@@ -76,18 +76,18 @@ func (s *Server) ListenAndServe() {
 	}
 }
 
-func (s *Server) Shutdown(ctx context.Context) {
-	var wg sync.WaitGroup
+func (s *Server) Shutdown(ctx context.Context) error {
+	var eg errgroup.Group
 	for _, srv := range s.servers {
 		if srv != nil {
-			wg.Add(1)
-			go func(srv *http.Server) {
-				defer wg.Done()
+			eg.Go(func() error {
 				if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 					slog.Error("failed to shut down server gracefully", "address", srv.Addr, "err", err)
+					return err
 				}
-			}(srv)
+				return nil
+			})
 		}
 	}
-	wg.Wait()
+	return eg.Wait()
 }

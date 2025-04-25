@@ -4,9 +4,9 @@ import (
 	"context"
 	"log/slog"
 	"slices"
-	"sync"
 
 	"github.com/21S1298001/Mahiron5/config"
+	"golang.org/x/sync/errgroup"
 )
 
 type TunerManager struct {
@@ -28,18 +28,18 @@ func NewTunerManager(config *TunerManagerConfig) *TunerManager {
 	}
 }
 
-func (tm *TunerManager) Shutdown(ctx context.Context) {
-	wg := &sync.WaitGroup{}
+func (tm *TunerManager) Shutdown(ctx context.Context) error {
+	var eg errgroup.Group
 	for _, tuner := range tm.tuners {
-		wg.Add(1)
-		go func(t *Tuner) {
-			defer wg.Done()
-			if err := t.Shutdown(ctx); err != nil {
-				slog.Error("failed to shutdown tuner", "name", t.Name(), "err", err)
+		eg.Go(func() error {
+			if err := tuner.Shutdown(ctx); err != nil {
+				slog.Error("failed to shutdown tuner", "name", tuner.Name(), "err", err)
+				return err
 			}
-		}(tuner)
+			return nil
+		})
 	}
-	wg.Wait()
+	return eg.Wait()
 }
 
 func (tm *TunerManager) GetTuner(name string) *Tuner {
