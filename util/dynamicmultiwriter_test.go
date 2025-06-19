@@ -1,4 +1,4 @@
-package dynamicmultiwriter
+package util
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ func TestDynamicMultiWriter_Attach(t *testing.T) {
 	buf2 := &bytes.Buffer{}
 
 	// Create a DynamicMultiWriter with one writer
-	d := New(buf1)
+	d := NewDynamicMultiWriter(buf1)
 
 	// Check initial count
 	if got := d.Count(); got != 1 {
@@ -35,7 +35,7 @@ func TestDynamicMultiWriter_Detach(t *testing.T) {
 	buf2 := &bytes.Buffer{}
 
 	// Create a DynamicMultiWriter with two writers
-	d := New(buf1, buf2)
+	d := NewDynamicMultiWriter(buf1, buf2)
 
 	// Check initial count
 	if got := d.Count(); got != 2 {
@@ -76,7 +76,7 @@ func TestDynamicMultiWriter_Count(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := New(tt.writers...)
+			d := NewDynamicMultiWriter(tt.writers...)
 			if got := d.Count(); got != tt.want {
 				t.Errorf("Count() = %v, want %v", got, tt.want)
 			}
@@ -116,7 +116,7 @@ func TestDynamicMultiWriter_Close(t *testing.T) {
 	normalWriter := &bytes.Buffer{} // This one doesn't implement Close
 
 	// Create a DynamicMultiWriter with both types of writers
-	d := New(mock1, mock2, normalWriter)
+	d := NewDynamicMultiWriter(mock1, mock2, normalWriter)
 
 	// Verify initial count
 	if got := d.Count(); got != 3 {
@@ -153,7 +153,7 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 	t.Run("successful write to multiple writers", func(t *testing.T) {
 		buf1 := &bytes.Buffer{}
 		buf2 := &bytes.Buffer{}
-		d := New(buf1, buf2)
+		d := NewDynamicMultiWriter(buf1, buf2)
 
 		data := []byte("test data")
 		n, err := d.Write(data)
@@ -175,7 +175,7 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 	t.Run("write with error", func(t *testing.T) {
 		buf := &bytes.Buffer{}
 		errWriter := &mockErrorWriter{err: errors.New("write error")}
-		d := New(buf, errWriter)
+		d := NewDynamicMultiWriter(buf, errWriter)
 
 		_, err := d.Write([]byte("test"))
 		if err == nil {
@@ -186,7 +186,7 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 	t.Run("write with closed pipe", func(t *testing.T) {
 		buf := &bytes.Buffer{}
 		closedWriter := &mockErrorWriter{err: io.ErrClosedPipe}
-		d := New(buf, closedWriter)
+		d := NewDynamicMultiWriter(buf, closedWriter)
 
 		data := []byte("test")
 		n, err := d.Write(data)
@@ -204,7 +204,7 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 	t.Run("write with short write", func(t *testing.T) {
 		buf := &bytes.Buffer{}
 		shortWriter := &mockShortWriter{}
-		d := New(buf, shortWriter)
+		d := NewDynamicMultiWriter(buf, shortWriter)
 
 		_, err := d.Write([]byte("test"))
 		if !errors.Is(err, io.ErrShortWrite) {
@@ -213,7 +213,7 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 	})
 
 	t.Run("write with no writers", func(t *testing.T) {
-		d := New()
+		d := NewDynamicMultiWriter()
 
 		_, err := d.Write([]byte("test"))
 		if !errors.Is(err, io.ErrClosedPipe) {

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/21S1298001/Mahiron5/util/dynamicmultiwriter"
+	"github.com/21S1298001/Mahiron5/util"
 )
 
 type readerProxy func(p []byte) (n int, err error)
@@ -29,12 +29,12 @@ var _ demuxerPlugin = (*rawStream)(nil)
 type rawStream struct {
 	cancel chan<- struct{}
 	err    <-chan error
-	writer *dynamicmultiwriter.DynamicMultiWriter
+	writer *util.DynamicMultiWriter
 }
 
 func NewRawStream() *rawStream {
 	return &rawStream{
-		writer: dynamicmultiwriter.New(),
+		writer: util.NewDynamicMultiWriter(),
 	}
 }
 

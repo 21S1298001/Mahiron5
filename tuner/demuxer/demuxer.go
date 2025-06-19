@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/util/dynamicmultiwriter"
+	"github.com/21S1298001/Mahiron5/util"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -39,7 +39,7 @@ type stream struct {
 }
 
 type TSDemuxer struct {
-	branch  *dynamicmultiwriter.DynamicMultiWriter
+	branch  *util.DynamicMultiWriter
 	cancel  chan<- struct{}
 	decoder string
 	err     <-chan error
@@ -49,7 +49,7 @@ type TSDemuxer struct {
 
 func NewTSDemuxer(src io.Reader, decoder string) *TSDemuxer {
 	return &TSDemuxer{
-		branch:  dynamicmultiwriter.New(),
+		branch:  util.NewDynamicMultiWriter(),
 		decoder: decoder,
 		src:     src,
 		streams: []*stream{},

@@ -7,7 +7,6 @@ import (
 	"io"
 
 	"github.com/21S1298001/Mahiron5/util"
-	"github.com/21S1298001/Mahiron5/util/dynamicmultiwriter"
 )
 
 var _ demuxerPlugin = (*serviceFilter)(nil)
@@ -15,14 +14,14 @@ var _ demuxerPlugin = (*serviceFilter)(nil)
 type serviceFilter struct {
 	ServiceId uint16
 	process   *util.Process
-	writer    *dynamicmultiwriter.DynamicMultiWriter
+	writer    *util.DynamicMultiWriter
 }
 
 func NewServiceFilter(serviceId uint16) *serviceFilter {
 	return &serviceFilter{
 		ServiceId: serviceId,
 		process:   nil,
-		writer:    dynamicmultiwriter.New(),
+		writer:    util.NewDynamicMultiWriter(),
 	}
 }
 

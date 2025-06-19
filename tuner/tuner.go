@@ -9,7 +9,6 @@ import (
 
 	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/util"
-	"github.com/21S1298001/Mahiron5/util/dynamicmultiwriter"
 )
 
 type Tuner struct {
@@ -17,13 +16,13 @@ type Tuner struct {
 	config    *config.TunerConfig
 	process   *util.Process
 	streaming bool
-	writer    *dynamicmultiwriter.DynamicMultiWriter
+	writer    *util.DynamicMultiWriter
 }
 
 func NewTuner(config *config.TunerConfig) *Tuner {
 	return &Tuner{
 		config: config,
-		writer: dynamicmultiwriter.New(),
+		writer: util.NewDynamicMultiWriter(),
 	}
 }
 
@@ -101,7 +100,7 @@ func (t *Tuner) spawn() error {
 		t.streaming = false
 		t.command = ""
 		t.process = nil
-		t.writer = dynamicmultiwriter.New()
+		t.writer = util.NewDynamicMultiWriter()
 	}()
 
 	t.streaming = true

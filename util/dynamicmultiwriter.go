@@ -1,4 +1,4 @@
-package dynamicmultiwriter
+package util
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ type DynamicMultiWriter struct {
 	writers []io.Writer
 }
 
-func New(writers ...io.Writer) *DynamicMultiWriter {
+func NewDynamicMultiWriter(writers ...io.Writer) *DynamicMultiWriter {
 	return &DynamicMultiWriter{
 		mutex:   &sync.RWMutex{},
 		writers: writers,
