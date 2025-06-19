@@ -6,25 +6,24 @@ import (
 	"io"
 	"os/exec"
 	"syscall"
+	"time"
 )
 
 type Process struct {
-	cmd *exec.Cmd
+	cmd     *exec.Cmd
+	command string
 }
 
-type ProcessConfig struct {
-	Args []string
-}
-
-func NewProcess(config ProcessConfig) (*Process, error) {
-	cmd := exec.Command(config.Args[0], config.Args[1:]...)
+func NewProcess(command string) *Process {
+	cmd := exec.Command("sh", "-c", command)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}
 
 	return &Process{
-		cmd: cmd,
-	}, nil
+		cmd:     cmd,
+		command: command,
+	}
 }
 
 func (p *Process) StdinPipe() (io.WriteCloser, error) {
@@ -39,15 +38,35 @@ func (p *Process) StderrPipe() (io.ReadCloser, error) {
 	return p.cmd.StderrPipe()
 }
 
+func (p *Process) Stdin(stdin io.Reader) {
+	p.cmd.Stdin = stdin
+}
+
+func (p *Process) Stdout(stdout io.Writer) {
+	p.cmd.Stdout = stdout
+}
+
+func (p *Process) Stderr(stderr io.Writer) {
+	p.cmd.Stderr = stderr
+}
+
 func (p *Process) Pid() int {
 	if p.cmd.Process == nil {
-		return -1
+		return 0
 	}
 	return p.cmd.Process.Pid
 }
 
 func (p *Process) Start() error {
 	return p.cmd.Start()
+}
+
+func (p *Process) Run() error {
+	return p.cmd.Run()
+}
+
+func (p *Process) Wait() error {
+	return p.cmd.Wait()
 }
 
 func (p *Process) Stop(ctx context.Context) error {
@@ -67,4 +86,23 @@ func (p *Process) Stop(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (p *Process) RunWithContext(ctx context.Context, stopTimeout time.Duration) error {
+	ch := make(chan error)
+	go func() {
+		if err := p.cmd.Run(); err != nil {
+			ch <- err
+		}
+		ch <- nil
+	}()
+
+	select {
+	case err := <-ch:
+		return err
+	case <-ctx.Done():
+		termCtx, cancel := context.WithTimeout(context.Background(), stopTimeout)
+		defer cancel()
+		return p.Stop(termCtx)
+	}
 }

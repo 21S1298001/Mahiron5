@@ -14,7 +14,7 @@ type DynamicMultiWriter struct {
 	writers []io.Writer
 }
 
-func New(writers []io.Writer) *DynamicMultiWriter {
+func New(writers ...io.Writer) *DynamicMultiWriter {
 	return &DynamicMultiWriter{
 		mutex:   &sync.RWMutex{},
 		writers: writers,

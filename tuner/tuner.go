@@ -23,7 +23,7 @@ type Tuner struct {
 func NewTuner(config *config.TunerConfig) *Tuner {
 	return &Tuner{
 		config: config,
-		writer: dynamicmultiwriter.New([]io.Writer{}),
+		writer: dynamicmultiwriter.New(),
 	}
 }
 
@@ -101,7 +101,7 @@ func (t *Tuner) spawn() error {
 		t.streaming = false
 		t.command = ""
 		t.process = nil
-		t.writer = dynamicmultiwriter.New([]io.Writer{})
+		t.writer = dynamicmultiwriter.New()
 	}()
 
 	t.streaming = true
@@ -121,17 +121,7 @@ func (t *Tuner) spawn() error {
 	}
 	t.command = command
 
-	args, err := util.ParseCommandLine(command)
-	if err != nil {
-		return err
-	}
-
-	t.process, err = util.NewProcess(util.ProcessConfig{
-		Args: args,
-	})
-	if err != nil {
-		return err
-	}
+	t.process = util.NewProcess(command)
 
 	or, err := t.process.StdoutPipe()
 	if err != nil {
