@@ -1,4 +1,4 @@
-package filter
+package processor
 
 import (
 	"context"
@@ -15,18 +15,18 @@ var (
 	newProcess = util.NewProcess
 )
 
-type ServiceFilter struct{}
+type ServiceScanner struct{}
 
-func NewServiceFilter() *ServiceFilter {
-	return &ServiceFilter{}
+func NewServiceScanner() *ServiceScanner {
+	return &ServiceScanner{}
 }
 
-func (f *ServiceFilter) FilterService(ctx context.Context, serviceID uint16, src io.Reader, dst io.Writer) error {
+func (s *ServiceScanner) ScanServices(ctx context.Context, src io.Reader, dst io.Writer) error {
 	if _, err := lookPath("mirakc-arib"); err != nil {
-		return fmt.Errorf("mirakc-arib is required for service filtering: %w", err)
+		return fmt.Errorf("mirakc-arib is required for service scanning: %w", err)
 	}
 
-	process := newProcess(fmt.Sprintf("mirakc-arib filter-service --sid %d", serviceID))
+	process := newProcess("mirakc-arib scan-services")
 	process.Stdin(src)
 	process.Stdout(dst)
 	if err := process.Start(); err != nil {

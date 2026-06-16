@@ -3,30 +3,34 @@ package stream
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
-	"regexp"
 	"sync"
 	"time"
 
 	"github.com/21S1298001/Mahiron5/config"
+	"github.com/21S1298001/Mahiron5/filter"
+	"github.com/21S1298001/Mahiron5/processor"
 	"github.com/21S1298001/Mahiron5/tuner"
 	"github.com/21S1298001/Mahiron5/util"
 )
 
 type StreamManager struct {
-	mu             sync.Mutex
-	channels       config.ChannelsConfig
-	processFactory ProcessFactory
-	sessions       map[sessionKey]*ChannelSession
-	tunerManager   *tuner.TunerManager
+	mu            sync.Mutex
+	channels      config.ChannelsConfig
+	deviceFactory DeviceFactory
+	filter        ServiceFilter
+	scanner       ServiceScanner
+	sessions      map[sessionKey]*ChannelSession
+	tunerManager  *tuner.TunerManager
 }
 
 type StreamManagerConfig struct {
-	Channels       config.ChannelsConfig
-	ProcessFactory ProcessFactory
-	TunerManager   *tuner.TunerManager
+	Channels      config.ChannelsConfig
+	DeviceFactory DeviceFactory
+	Filter        ServiceFilter
+	Scanner       ServiceScanner
+	TunerManager  *tuner.TunerManager
 }
 
 type sessionKey struct {
@@ -34,16 +38,28 @@ type sessionKey struct {
 	typ     string
 }
 
-func NewStreamManager(config StreamManagerConfig) *StreamManager {
-	factory := config.ProcessFactory
-	if factory == nil {
-		factory = RealProcessFactory{}
+func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
+	serviceFilter := cfg.Filter
+	if serviceFilter == nil {
+		serviceFilter = filter.NewServiceFilter()
+	}
+	scanner := cfg.Scanner
+	if scanner == nil {
+		scanner = processor.NewServiceScanner()
+	}
+	deviceFactory := cfg.DeviceFactory
+	if deviceFactory == nil {
+		deviceFactory = func(t *tuner.Tuner, channel *config.ChannelConfig) (TunerDevice, error) {
+			return t.NewDevice(channel), nil
+		}
 	}
 	return &StreamManager{
-		channels:       config.Channels,
-		processFactory: factory,
-		sessions:       map[sessionKey]*ChannelSession{},
-		tunerManager:   config.TunerManager,
+		channels:      cfg.Channels,
+		deviceFactory: deviceFactory,
+		filter:        serviceFilter,
+		scanner:       scanner,
+		sessions:      map[sessionKey]*ChannelSession{},
+		tunerManager:  cfg.TunerManager,
 	}
 }
 
@@ -74,17 +90,23 @@ func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel st
 	if t == nil {
 		return nil, ErrTunerNotFound
 	}
-	if t.SourceCommand() == "" {
+	if t.Command() == "" {
 		return nil, ErrUnsupportedTuner
 	}
 
+	device, err := m.deviceFactory(t, channelConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	session := NewChannelSession(ChannelSessionConfig{
-		Channel:        channel,
-		ChannelConfig:  channelConfig,
-		OnStop:         func() { m.remove(key) },
-		ProcessFactory: m.processFactory,
-		Tuner:          t,
-		Type:           channelType,
+		Channel:       channel,
+		ChannelConfig: channelConfig,
+		Device:        device,
+		Filter:        m.filter,
+		OnStop:        func() { m.remove(key) },
+		Scanner:       m.scanner,
+		Type:          channelType,
 	})
 	m.sessions[key] = session
 	return session, nil
@@ -128,48 +150,61 @@ var (
 	ErrUnsupportedTuner = errors.New("unsupported tuner")
 )
 
+type DeviceFactory func(*tuner.Tuner, *config.ChannelConfig) (TunerDevice, error)
+
+type TunerDevice interface {
+	Start(context.Context, io.Writer) error
+	Stop(context.Context) error
+	Done() <-chan struct{}
+	Err() error
+}
+
+type ServiceFilter interface {
+	FilterService(context.Context, uint16, io.Reader, io.Writer) error
+}
+
+type ServiceScanner interface {
+	ScanServices(context.Context, io.Reader, io.Writer) error
+}
+
 type ChannelSession struct {
-	channel        string
-	channelConfig  *config.ChannelConfig
-	ctx            context.Context
-	cancel         context.CancelFunc
-	decoder        Process
-	done           chan struct{}
-	err            error
-	hub            *util.DynamicMultiWriter
-	mu             sync.Mutex
-	onStop         func()
-	processFactory ProcessFactory
-	refs           int
-	started        bool
-	stopped        bool
-	tuner          *tuner.Tuner
-	tunerProcess   Process
-	typ            string
+	channel       string
+	channelConfig *config.ChannelConfig
+	ctx           context.Context
+	cancel        context.CancelFunc
+	device        TunerDevice
+	done          <-chan struct{}
+	filter        ServiceFilter
+	hub           *util.DynamicMultiWriter
+	mu            sync.Mutex
+	onStop        func()
+	refs          int
+	scanner       ServiceScanner
+	started       bool
+	stopped       bool
+	typ           string
 }
 
 type ChannelSessionConfig struct {
-	Channel        string
-	ChannelConfig  *config.ChannelConfig
-	OnStop         func()
-	ProcessFactory ProcessFactory
-	Tuner          *tuner.Tuner
-	Type           string
+	Channel       string
+	ChannelConfig *config.ChannelConfig
+	Device        TunerDevice
+	Filter        ServiceFilter
+	OnStop        func()
+	Scanner       ServiceScanner
+	Type          string
 }
 
 func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
-	factory := config.ProcessFactory
-	if factory == nil {
-		factory = RealProcessFactory{}
-	}
 	return &ChannelSession{
-		channel:        config.Channel,
-		channelConfig:  config.ChannelConfig,
-		hub:            util.NewDynamicMultiWriter(),
-		onStop:         config.OnStop,
-		processFactory: factory,
-		tuner:          config.Tuner,
-		typ:            config.Type,
+		channel:       config.Channel,
+		channelConfig: config.ChannelConfig,
+		device:        config.Device,
+		filter:        config.Filter,
+		hub:           util.NewDynamicMultiWriter(),
+		onStop:        config.OnStop,
+		scanner:       config.Scanner,
+		typ:           config.Type,
 	}
 }
 
@@ -183,49 +218,38 @@ func (s *ChannelSession) RawStream(ctx context.Context, dst io.Writer) error {
 	case <-ctx.Done():
 		return nil
 	case <-s.done:
-		if errors.Is(s.err, io.ErrClosedPipe) {
+		err := s.device.Err()
+		if errors.Is(err, io.ErrClosedPipe) {
 			return nil
 		}
-		return s.err
+		return err
 	}
 }
 
 func (s *ChannelSession) ServiceStream(ctx context.Context, serviceID uint16, dst io.Writer) error {
-	if err := s.processFactory.EnsureCommand("mirakc-arib"); err != nil {
-		return fmt.Errorf("mirakc-arib is required for service filtering: %w", err)
-	}
-
 	r, w := io.Pipe()
-	filter := s.processFactory.NewProcess(fmt.Sprintf("mirakc-arib filter-service --sid %d", serviceID))
-	filter.Stdin(r)
-	filter.Stdout(dst)
+	filterCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	if err := filter.Start(); err != nil {
-		_ = r.Close()
-		_ = w.Close()
-		return err
-	}
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- s.filter.FilterService(filterCtx, serviceID, r, dst)
+	}()
 
 	if err := s.attach(w); err != nil {
 		_ = r.Close()
 		_ = w.Close()
-		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = filter.Stop(stopCtx)
+		cancel()
+		<-waitCh
 		return err
 	}
 	defer s.detach(w)
 
-	waitCh := make(chan error, 1)
-	go func() {
-		waitCh <- filter.Wait()
-	}()
-
 	select {
 	case <-ctx.Done():
 	case <-s.done:
-		if s.err != nil && !errors.Is(s.err, io.ErrClosedPipe) {
-			slog.Error("channel session ended while filtering service", "type", s.typ, "channel", s.channel, "service", serviceID, "err", s.err)
+		if err := s.device.Err(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+			slog.Error("channel session ended while filtering service", "type", s.typ, "channel", s.channel, "service", serviceID, "err", err)
 		}
 		_ = w.Close()
 		if err := <-waitCh; err != nil {
@@ -235,55 +259,41 @@ func (s *ChannelSession) ServiceStream(ctx context.Context, serviceID uint16, ds
 	case err := <-waitCh:
 		if err != nil {
 			slog.Error("service filter exited", "type", s.typ, "channel", s.channel, "service", serviceID, "err", err)
+			return err
 		}
 	}
 
 	_ = r.Close()
 	_ = w.Close()
-	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := filter.Stop(stopCtx); err != nil {
-		return err
-	}
+	cancel()
+	<-waitCh
 	return nil
 }
 
 func (s *ChannelSession) ScanServices(ctx context.Context, dst io.Writer) error {
-	if err := s.processFactory.EnsureCommand("mirakc-arib"); err != nil {
-		return fmt.Errorf("mirakc-arib is required for service scanning: %w", err)
-	}
-
 	r, w := io.Pipe()
-	scanner := s.processFactory.NewProcess("mirakc-arib scan-services")
-	scanner.Stdin(r)
-	scanner.Stdout(dst)
+	scannerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	if err := scanner.Start(); err != nil {
-		_ = r.Close()
-		_ = w.Close()
-		return err
-	}
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- s.scanner.ScanServices(scannerCtx, r, dst)
+	}()
 
 	if err := s.attach(w); err != nil {
 		_ = r.Close()
 		_ = w.Close()
-		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = scanner.Stop(stopCtx)
+		cancel()
+		<-waitCh
 		return err
 	}
 	defer s.detach(w)
 
-	waitCh := make(chan error, 1)
-	go func() {
-		waitCh <- scanner.Wait()
-	}()
-
 	select {
 	case <-ctx.Done():
 	case <-s.done:
-		if s.err != nil && !errors.Is(s.err, io.ErrClosedPipe) {
-			slog.Error("channel session ended while scanning services", "type", s.typ, "channel", s.channel, "err", s.err)
+		if err := s.device.Err(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+			slog.Error("channel session ended while scanning services", "type", s.typ, "channel", s.channel, "err", err)
 		}
 		_ = w.Close()
 		if err := <-waitCh; err != nil {
@@ -299,12 +309,8 @@ func (s *ChannelSession) ScanServices(ctx context.Context, dst io.Writer) error 
 
 	_ = r.Close()
 	_ = w.Close()
-	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := scanner.Stop(stopCtx); err != nil {
-		return err
-	}
-	return nil
+	cancel()
+	return <-waitCh
 }
 
 func (s *ChannelSession) Stop(ctx context.Context) error {
@@ -315,9 +321,7 @@ func (s *ChannelSession) Stop(ctx context.Context) error {
 	}
 	s.stopped = true
 	cancel := s.cancel
-	tunerProcess := s.tunerProcess
-	decoder := s.decoder
-	done := s.done
+	device := s.device
 	s.hub.Close()
 	s.mu.Unlock()
 
@@ -326,21 +330,8 @@ func (s *ChannelSession) Stop(ctx context.Context) error {
 	}
 
 	var result error
-	if tunerProcess != nil {
-		result = errors.Join(result, tunerProcess.Stop(ctx))
-	}
-	if decoder != nil {
-		result = errors.Join(result, decoder.Stop(ctx))
-	}
-	if done != nil {
-		select {
-		case <-done:
-			if s.err != nil && !errors.Is(s.err, io.ErrClosedPipe) {
-				result = errors.Join(result, s.err)
-			}
-		case <-ctx.Done():
-			result = errors.Join(result, ctx.Err())
-		}
+	if device != nil {
+		result = errors.Join(result, device.Stop(ctx))
 	}
 
 	if s.onStop != nil {
@@ -392,107 +383,12 @@ func (s *ChannelSession) startLocked() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.ctx = ctx
 	s.cancel = cancel
-	s.done = make(chan struct{})
-	s.tunerProcess = s.processFactory.NewProcess(replaceCommandTemplate(s.tuner.SourceCommand(), s.channelConfig))
-
-	tunerOut, err := s.tunerProcess.StdoutPipe()
-	if err != nil {
+	if err := s.device.Start(ctx, s.hub); err != nil {
 		cancel()
 		return err
 	}
-
-	if decoderCommand := s.tuner.DecoderCommand(); decoderCommand != "" {
-		s.decoder = s.processFactory.NewProcess(decoderCommand)
-		s.decoder.Stdin(tunerOut)
-		s.decoder.Stdout(s.hub)
-		if err := s.decoder.Start(); err != nil {
-			cancel()
-			return err
-		}
-		if err := s.tunerProcess.Start(); err != nil {
-			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer stopCancel()
-			_ = s.decoder.Stop(stopCtx)
-			cancel()
-			return err
-		}
-		go s.waitDecoded()
-	} else {
-		if err := s.tunerProcess.Start(); err != nil {
-			cancel()
-			return err
-		}
-		go s.copyRaw(tunerOut)
-	}
+	s.done = s.device.Done()
 
 	s.started = true
 	return nil
-}
-
-var commandTemplatePattern = regexp.MustCompile(`(?i)<([a-z0-9_.-]+)>`)
-
-func replaceCommandTemplate(template string, channel *config.ChannelConfig) string {
-	if channel == nil {
-		return commandTemplatePattern.ReplaceAllString(template, "")
-	}
-
-	vars := map[string]any{
-		"channel":  channel.Channel,
-		"type":     channel.Type,
-		"satelite": "",
-		"space":    0,
-	}
-	if satellite, ok := channel.CommandVars["satellite"]; ok {
-		vars["satelite"] = satellite
-	}
-	for key, value := range channel.CommandVars {
-		vars[key] = value
-	}
-
-	return commandTemplatePattern.ReplaceAllStringFunc(template, func(match string) string {
-		submatches := commandTemplatePattern.FindStringSubmatch(match)
-		if len(submatches) != 2 {
-			return ""
-		}
-		if value, ok := vars[submatches[1]]; ok {
-			return fmt.Sprint(value)
-		}
-		return ""
-	})
-}
-
-func (s *ChannelSession) copyRaw(src io.Reader) {
-	_, err := io.Copy(s.hub, src)
-	if err == nil || errors.Is(err, io.ErrClosedPipe) {
-		s.finish(nil)
-		return
-	}
-	s.finish(err)
-}
-
-func (s *ChannelSession) waitDecoded() {
-	err := s.decoder.Wait()
-	if err == nil {
-		err = s.tunerProcess.Wait()
-	}
-	if err == nil || errors.Is(err, io.ErrClosedPipe) {
-		s.finish(nil)
-		return
-	}
-	s.finish(err)
-}
-
-func (s *ChannelSession) finish(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.done == nil {
-		return
-	}
-	select {
-	case <-s.done:
-		return
-	default:
-		s.err = err
-		close(s.done)
-	}
 }
