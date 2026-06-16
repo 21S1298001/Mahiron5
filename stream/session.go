@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"regexp"
 	"sync"
 	"time"
 
@@ -79,6 +80,7 @@ func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel st
 
 	session := NewChannelSession(ChannelSessionConfig{
 		Channel:        channel,
+		ChannelConfig:  channelConfig,
 		OnStop:         func() { m.remove(key) },
 		ProcessFactory: m.processFactory,
 		Tuner:          t,
@@ -128,6 +130,7 @@ var (
 
 type ChannelSession struct {
 	channel        string
+	channelConfig  *config.ChannelConfig
 	ctx            context.Context
 	cancel         context.CancelFunc
 	decoder        Process
@@ -147,6 +150,7 @@ type ChannelSession struct {
 
 type ChannelSessionConfig struct {
 	Channel        string
+	ChannelConfig  *config.ChannelConfig
 	OnStop         func()
 	ProcessFactory ProcessFactory
 	Tuner          *tuner.Tuner
@@ -160,6 +164,7 @@ func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
 	}
 	return &ChannelSession{
 		channel:        config.Channel,
+		channelConfig:  config.ChannelConfig,
 		hub:            util.NewDynamicMultiWriter(),
 		onStop:         config.OnStop,
 		processFactory: factory,
@@ -388,7 +393,7 @@ func (s *ChannelSession) startLocked() error {
 	s.ctx = ctx
 	s.cancel = cancel
 	s.done = make(chan struct{})
-	s.tunerProcess = s.processFactory.NewProcess(s.tuner.SourceCommand())
+	s.tunerProcess = s.processFactory.NewProcess(replaceCommandTemplate(s.tuner.SourceCommand(), s.channelConfig))
 
 	tunerOut, err := s.tunerProcess.StdoutPipe()
 	if err != nil {
@@ -422,6 +427,38 @@ func (s *ChannelSession) startLocked() error {
 
 	s.started = true
 	return nil
+}
+
+var commandTemplatePattern = regexp.MustCompile(`(?i)<([a-z0-9_.-]+)>`)
+
+func replaceCommandTemplate(template string, channel *config.ChannelConfig) string {
+	if channel == nil {
+		return commandTemplatePattern.ReplaceAllString(template, "")
+	}
+
+	vars := map[string]any{
+		"channel":  channel.Channel,
+		"type":     channel.Type,
+		"satelite": "",
+		"space":    0,
+	}
+	if satellite, ok := channel.CommandVars["satellite"]; ok {
+		vars["satelite"] = satellite
+	}
+	for key, value := range channel.CommandVars {
+		vars[key] = value
+	}
+
+	return commandTemplatePattern.ReplaceAllStringFunc(template, func(match string) string {
+		submatches := commandTemplatePattern.FindStringSubmatch(match)
+		if len(submatches) != 2 {
+			return ""
+		}
+		if value, ok := vars[submatches[1]]; ok {
+			return fmt.Sprint(value)
+		}
+		return ""
+	})
 }
 
 func (s *ChannelSession) copyRaw(src io.Reader) {

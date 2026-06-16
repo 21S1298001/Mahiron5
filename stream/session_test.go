@@ -228,6 +228,62 @@ func TestRawStreamWithoutDecoder(t *testing.T) {
 	}
 }
 
+func TestRawStreamReplacesMirakurunCommandTemplate(t *testing.T) {
+	no := false
+	factory := &fakeProcessFactory{}
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{
+				Name:        "NHK",
+				Type:        "GR",
+				Channel:     "27",
+				CommandVars: map[string]any{"freq": 12345, "polarity": "H", "extra-args": "--foo"},
+				IsDisabled:  &no,
+			},
+		},
+		ProcessFactory: factory,
+		TunerManager: tuner.NewTunerManager(&tuner.TunerManagerConfig{
+			TunersConfig: config.TunersConfig{
+				{
+					Name:    "Tuner1",
+					Types:   []string{"GR"},
+					Command: "tuner <type> <channel> <freq> <polarity> <extra-args> <missing>",
+				},
+			},
+		}),
+	})
+	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := session.RawStream(context.Background(), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := factory.count("tuner GR 27 12345 H --foo "), 1; got != want {
+		t.Fatalf("replaced tuner process count = %d, want %d", got, want)
+	}
+}
+
+func TestReplaceCommandTemplateMirakurunCompatibilityAliases(t *testing.T) {
+	channel := &config.ChannelConfig{
+		Type:        "BS",
+		Channel:     "101",
+		CommandVars: map[string]any{"satellite": "JCSAT3A", "space": uint8(1)},
+	}
+
+	got := replaceCommandTemplate("tuner <satellite> <satelite> <space> <missing>", channel)
+	if want := "tuner JCSAT3A JCSAT3A 1 "; got != want {
+		t.Fatalf("replaceCommandTemplate() = %q, want %q", got, want)
+	}
+
+	got = replaceCommandTemplate("tuner <space> <satelite>", &config.ChannelConfig{CommandVars: map[string]any{}})
+	if want := "tuner 0 "; got != want {
+		t.Fatalf("replaceCommandTemplate() default = %q, want %q", got, want)
+	}
+}
+
 func TestRawStreamWithDecoder(t *testing.T) {
 	factory := &fakeProcessFactory{}
 	manager := testManager(factory, "decoder")
