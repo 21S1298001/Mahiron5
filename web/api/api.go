@@ -4,12 +4,14 @@ import (
 	"context"
 
 	"github.com/21S1298001/Mahiron5/service"
+	"github.com/21S1298001/Mahiron5/stream"
 	"github.com/21S1298001/Mahiron5/tuner"
 	apigen "github.com/21S1298001/Mahiron5/web/api/gen"
 )
 
 type Handler struct {
 	serviceManager *service.ServiceManager
+	streamManager  *stream.StreamManager
 	tunerManager   *tuner.TunerManager
 }
 
@@ -17,12 +19,14 @@ var _ apigen.Handler = (*Handler)(nil)
 
 type HandlerConfig struct {
 	ServiceManager *service.ServiceManager
+	StreamManager  *stream.StreamManager
 	TunerManager   *tuner.TunerManager
 }
 
 func NewHandler(config HandlerConfig) *Handler {
 	return &Handler{
 		serviceManager: config.ServiceManager,
+		streamManager:  config.StreamManager,
 		tunerManager:   config.TunerManager,
 	}
 }
@@ -52,7 +56,7 @@ func (h *Handler) GetChannel(ctx context.Context, params apigen.GetChannelParams
 }
 
 func (h *Handler) GetChannelStream(ctx context.Context, params apigen.GetChannelStreamParams) (apigen.GetChannelStreamRes, error) {
-	panic("implement me")
+	return GetChannelStream(ctx, h, params)
 }
 
 func (h *Handler) GetChannels(ctx context.Context, params apigen.GetChannelsParams) (apigen.GetChannelsRes, error) {
@@ -120,7 +124,7 @@ func (h *Handler) GetServiceStream(ctx context.Context, params apigen.GetService
 }
 
 func (h *Handler) GetServiceStreamByChannel(ctx context.Context, params apigen.GetServiceStreamByChannelParams) (apigen.GetServiceStreamByChannelRes, error) {
-	panic("implement me")
+	return GetServiceStreamByChannel(ctx, h, params)
 }
 
 func (h *Handler) GetServices(ctx context.Context, params apigen.GetServicesParams) (apigen.GetServicesRes, error) {

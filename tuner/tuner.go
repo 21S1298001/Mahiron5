@@ -53,6 +53,14 @@ func (t *Tuner) Command() string {
 	return t.command
 }
 
+func (t *Tuner) SourceCommand() string {
+	return t.config.Command
+}
+
+func (t *Tuner) DecoderCommand() string {
+	return t.config.Decoder
+}
+
 func (t *Tuner) createCommand() (string, error) {
 	return t.config.Command, nil
 }

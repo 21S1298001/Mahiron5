@@ -5,10 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 
 	"github.com/21S1298001/Mahiron5/config"
-	"github.com/21S1298001/Mahiron5/tuner"
+	"github.com/21S1298001/Mahiron5/stream"
 )
 
 type ServiceManager struct {
@@ -54,31 +53,19 @@ type scanService struct {
 	RemoteControlKeyId uint8  `json:"remoteControlKeyId"`
 }
 
-func (s *ServiceManager) ScanServices(ctx context.Context, tuner *tuner.Tuner, channelType string, channelId string) error {
-	cmd := exec.CommandContext(ctx, "mirakc-arib", "scan-services")
+func (s *ServiceManager) ScanServices(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string) error {
+	out := bytes.Buffer{}
 
-	stdin, err := cmd.StdinPipe()
+	session, err := streamManager.GetOrCreate(ctx, channelType, channelId)
 	if err != nil {
 		return err
 	}
-	defer stdin.Close()
-
-	out := bytes.Buffer{}
-	cmd.Stdout = &out
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go func() {
-		tuner.StartStream(ctx, "scan-services", stdin)
-	}()
-
-	if err := cmd.Run(); err != nil {
+	if err := session.ScanServices(ctx, &out); err != nil {
 		return err
 	}
 
 	var services []*scanService
-	err = json.Unmarshal(out.Bytes(), &services)
-	if err != nil {
+	if err := json.Unmarshal(out.Bytes(), &services); err != nil {
 		return err
 	}
 

@@ -3,15 +3,24 @@ package util
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
 type Process struct {
-	cmd     *exec.Cmd
-	command string
+	cmd      *exec.Cmd
+	command  string
+	done     chan struct{}
+	err      error
+	mu       sync.Mutex
+	stopping bool
+	wait     sync.Once
 }
 
 func NewProcess(command string) *Process {
@@ -23,6 +32,7 @@ func NewProcess(command string) *Process {
 	return &Process{
 		cmd:     cmd,
 		command: command,
+		done:    make(chan struct{}),
 	}
 }
 
@@ -66,35 +76,65 @@ func (p *Process) Run() error {
 }
 
 func (p *Process) Wait() error {
-	return p.cmd.Wait()
+	p.wait.Do(func() {
+		err := p.wrapError(p.cmd.Wait())
+		p.mu.Lock()
+		if p.stopping {
+			err = ignoreTerminated(err)
+		}
+		p.err = err
+		p.mu.Unlock()
+		close(p.done)
+	})
+	<-p.done
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.err
 }
 
 func (p *Process) Stop(ctx context.Context) error {
-	if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	if p.cmd.Process == nil {
+		return nil
+	}
+
+	select {
+	case <-p.done:
+		return p.Wait()
+	default:
+	}
+
+	p.mu.Lock()
+	p.stopping = true
+	p.mu.Unlock()
+
+	if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) && !errors.Is(err, syscall.ESRCH) {
 		return err
 	}
 
-	if err := p.cmd.Wait(); err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || err.Error() == "signal: terminated" {
-			return nil
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- p.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		return ignoreTerminated(err)
+	case <-ctx.Done():
+		if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) && !errors.Is(err, syscall.ESRCH) {
+			return err
 		}
-		return err
+		return ignoreTerminated(<-waitCh)
 	}
-
-	<-ctx.Done()
-	if err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (p *Process) RunWithContext(ctx context.Context, stopTimeout time.Duration) error {
-	ch := make(chan error)
+	if err := p.Start(); err != nil {
+		return err
+	}
+
+	ch := make(chan error, 1)
 	go func() {
-		if err := p.cmd.Run(); err != nil {
-			ch <- err
-		}
-		ch <- nil
+		ch <- p.Wait()
 	}()
 
 	select {
@@ -105,4 +145,25 @@ func (p *Process) RunWithContext(ctx context.Context, stopTimeout time.Duration)
 		defer cancel()
 		return p.Stop(termCtx)
 	}
+}
+
+func ignoreTerminated(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "signal: terminated") || strings.Contains(err.Error(), "signal: killed") {
+		return nil
+	}
+	return err
+}
+
+func (p *Process) wrapError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 127 {
+		return fmt.Errorf("command %q failed with exit status 127 (command not found in shell PATH): %w", p.command, err)
+	}
+	return fmt.Errorf("command %q failed: %w", p.command, err)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/server"
 	"github.com/21S1298001/Mahiron5/service"
+	"github.com/21S1298001/Mahiron5/stream"
 	"github.com/21S1298001/Mahiron5/tuner"
 	"github.com/21S1298001/Mahiron5/web"
 )
@@ -45,8 +46,14 @@ func main() {
 		Channels: cfg.Channels,
 	})
 
+	stm := stream.NewStreamManager(stream.StreamManagerConfig{
+		Channels:     cfg.Channels,
+		TunerManager: tm,
+	})
+
 	handler, err := web.NewWeb(web.WebConfig{
 		ServiceManager: sm,
+		StreamManager:  stm,
 		TunerManager:   tm,
 	})
 	if err != nil {
@@ -80,7 +87,7 @@ func main() {
 				t = tg[0]
 			}
 			slog.Info("processing channel", "group", t, "channel", channel.Channel)
-			err := sm.ScanServices(signalCtx, tm.GetTunerByGroup(t), channel.Type, channel.Channel)
+			err := sm.ScanServices(signalCtx, stm, channel.Type, channel.Channel)
 			if err != nil {
 				slog.Error("failed to scan services", "group", t, "channel", channel.Channel, "err", err)
 				continue
@@ -106,6 +113,11 @@ func main() {
 	}()
 	go func() {
 		defer wg.Done()
+		slog.Info("shutting down streams")
+		if err := stm.Shutdown(timeoutCtx); err != nil {
+			slog.Error("failed to shutdown streams", "err", err)
+		}
+		slog.Info("streams shut down")
 		slog.Info("shutting down tuner")
 		if err := tm.Shutdown(timeoutCtx); err != nil {
 			slog.Error("failed to shutdown tuner", "err", err)

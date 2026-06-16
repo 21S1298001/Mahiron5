@@ -1,0 +1,67 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+
+	"github.com/21S1298001/Mahiron5/stream"
+	apigen "github.com/21S1298001/Mahiron5/web/api/gen"
+)
+
+func GetChannelStream(ctx context.Context, h *Handler, params apigen.GetChannelStreamParams) (apigen.GetChannelStreamRes, error) {
+	session, err := h.streamManager.GetOrCreate(ctx, params.Type, params.Channel)
+	if err != nil {
+		if errors.Is(err, stream.ErrChannelNotFound) {
+			return &apigen.GetChannelStreamNotFound{}, nil
+		}
+		if errors.Is(err, stream.ErrTunerNotFound) || errors.Is(err, stream.ErrUnsupportedTuner) {
+			return &apigen.GetChannelStreamServiceUnavailable{}, nil
+		}
+		return nil, err
+	}
+
+	fo, fi := io.Pipe()
+	go func() {
+		defer fi.Close()
+		if err := session.RawStream(ctx, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+			slog.Error("failed to stream channel", "type", params.Type, "channel", params.Channel, "err", err)
+		}
+	}()
+
+	return &apigen.GetChannelStreamOKHeaders{
+		XMirakurunTunerUserID: apigen.OptString{},
+		Response: apigen.GetChannelStreamOK{
+			Data: fo,
+		},
+	}, nil
+}
+
+func GetServiceStreamByChannel(ctx context.Context, h *Handler, params apigen.GetServiceStreamByChannelParams) (apigen.GetServiceStreamByChannelRes, error) {
+	session, err := h.streamManager.GetOrCreate(ctx, params.Type, params.Channel)
+	if err != nil {
+		if errors.Is(err, stream.ErrChannelNotFound) {
+			return &apigen.GetServiceStreamByChannelNotFound{}, nil
+		}
+		if errors.Is(err, stream.ErrTunerNotFound) || errors.Is(err, stream.ErrUnsupportedTuner) {
+			return &apigen.GetServiceStreamByChannelServiceUnavailable{}, nil
+		}
+		return nil, err
+	}
+
+	fo, fi := io.Pipe()
+	go func() {
+		defer fi.Close()
+		if err := session.ServiceStream(ctx, uint16(params.ID), fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+			slog.Error("failed to stream service by channel", "type", params.Type, "channel", params.Channel, "service", params.ID, "err", err)
+		}
+	}()
+
+	return &apigen.GetServiceStreamByChannelOKHeaders{
+		XMirakurunTunerUserID: apigen.OptString{},
+		Response: apigen.GetServiceStreamByChannelOK{
+			Data: fo,
+		},
+	}, nil
+}

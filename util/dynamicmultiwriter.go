@@ -60,10 +60,15 @@ func (d *DynamicMultiWriter) Close() {
 }
 
 func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
+	d.mutex.RLock()
+	writers := slices.Clone(d.writers)
+	d.mutex.RUnlock()
+
 	var meg multierror.Group
-	for _, w := range d.writers {
+	for _, w := range writers {
+		w := w
 		meg.Go(func() error {
-			n, err = w.Write(p)
+			written, err := w.Write(p)
 			if errors.Is(err, io.ErrClosedPipe) {
 				d.Detach(w)
 				return nil
@@ -71,7 +76,7 @@ func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 			if err != nil {
 				return err
 			}
-			if n != len(p) {
+			if written != len(p) {
 				return io.ErrShortWrite
 			}
 			return nil
@@ -80,7 +85,7 @@ func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 	if err := meg.Wait(); err != nil {
 		return 0, err
 	}
-	if len(d.writers) == 0 {
+	if d.Count() == 0 {
 		return 0, io.ErrClosedPipe
 	}
 
