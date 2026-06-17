@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/21S1298001/Mahiron5/job"
+	"github.com/21S1298001/Mahiron5/program"
 	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/stream"
 	"github.com/21S1298001/Mahiron5/tuner"
@@ -12,6 +13,7 @@ import (
 
 type Handler struct {
 	serviceManager *service.ServiceManager
+	programManager *program.ProgramManager
 	streamManager  *stream.StreamManager
 	tunerManager   *tuner.TunerManager
 	jobManager     *job.JobManager
@@ -21,6 +23,7 @@ var _ apigen.Handler = (*Handler)(nil)
 
 type HandlerConfig struct {
 	ServiceManager *service.ServiceManager
+	ProgramManager *program.ProgramManager
 	StreamManager  *stream.StreamManager
 	TunerManager   *tuner.TunerManager
 	JobManager     *job.JobManager
@@ -29,6 +32,7 @@ type HandlerConfig struct {
 func NewHandler(config HandlerConfig) *Handler {
 	return &Handler{
 		serviceManager: config.ServiceManager,
+		programManager: config.ProgramManager,
 		streamManager:  config.StreamManager,
 		tunerManager:   config.TunerManager,
 		jobManager:     config.JobManager,
@@ -100,7 +104,7 @@ func (h *Handler) GetLogoImage(ctx context.Context, params apigen.GetLogoImagePa
 }
 
 func (h *Handler) GetProgram(ctx context.Context, params apigen.GetProgramParams) (apigen.GetProgramRes, error) {
-	panic("implement me")
+	return GetProgram(ctx, h, params)
 }
 
 func (h *Handler) GetProgramStream(ctx context.Context, params apigen.GetProgramStreamParams) (apigen.GetProgramStreamRes, error) {
@@ -108,7 +112,7 @@ func (h *Handler) GetProgramStream(ctx context.Context, params apigen.GetProgram
 }
 
 func (h *Handler) GetPrograms(ctx context.Context, params apigen.GetProgramsParams) (apigen.GetProgramsRes, error) {
-	panic("implement me")
+	return GetPrograms(ctx, h, params)
 }
 
 func (h *Handler) GetService(ctx context.Context, params apigen.GetServiceParams) (apigen.GetServiceRes, error) {
@@ -120,7 +124,7 @@ func (h *Handler) GetServiceByChannel(ctx context.Context, params apigen.GetServ
 }
 
 func (h *Handler) GetServicePrograms(ctx context.Context, params apigen.GetServiceProgramsParams) (apigen.GetServiceProgramsRes, error) {
-	panic("implement me")
+	return GetServicePrograms(ctx, h, params)
 }
 
 func (h *Handler) GetServiceStream(ctx context.Context, params apigen.GetServiceStreamParams) (apigen.GetServiceStreamRes, error) {

@@ -17,6 +17,8 @@ type StreamManager struct {
 	channels           config.ChannelsConfig
 	descramblerFactory DescramblerFactory
 	filter             ServiceFilter
+	eitCollector       EITCollector
+	eitUpdater         EITSectionUpdater
 	scanner            ServiceScanner
 	sessions           map[sessionKey]*ChannelSession
 	sessionGroups      map[sessionKey]string
@@ -27,6 +29,8 @@ type StreamManagerConfig struct {
 	Channels           config.ChannelsConfig
 	DescramblerFactory DescramblerFactory
 	Filter             ServiceFilter
+	EITCollector       EITCollector
+	EITUpdater         EITSectionUpdater
 	Scanner            ServiceScanner
 	TunerManager       TunerManager
 }
@@ -45,6 +49,10 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 	if scanner == nil {
 		scanner = processor.NewServiceScanner()
 	}
+	eitCollector := cfg.EITCollector
+	if eitCollector == nil {
+		eitCollector = processor.NewEITCollector()
+	}
 	descramblerFactory := cfg.DescramblerFactory
 	if descramblerFactory == nil {
 		descramblerFactory = NewCommandDescrambler
@@ -52,6 +60,8 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 	return &StreamManager{
 		channels:           cfg.Channels,
 		descramblerFactory: descramblerFactory,
+		eitCollector:       eitCollector,
+		eitUpdater:         cfg.EITUpdater,
 		filter:             serviceFilter,
 		scanner:            scanner,
 		sessions:           map[sessionKey]*ChannelSession{},
@@ -100,6 +110,8 @@ func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel st
 		ChannelConfig: channelConfig,
 		Descrambler:   descrambler,
 		Device:        device,
+		EITCollector:  m.eitCollector,
+		EITUpdater:    m.eitUpdater,
 		Filter:        m.filter,
 		OnStop:        func() { m.remove(key) },
 		Scanner:       m.scanner,
@@ -190,4 +202,13 @@ type ServiceFilter interface {
 
 type ServiceScanner interface {
 	ScanServices(context.Context, io.Reader, io.Writer) error
+}
+
+type EITCollector interface {
+	CollectEITS(context.Context, io.Reader, io.Writer) error
+	CollectEITPF(context.Context, io.Reader, io.Writer) error
+}
+
+type EITSectionUpdater interface {
+	UpsertEITSectionJSON([]byte) error
 }

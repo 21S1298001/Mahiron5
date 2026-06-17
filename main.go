@@ -11,6 +11,7 @@ import (
 
 	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/job"
+	"github.com/21S1298001/Mahiron5/program"
 	"github.com/21S1298001/Mahiron5/server"
 	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/stream"
@@ -47,8 +48,11 @@ func main() {
 		Channels: cfg.Channels,
 	})
 
+	pm := program.NewProgramManager(nil)
+
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:     cfg.Channels,
+		EITUpdater:   pm,
 		TunerManager: tm,
 	})
 
@@ -59,7 +63,7 @@ func main() {
 	}
 
 	job.RegisterServiceUpdater(jm, sm, stm, tm, cfg.Channels)
-	job.RegisterEPGGatherer(jm)
+	job.RegisterEPGGatherer(jm, pm, stm, tm, cfg.Channels)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {
@@ -78,6 +82,7 @@ func main() {
 
 	handler, err := web.NewWeb(web.WebConfig{
 		ServiceManager: sm,
+		ProgramManager: pm,
 		StreamManager:  stm,
 		TunerManager:   tm,
 		JobManager:     jm,

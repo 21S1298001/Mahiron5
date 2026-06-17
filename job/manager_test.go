@@ -299,19 +299,27 @@ func TestAddScheduleUnknownKey(t *testing.T) {
 func TestMaxHistory(t *testing.T) {
 	mgr := newTestManager(t)
 
+	done := make(chan struct{}, 15)
+	mgr.Register(JobDefinition{
+		Key:  "history-job",
+		Name: "History Job",
+		Handler: func(ctx context.Context) error {
+			done <- struct{}{}
+			return nil
+		},
+		IsRerunnable: true,
+	})
+
 	for i := 0; i < 15; i++ {
-		done := make(chan struct{})
-		mgr.Register(JobDefinition{
-			Key:  "history-job",
-			Name: "History Job",
-			Handler: func(ctx context.Context) error {
-				close(done)
-				return nil
-			},
-			IsRerunnable: true,
-		})
-		_, _ = mgr.Enqueue("history-job")
-		<-done
+		if _, err := mgr.Enqueue("history-job"); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("history job did not complete")
+		}
+		waitJobIdle(t, mgr, "history-job")
 	}
 
 	time.Sleep(50 * time.Millisecond)
@@ -319,6 +327,26 @@ func TestMaxHistory(t *testing.T) {
 	jobs := mgr.GetJobs()
 	if len(jobs) > 10 {
 		t.Errorf("expected at most 10 jobs in history, got %d", len(jobs))
+	}
+}
+
+func waitJobIdle(t *testing.T, mgr *JobManager, key string) {
+	t.Helper()
+	deadline := time.After(time.Second)
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		mgr.mu.Lock()
+		active := mgr.activeKeys[key]
+		mgr.mu.Unlock()
+		if !active {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("job %q did not become idle", key)
+		case <-ticker.C:
+		}
 	}
 }
 

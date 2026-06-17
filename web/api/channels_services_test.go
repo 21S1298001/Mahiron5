@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/config"
+	"github.com/21S1298001/Mahiron5/program"
 	"github.com/21S1298001/Mahiron5/service"
 	apigen "github.com/21S1298001/Mahiron5/web/api/gen"
 )
@@ -13,6 +14,7 @@ func testListHandler() *Handler {
 	no := false
 	yes := true
 	return NewHandler(HandlerConfig{
+		ProgramManager: program.NewProgramManager(nil),
 		ServiceManager: service.NewServiceManager(&service.ServiceManagerConfig{
 			Channels: config.ChannelsConfig{
 				{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},

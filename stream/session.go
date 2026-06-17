@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -20,6 +21,9 @@ type ChannelSession struct {
 	descrambler   Descrambler
 	device        TunerDevice
 	done          <-chan struct{}
+	eitCollector  EITCollector
+	eitPFStarted  bool
+	eitUpdater    EITSectionUpdater
 	filter        ServiceFilter
 	hub           *util.DynamicMultiWriter
 	mu            sync.Mutex
@@ -37,6 +41,8 @@ type ChannelSessionConfig struct {
 	ChannelConfig *config.ChannelConfig
 	Descrambler   Descrambler
 	Device        TunerDevice
+	EITCollector  EITCollector
+	EITUpdater    EITSectionUpdater
 	Filter        ServiceFilter
 	OnStop        func()
 	Scanner       ServiceScanner
@@ -49,6 +55,8 @@ func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
 		channelConfig: config.ChannelConfig,
 		descrambler:   config.Descrambler,
 		device:        config.Device,
+		eitCollector:  config.EITCollector,
+		eitUpdater:    config.EITUpdater,
 		filter:        config.Filter,
 		hub:           util.NewDynamicMultiWriter(),
 		onStop:        config.OnStop,
@@ -120,6 +128,20 @@ func (s *ChannelSession) ScanServices(ctx context.Context, dst io.Writer) error 
 		}
 		return scanErr
 	}
+}
+
+func (s *ChannelSession) CollectEITS(ctx context.Context, dst io.Writer) error {
+	if s.eitCollector == nil {
+		return errors.New("EIT collector not configured")
+	}
+	return s.collectEIT(ctx, dst, s.eitCollector.CollectEITS)
+}
+
+func (s *ChannelSession) CollectEITPF(ctx context.Context, dst io.Writer) error {
+	if s.eitCollector == nil {
+		return errors.New("EIT collector not configured")
+	}
+	return s.collectEIT(ctx, dst, s.eitCollector.CollectEITPF)
 }
 
 func (s *ChannelSession) Stop(ctx context.Context) error {
@@ -286,5 +308,80 @@ func (s *ChannelSession) startLocked() error {
 	s.done = s.device.Done()
 
 	s.started = true
+	s.startEITPFLocked()
 	return nil
+}
+
+func (s *ChannelSession) collectEIT(ctx context.Context, dst io.Writer, collect func(context.Context, io.Reader, io.Writer) error) error {
+	r, w := io.Pipe()
+	collectorCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- collect(collectorCtx, r, dst)
+	}()
+
+	if err := s.attachRaw(w); err != nil {
+		_ = r.Close()
+		_ = w.Close()
+		cancel()
+		<-waitCh
+		return err
+	}
+	defer s.detachRaw(w)
+
+	select {
+	case err := <-waitCh:
+		_ = w.Close()
+		cancel()
+		return err
+	case <-ctx.Done():
+		_ = w.Close()
+		cancel()
+		return <-waitCh
+	case <-s.done:
+		_ = w.Close()
+		cancel()
+		collectErr := <-waitCh
+		if err := s.device.Err(); err != nil && !util.IsExpectedStreamCloseError(err) {
+			return err
+		}
+		return collectErr
+	}
+}
+
+func (s *ChannelSession) startEITPFLocked() {
+	if s.eitPFStarted || s.eitCollector == nil || s.eitUpdater == nil {
+		return
+	}
+	s.eitPFStarted = true
+
+	r, w := io.Pipe()
+	s.hub.Attach(w)
+	ctx := s.ctx
+	go func() {
+		defer s.hub.Detach(w)
+		defer r.Close()
+		defer w.Close()
+
+		pr, pw := io.Pipe()
+		done := make(chan error, 1)
+		go func() {
+			done <- s.eitCollector.CollectEITPF(ctx, r, pw)
+			_ = pw.Close()
+		}()
+
+		scanner := bufio.NewScanner(pr)
+		scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+		for scanner.Scan() {
+			if err := s.eitUpdater.UpsertEITSectionJSON(scanner.Bytes()); err != nil {
+				slog.Error("failed to update EITPF", "type", s.typ, "channel", s.channel, "err", err)
+			}
+		}
+		_ = pr.Close()
+		if err := <-done; err != nil && ctx.Err() == nil && !util.IsExpectedStreamCloseError(err) {
+			slog.Error("failed to collect EITPF", "type", s.typ, "channel", s.channel, "err", err)
+		}
+	}()
 }
