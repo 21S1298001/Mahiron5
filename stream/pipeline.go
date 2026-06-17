@@ -163,7 +163,7 @@ func (p *streamPipeline) startLocked() error {
 
 func (p *streamPipeline) run(ctx context.Context) {
 	err := p.runProcesses(ctx)
-	if errors.Is(err, io.ErrClosedPipe) {
+	if util.IsExpectedStreamCloseError(err) {
 		err = nil
 	}
 	p.close(err)
@@ -235,7 +235,7 @@ func (p *streamPipeline) runProcesses(ctx context.Context) error {
 
 	var result error
 	for range len(p.processors) + 1 {
-		if err := <-errCh; err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		if err := <-errCh; err != nil && !util.IsExpectedStreamCloseError(err) {
 			result = errors.Join(result, err)
 		}
 	}

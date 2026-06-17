@@ -3,6 +3,7 @@ package util
 import (
 	"errors"
 	"io"
+	"os"
 	"slices"
 	"sync"
 )
@@ -16,6 +17,10 @@ func NewDynamicMultiWriter(writers ...io.Writer) *DynamicMultiWriter {
 	return &DynamicMultiWriter{
 		writers: writers,
 	}
+}
+
+func IsExpectedStreamCloseError(err error) bool {
+	return errors.Is(err, io.ErrClosedPipe) || errors.Is(err, os.ErrClosed)
 }
 
 func (d *DynamicMultiWriter) Attach(writer io.Writer) {
@@ -67,7 +72,7 @@ func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 	var result error
 	for _, w := range d.writers {
 		written, err := w.Write(p)
-		if errors.Is(err, io.ErrClosedPipe) {
+		if IsExpectedStreamCloseError(err) {
 			closed = append(closed, w)
 			continue
 		}

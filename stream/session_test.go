@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -338,6 +340,36 @@ func TestPipelineConvertsProcessorPanicToError(t *testing.T) {
 	}
 }
 
+func TestDetachRawDoesNotLogExpectedClosedFileStopError(t *testing.T) {
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	done := make(chan struct{})
+	close(done)
+	session := NewChannelSession(ChannelSessionConfig{
+		Channel: "27",
+		Type:    "GR",
+		Device: fakeStopErrorDevice{
+			done:    done,
+			stopErr: &os.PathError{Op: "read", Path: "|0", Err: os.ErrClosed},
+		},
+	})
+
+	var dst bytes.Buffer
+	if err := session.attachRaw(&dst); err != nil {
+		t.Fatal(err)
+	}
+	session.detachRaw(&dst)
+
+	if strings.Contains(logs.String(), "failed to stop channel session") {
+		t.Fatalf("unexpected stop error log: %s", logs.String())
+	}
+}
+
 type fakeTunerDeviceRecorder struct {
 	mu      sync.Mutex
 	devices []*fakeTunerDevice
@@ -527,6 +559,27 @@ type panicProcessor struct{}
 
 func (panicProcessor) Run(context.Context, io.Reader, io.Writer) error {
 	panic("boom")
+}
+
+type fakeStopErrorDevice struct {
+	done    <-chan struct{}
+	stopErr error
+}
+
+func (d fakeStopErrorDevice) Start(context.Context, io.Writer) error {
+	return nil
+}
+
+func (d fakeStopErrorDevice) Stop(context.Context) error {
+	return d.stopErr
+}
+
+func (d fakeStopErrorDevice) Done() <-chan struct{} {
+	return d.done
+}
+
+func (d fakeStopErrorDevice) Err() error {
+	return nil
 }
 
 type fakeDescramblerRecorder struct {

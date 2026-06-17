@@ -95,7 +95,7 @@ func (d *TunerDevice) Stop(ctx context.Context) error {
 	if done != nil {
 		select {
 		case <-done:
-			if err := d.Err(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+			if err := d.Err(); err != nil && !util.IsExpectedStreamCloseError(err) {
 				result = errors.Join(result, err)
 			}
 		case <-ctx.Done():
@@ -139,7 +139,7 @@ func replaceCommandTemplate(template string, channel *config.ChannelConfig) stri
 
 func (d *TunerDevice) copyRaw(src io.Reader, dst io.Writer) {
 	_, err := io.Copy(dst, src)
-	if err == nil || errors.Is(err, io.ErrClosedPipe) {
+	if err == nil || util.IsExpectedStreamCloseError(err) {
 		d.finish(nil)
 		return
 	}

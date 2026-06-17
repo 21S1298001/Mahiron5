@@ -115,7 +115,7 @@ func (s *ChannelSession) ScanServices(ctx context.Context, dst io.Writer) error 
 		_ = w.Close()
 		cancel()
 		scanErr := <-waitCh
-		if err := s.device.Err(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		if err := s.device.Err(); err != nil && !util.IsExpectedStreamCloseError(err) {
 			return err
 		}
 		return scanErr
@@ -226,7 +226,7 @@ func (s *ChannelSession) waitRaw(ctx context.Context) error {
 		return nil
 	case <-s.done:
 		err := s.device.Err()
-		if errors.Is(err, io.ErrClosedPipe) {
+		if util.IsExpectedStreamCloseError(err) {
 			return nil
 		}
 		return err
@@ -263,6 +263,9 @@ func (s *ChannelSession) detachRaw(dst io.Writer) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := s.Stop(ctx); err != nil {
+			if util.IsExpectedStreamCloseError(err) {
+				return
+			}
 			slog.Error("failed to stop channel session", "type", s.typ, "channel", s.channel, "err", err)
 		}
 	}
