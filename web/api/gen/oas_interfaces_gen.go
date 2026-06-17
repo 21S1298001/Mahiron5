@@ -5,10 +5,6 @@ type AbortJobRes interface {
 	abortJobRes()
 }
 
-type ChannelScanRes interface {
-	channelScanRes()
-}
-
 type ChannelsTypeChannelServicesIDStreamHeadRes interface {
 	channelsTypeChannelServicesIDStreamHeadRes()
 }
@@ -35,10 +31,6 @@ type GetChannelStreamRes interface {
 
 type GetChannelsByTypeRes interface {
 	getChannelsByTypeRes()
-}
-
-type GetChannelsConfigRes interface {
-	getChannelsConfigRes()
 }
 
 type GetChannelsRes interface {
@@ -85,10 +77,6 @@ type GetProgramsRes interface {
 	getProgramsRes()
 }
 
-type GetServerConfigRes interface {
-	getServerConfigRes()
-}
-
 type GetServiceByChannelRes interface {
 	getServiceByChannelRes()
 }
@@ -129,10 +117,6 @@ type GetTunerRes interface {
 	getTunerRes()
 }
 
-type GetTunersConfigRes interface {
-	getTunersConfigRes()
-}
-
 type GetTunersRes interface {
 	getTunersRes()
 }
@@ -169,30 +153,10 @@ type RerunJobRes interface {
 	rerunJobRes()
 }
 
-type RestartRes interface {
-	restartRes()
-}
-
 type RunJobScheduleRes interface {
 	runJobScheduleRes()
 }
 
 type ServicesIDStreamHeadRes interface {
 	servicesIDStreamHeadRes()
-}
-
-type StopChannelScanRes interface {
-	stopChannelScanRes()
-}
-
-type UpdateChannelsConfigRes interface {
-	updateChannelsConfigRes()
-}
-
-type UpdateServerConfigRes interface {
-	updateServerConfigRes()
-}
-
-type UpdateTunersConfigRes interface {
-	updateTunersConfigRes()
 }

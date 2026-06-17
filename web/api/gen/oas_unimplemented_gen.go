@@ -22,15 +22,6 @@ func (UnimplementedHandler) AbortJob(ctx context.Context, params AbortJobParams)
 	return r, ht.ErrNotImplemented
 }
 
-// ChannelScan implements channelScan operation.
-//
-// Channel Scan.
-//
-// PUT /config/channels/scan
-func (UnimplementedHandler) ChannelScan(ctx context.Context, params ChannelScanParams) (r ChannelScanRes, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
 // ChannelsTypeChannelServicesIDStreamHead implements HEAD /channels/{type}/{channel}/services/{id}/stream operation.
 //
 // HEAD /channels/{type}/{channel}/services/{id}/stream
@@ -66,15 +57,6 @@ func (UnimplementedHandler) GetChannel(ctx context.Context, params GetChannelPar
 	return r, ht.ErrNotImplemented
 }
 
-// GetChannelScanStatus implements getChannelScanStatus operation.
-//
-// Returns the current or last completed scan status and results.
-//
-// GET /config/channels/scan
-func (UnimplementedHandler) GetChannelScanStatus(ctx context.Context) (r *ChannelScanStatus, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
 // GetChannelStream implements getChannelStream operation.
 //
 // GET /channels/{type}/{channel}/stream
@@ -93,13 +75,6 @@ func (UnimplementedHandler) GetChannels(ctx context.Context, params GetChannelsP
 //
 // GET /channels/{type}
 func (UnimplementedHandler) GetChannelsByType(ctx context.Context, params GetChannelsByTypeParams) (r GetChannelsByTypeRes, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
-// GetChannelsConfig implements getChannelsConfig operation.
-//
-// GET /config/channels
-func (UnimplementedHandler) GetChannelsConfig(ctx context.Context) (r GetChannelsConfigRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -170,13 +145,6 @@ func (UnimplementedHandler) GetProgramStream(ctx context.Context, params GetProg
 //
 // GET /programs
 func (UnimplementedHandler) GetPrograms(ctx context.Context, params GetProgramsParams) (r GetProgramsRes, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
-// GetServerConfig implements getServerConfig operation.
-//
-// GET /config/server
-func (UnimplementedHandler) GetServerConfig(ctx context.Context) (r GetServerConfigRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
 
@@ -261,13 +229,6 @@ func (UnimplementedHandler) GetTuners(ctx context.Context) (r GetTunersRes, _ er
 	return r, ht.ErrNotImplemented
 }
 
-// GetTunersConfig implements getTunersConfig operation.
-//
-// GET /config/tuners
-func (UnimplementedHandler) GetTunersConfig(ctx context.Context) (r GetTunersConfigRes, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
 // IptvDiscoverJSONGet implements GET /iptv/discover.json operation.
 //
 // IPTV - Media Server Support.
@@ -338,15 +299,6 @@ func (UnimplementedHandler) RerunJob(ctx context.Context, params RerunJobParams)
 	return r, ht.ErrNotImplemented
 }
 
-// Restart implements restart operation.
-//
-// Restart Mirakurun.
-//
-// PUT /restart
-func (UnimplementedHandler) Restart(ctx context.Context) (r RestartRes, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
 // RunJobSchedule implements runJobSchedule operation.
 //
 // Request to run a job schedule.
@@ -360,35 +312,5 @@ func (UnimplementedHandler) RunJobSchedule(ctx context.Context, params RunJobSch
 //
 // HEAD /services/{id}/stream
 func (UnimplementedHandler) ServicesIDStreamHead(ctx context.Context, params ServicesIDStreamHeadParams) (r ServicesIDStreamHeadRes, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
-// StopChannelScan implements stopChannelScan operation.
-//
-// Stops a currently running channel scan operation.
-//
-// DELETE /config/channels/scan
-func (UnimplementedHandler) StopChannelScan(ctx context.Context) (r StopChannelScanRes, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
-// UpdateChannelsConfig implements updateChannelsConfig operation.
-//
-// PUT /config/channels
-func (UnimplementedHandler) UpdateChannelsConfig(ctx context.Context, req ConfigChannels) (r UpdateChannelsConfigRes, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
-// UpdateServerConfig implements updateServerConfig operation.
-//
-// PUT /config/server
-func (UnimplementedHandler) UpdateServerConfig(ctx context.Context, req OptConfigServer) (r UpdateServerConfigRes, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
-// UpdateTunersConfig implements updateTunersConfig operation.
-//
-// PUT /config/tuners
-func (UnimplementedHandler) UpdateTunersConfig(ctx context.Context, req ConfigTuners) (r UpdateTunersConfigRes, _ error) {
 	return r, ht.ErrNotImplemented
 }
