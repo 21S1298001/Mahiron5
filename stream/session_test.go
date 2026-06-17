@@ -167,6 +167,49 @@ func TestServiceStreamAndScanShareRunningSession(t *testing.T) {
 	}
 }
 
+func TestScanServicesReturnsWhenScannerCompletesBeforeLiveTuner(t *testing.T) {
+	device := &fakeLiveTunerDevice{}
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{
+				Name:    "NHK",
+				Type:    "GR",
+				Channel: "27",
+			},
+		},
+		Scanner: fakeShortScanner{},
+		TunerManager: fakeLiveTunerManager{
+			device: device,
+		},
+	})
+	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	var out bytes.Buffer
+	go func() {
+		done <- session.ScanServices(context.Background(), &out)
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("ScanServices did not return after scanner completed")
+	}
+
+	if got, want := out.String(), "scanned:ts"; got != want {
+		t.Fatalf("scan output = %q, want %q", got, want)
+	}
+	if got := device.startCount(); got != 1 {
+		t.Fatalf("tuner device starts = %d, want 1", got)
+	}
+}
+
 func TestDecodePipelinesShareOneTunerDevice(t *testing.T) {
 	devices := &fakeTunerDeviceRecorder{}
 	descramblers := &fakeDescramblerRecorder{}
@@ -395,6 +438,89 @@ type fakeScanner struct{}
 func (fakeScanner) ScanServices(_ context.Context, src io.Reader, dst io.Writer) error {
 	_, err := io.Copy(dst, src)
 	return err
+}
+
+type fakeShortScanner struct{}
+
+func (fakeShortScanner) ScanServices(_ context.Context, src io.Reader, dst io.Writer) error {
+	buf := make([]byte, 2)
+	if _, err := io.ReadFull(src, buf); err != nil {
+		return err
+	}
+	_, err := dst.Write([]byte("scanned:" + string(buf)))
+	return err
+}
+
+type fakeLiveTunerManager struct {
+	device *fakeLiveTunerDevice
+}
+
+func (m fakeLiveTunerManager) NewDeviceByGroup(string, *config.ChannelConfig) (tuner.Device, error) {
+	return m.device, nil
+}
+
+type fakeLiveTunerDevice struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	err    error
+	mu     sync.Mutex
+	starts int
+}
+
+func (d *fakeLiveTunerDevice) Start(ctx context.Context, dst io.Writer) error {
+	d.mu.Lock()
+	d.starts++
+	deviceCtx, cancel := context.WithCancel(ctx)
+	d.cancel = cancel
+	d.done = make(chan struct{})
+	d.mu.Unlock()
+
+	go func() {
+		defer close(d.done)
+		for {
+			select {
+			case <-deviceCtx.Done():
+				return
+			default:
+			}
+			if _, err := dst.Write([]byte("ts")); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+				d.mu.Lock()
+				d.err = err
+				d.mu.Unlock()
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	return nil
+}
+
+func (d *fakeLiveTunerDevice) Stop(context.Context) error {
+	d.mu.Lock()
+	cancel := d.cancel
+	d.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	return nil
+}
+
+func (d *fakeLiveTunerDevice) Done() <-chan struct{} {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.done
+}
+
+func (d *fakeLiveTunerDevice) Err() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.err
+}
+
+func (d *fakeLiveTunerDevice) startCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.starts
 }
 
 type panicProcessor struct{}

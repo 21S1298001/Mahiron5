@@ -93,17 +93,33 @@ func (s *ChannelSession) ScanServices(ctx context.Context, dst io.Writer) error 
 		waitCh <- s.scanner.ScanServices(scannerCtx, r, dst)
 	}()
 
-	if err := s.subscribeRaw(scannerCtx, w); err != nil {
+	if err := s.attachRaw(w); err != nil {
 		_ = r.Close()
 		_ = w.Close()
 		cancel()
 		<-waitCh
 		return err
 	}
+	defer s.detachRaw(w)
 
-	_ = w.Close()
-	cancel()
-	return <-waitCh
+	select {
+	case err := <-waitCh:
+		_ = w.Close()
+		cancel()
+		return err
+	case <-ctx.Done():
+		_ = w.Close()
+		cancel()
+		return <-waitCh
+	case <-s.done:
+		_ = w.Close()
+		cancel()
+		scanErr := <-waitCh
+		if err := s.device.Err(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+			return err
+		}
+		return scanErr
+	}
 }
 
 func (s *ChannelSession) Stop(ctx context.Context) error {
