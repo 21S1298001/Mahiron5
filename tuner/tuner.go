@@ -45,10 +45,9 @@ func (t *Tuner) DecoderCommand() string {
 	return t.config.Decoder
 }
 
-func (t *Tuner) NewDevice(channel *config.ChannelConfig) *TunerDevice {
+func (t *Tuner) NewDevice(channel *config.ChannelConfig) Device {
 	return NewTunerDevice(TunerDeviceConfig{
-		Channel:        channel,
-		Command:        t.config.Command,
-		DecoderCommand: t.config.Decoder,
+		Channel: channel,
+		Command: t.config.Command,
 	})
 }

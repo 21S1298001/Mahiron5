@@ -2,6 +2,7 @@ package tuner
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/21S1298001/Mahiron5/config"
@@ -48,6 +49,25 @@ func (tm *TunerManager) GetTunerByGroup(group string) *Tuner {
 	return nil
 }
 
+func (tm *TunerManager) NewDeviceByGroup(group string, channel *config.ChannelConfig) (Device, error) {
+	tuner := tm.GetTunerByGroup(group)
+	if tuner == nil {
+		return nil, ErrTunerNotFound
+	}
+	if tuner.Command() == "" {
+		return nil, ErrUnsupportedTuner
+	}
+	return tuner.NewDevice(channel), nil
+}
+
+func (tm *TunerManager) DecoderCommandByGroup(group string) string {
+	tuner := tm.GetTunerByGroup(group)
+	if tuner == nil {
+		return ""
+	}
+	return tuner.DecoderCommand()
+}
+
 func (tm *TunerManager) CountTunersByGroup() map[string]int {
 	counts := make(map[string]int)
 	for _, tuner := range tm.tuners {
@@ -57,3 +77,8 @@ func (tm *TunerManager) CountTunersByGroup() map[string]int {
 	}
 	return counts
 }
+
+var (
+	ErrTunerNotFound    = errors.New("tuner not found")
+	ErrUnsupportedTuner = errors.New("unsupported tuner")
+)

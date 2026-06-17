@@ -31,7 +31,7 @@ func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceS
 	fo, fi := io.Pipe()
 	go func() {
 		defer fi.Close()
-		if err := session.ServiceStream(ctx, service.ServiceId, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		if err := session.ServiceStream(ctx, service.ServiceId, shouldDecode(params.Decode), fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 			slog.Error("failed to stream service", "service", service.Id, "err", err)
 		}
 	}()

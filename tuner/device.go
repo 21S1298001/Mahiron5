@@ -15,28 +15,31 @@ import (
 
 var newProcess = util.NewProcess
 
+type Device interface {
+	Start(context.Context, io.Writer) error
+	Stop(context.Context) error
+	Done() <-chan struct{}
+	Err() error
+}
+
 type TunerDeviceConfig struct {
-	Channel        *config.ChannelConfig
-	Command        string
-	DecoderCommand string
+	Channel *config.ChannelConfig
+	Command string
 }
 
 type TunerDevice struct {
-	channel        *config.ChannelConfig
-	command        string
-	decoderCommand string
-	decoder        *util.Process
-	done           chan struct{}
-	err            error
-	mu             sync.Mutex
-	tunerProcess   *util.Process
+	channel      *config.ChannelConfig
+	command      string
+	done         chan struct{}
+	err          error
+	mu           sync.Mutex
+	tunerProcess *util.Process
 }
 
 func NewTunerDevice(config TunerDeviceConfig) *TunerDevice {
 	return &TunerDevice{
-		channel:        config.Channel,
-		command:        config.Command,
-		decoderCommand: config.DecoderCommand,
+		channel: config.Channel,
+		command: config.Command,
 	}
 }
 
@@ -53,33 +56,6 @@ func (d *TunerDevice) Start(ctx context.Context, dst io.Writer) error {
 		d.done = nil
 		d.mu.Unlock()
 		return err
-	}
-
-	if d.decoderCommand != "" {
-		d.decoder = newProcess(d.decoderCommand)
-		d.decoder.Stdin(tunerOut)
-		d.decoder.Stdout(dst)
-		if err := d.decoder.Start(); err != nil {
-			d.done = nil
-			d.decoder = nil
-			d.mu.Unlock()
-			return err
-		}
-		if err := d.tunerProcess.Start(); err != nil {
-			decoder := d.decoder
-			d.done = nil
-			d.decoder = nil
-			d.tunerProcess = nil
-			d.mu.Unlock()
-			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = decoder.Stop(stopCtx)
-			return err
-		}
-		d.mu.Unlock()
-		go d.waitDecoded()
-		go d.stopOnContext(ctx)
-		return nil
 	}
 
 	if err := d.tunerProcess.Start(); err != nil {
@@ -109,16 +85,12 @@ func (d *TunerDevice) Err() error {
 func (d *TunerDevice) Stop(ctx context.Context) error {
 	d.mu.Lock()
 	tunerProcess := d.tunerProcess
-	decoder := d.decoder
 	done := d.done
 	d.mu.Unlock()
 
 	var result error
 	if tunerProcess != nil {
 		result = errors.Join(result, tunerProcess.Stop(ctx))
-	}
-	if decoder != nil {
-		result = errors.Join(result, decoder.Stop(ctx))
 	}
 	if done != nil {
 		select {
@@ -167,18 +139,6 @@ func replaceCommandTemplate(template string, channel *config.ChannelConfig) stri
 
 func (d *TunerDevice) copyRaw(src io.Reader, dst io.Writer) {
 	_, err := io.Copy(dst, src)
-	if err == nil || errors.Is(err, io.ErrClosedPipe) {
-		d.finish(nil)
-		return
-	}
-	d.finish(err)
-}
-
-func (d *TunerDevice) waitDecoded() {
-	err := d.decoder.Wait()
-	if err == nil {
-		err = d.tunerProcess.Wait()
-	}
 	if err == nil || errors.Is(err, io.ErrClosedPipe) {
 		d.finish(nil)
 		return
