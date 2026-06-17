@@ -75,6 +75,509 @@ func (s *Channel) SetServices(val []Service) {
 
 func (*Channel) getChannelRes() {}
 
+type ChannelScanAccepted struct {
+	Status  OptChannelScanAcceptedStatus `json:"status"`
+	Message OptString                    `json:"message"`
+}
+
+// GetStatus returns the value of Status.
+func (s *ChannelScanAccepted) GetStatus() OptChannelScanAcceptedStatus {
+	return s.Status
+}
+
+// GetMessage returns the value of Message.
+func (s *ChannelScanAccepted) GetMessage() OptString {
+	return s.Message
+}
+
+// SetStatus sets the value of Status.
+func (s *ChannelScanAccepted) SetStatus(val OptChannelScanAcceptedStatus) {
+	s.Status = val
+}
+
+// SetMessage sets the value of Message.
+func (s *ChannelScanAccepted) SetMessage(val OptString) {
+	s.Message = val
+}
+
+func (*ChannelScanAccepted) channelScanRes() {}
+
+type ChannelScanAcceptedStatus string
+
+const (
+	ChannelScanAcceptedStatusAccepted ChannelScanAcceptedStatus = "accepted"
+)
+
+// AllValues returns all ChannelScanAcceptedStatus values.
+func (ChannelScanAcceptedStatus) AllValues() []ChannelScanAcceptedStatus {
+	return []ChannelScanAcceptedStatus{
+		ChannelScanAcceptedStatusAccepted,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ChannelScanAcceptedStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case ChannelScanAcceptedStatusAccepted:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ChannelScanAcceptedStatus) UnmarshalText(data []byte) error {
+	switch ChannelScanAcceptedStatus(data) {
+	case ChannelScanAcceptedStatusAccepted:
+		*s = ChannelScanAcceptedStatusAccepted
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type ChannelScanBadRequest Error
+
+func (*ChannelScanBadRequest) channelScanRes() {}
+
+type ChannelScanConflict Error
+
+func (*ChannelScanConflict) channelScanRes() {}
+
+type ChannelScanOK struct {
+	Data io.Reader
+}
+
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s ChannelScanOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*ChannelScanOK) channelScanRes() {}
+
+type ChannelScanScanMode string
+
+const (
+	ChannelScanScanModeChannel ChannelScanScanMode = "Channel"
+	ChannelScanScanModeService ChannelScanScanMode = "Service"
+)
+
+// AllValues returns all ChannelScanScanMode values.
+func (ChannelScanScanMode) AllValues() []ChannelScanScanMode {
+	return []ChannelScanScanMode{
+		ChannelScanScanModeChannel,
+		ChannelScanScanModeService,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ChannelScanScanMode) MarshalText() ([]byte, error) {
+	switch s {
+	case ChannelScanScanModeChannel:
+		return []byte(s), nil
+	case ChannelScanScanModeService:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ChannelScanScanMode) UnmarshalText(data []byte) error {
+	switch ChannelScanScanMode(data) {
+	case ChannelScanScanModeChannel:
+		*s = ChannelScanScanModeChannel
+		return nil
+	case ChannelScanScanModeService:
+		*s = ChannelScanScanModeService
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Current status of a channel scan operation.
+// Ref: #/components/schemas/ChannelScanStatus
+type ChannelScanStatus struct {
+	// Current scan status.
+	Status OptChannelScanStatusStatus `json:"status"`
+	// Whether a scan is currently in progress.
+	IsScanning OptBool `json:"isScanning"`
+	// Channel type being scanned.
+	Type OptChannelType `json:"type"`
+	// Whether this is a dry run (no changes will be saved).
+	DryRun OptBool `json:"dryRun"`
+	// Scan progress percentage (0-100).
+	Progress OptInt `json:"progress"`
+	// Channel currently being scanned.
+	CurrentChannel OptString `json:"currentChannel"`
+	// Log of scan events.
+	ScanLog []string `json:"scanLog"`
+	// Number of new channels found.
+	NewCount OptInt `json:"newCount"`
+	// Number of existing channels merged.
+	TakeoverCount OptInt `json:"takeoverCount"`
+	// Complete channel configuration.
+	Result     []ConfigChannelsItem `json:"result"`
+	StartTime  OptUnixtimeMS        `json:"startTime"`
+	UpdateTime OptUnixtimeMS        `json:"updateTime"`
+}
+
+// GetStatus returns the value of Status.
+func (s *ChannelScanStatus) GetStatus() OptChannelScanStatusStatus {
+	return s.Status
+}
+
+// GetIsScanning returns the value of IsScanning.
+func (s *ChannelScanStatus) GetIsScanning() OptBool {
+	return s.IsScanning
+}
+
+// GetType returns the value of Type.
+func (s *ChannelScanStatus) GetType() OptChannelType {
+	return s.Type
+}
+
+// GetDryRun returns the value of DryRun.
+func (s *ChannelScanStatus) GetDryRun() OptBool {
+	return s.DryRun
+}
+
+// GetProgress returns the value of Progress.
+func (s *ChannelScanStatus) GetProgress() OptInt {
+	return s.Progress
+}
+
+// GetCurrentChannel returns the value of CurrentChannel.
+func (s *ChannelScanStatus) GetCurrentChannel() OptString {
+	return s.CurrentChannel
+}
+
+// GetScanLog returns the value of ScanLog.
+func (s *ChannelScanStatus) GetScanLog() []string {
+	return s.ScanLog
+}
+
+// GetNewCount returns the value of NewCount.
+func (s *ChannelScanStatus) GetNewCount() OptInt {
+	return s.NewCount
+}
+
+// GetTakeoverCount returns the value of TakeoverCount.
+func (s *ChannelScanStatus) GetTakeoverCount() OptInt {
+	return s.TakeoverCount
+}
+
+// GetResult returns the value of Result.
+func (s *ChannelScanStatus) GetResult() []ConfigChannelsItem {
+	return s.Result
+}
+
+// GetStartTime returns the value of StartTime.
+func (s *ChannelScanStatus) GetStartTime() OptUnixtimeMS {
+	return s.StartTime
+}
+
+// GetUpdateTime returns the value of UpdateTime.
+func (s *ChannelScanStatus) GetUpdateTime() OptUnixtimeMS {
+	return s.UpdateTime
+}
+
+// SetStatus sets the value of Status.
+func (s *ChannelScanStatus) SetStatus(val OptChannelScanStatusStatus) {
+	s.Status = val
+}
+
+// SetIsScanning sets the value of IsScanning.
+func (s *ChannelScanStatus) SetIsScanning(val OptBool) {
+	s.IsScanning = val
+}
+
+// SetType sets the value of Type.
+func (s *ChannelScanStatus) SetType(val OptChannelType) {
+	s.Type = val
+}
+
+// SetDryRun sets the value of DryRun.
+func (s *ChannelScanStatus) SetDryRun(val OptBool) {
+	s.DryRun = val
+}
+
+// SetProgress sets the value of Progress.
+func (s *ChannelScanStatus) SetProgress(val OptInt) {
+	s.Progress = val
+}
+
+// SetCurrentChannel sets the value of CurrentChannel.
+func (s *ChannelScanStatus) SetCurrentChannel(val OptString) {
+	s.CurrentChannel = val
+}
+
+// SetScanLog sets the value of ScanLog.
+func (s *ChannelScanStatus) SetScanLog(val []string) {
+	s.ScanLog = val
+}
+
+// SetNewCount sets the value of NewCount.
+func (s *ChannelScanStatus) SetNewCount(val OptInt) {
+	s.NewCount = val
+}
+
+// SetTakeoverCount sets the value of TakeoverCount.
+func (s *ChannelScanStatus) SetTakeoverCount(val OptInt) {
+	s.TakeoverCount = val
+}
+
+// SetResult sets the value of Result.
+func (s *ChannelScanStatus) SetResult(val []ConfigChannelsItem) {
+	s.Result = val
+}
+
+// SetStartTime sets the value of StartTime.
+func (s *ChannelScanStatus) SetStartTime(val OptUnixtimeMS) {
+	s.StartTime = val
+}
+
+// SetUpdateTime sets the value of UpdateTime.
+func (s *ChannelScanStatus) SetUpdateTime(val OptUnixtimeMS) {
+	s.UpdateTime = val
+}
+
+// Current scan status.
+type ChannelScanStatusStatus string
+
+const (
+	ChannelScanStatusStatusNotStarted ChannelScanStatusStatus = "not_started"
+	ChannelScanStatusStatusScanning   ChannelScanStatusStatus = "scanning"
+	ChannelScanStatusStatusCompleted  ChannelScanStatusStatus = "completed"
+	ChannelScanStatusStatusCancelled  ChannelScanStatusStatus = "cancelled"
+	ChannelScanStatusStatusError      ChannelScanStatusStatus = "error"
+)
+
+// AllValues returns all ChannelScanStatusStatus values.
+func (ChannelScanStatusStatus) AllValues() []ChannelScanStatusStatus {
+	return []ChannelScanStatusStatus{
+		ChannelScanStatusStatusNotStarted,
+		ChannelScanStatusStatusScanning,
+		ChannelScanStatusStatusCompleted,
+		ChannelScanStatusStatusCancelled,
+		ChannelScanStatusStatusError,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ChannelScanStatusStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case ChannelScanStatusStatusNotStarted:
+		return []byte(s), nil
+	case ChannelScanStatusStatusScanning:
+		return []byte(s), nil
+	case ChannelScanStatusStatusCompleted:
+		return []byte(s), nil
+	case ChannelScanStatusStatusCancelled:
+		return []byte(s), nil
+	case ChannelScanStatusStatusError:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ChannelScanStatusStatus) UnmarshalText(data []byte) error {
+	switch ChannelScanStatusStatus(data) {
+	case ChannelScanStatusStatusNotStarted:
+		*s = ChannelScanStatusStatusNotStarted
+		return nil
+	case ChannelScanStatusStatusScanning:
+		*s = ChannelScanStatusStatusScanning
+		return nil
+	case ChannelScanStatusStatusCompleted:
+		*s = ChannelScanStatusStatusCompleted
+		return nil
+	case ChannelScanStatusStatusCancelled:
+		*s = ChannelScanStatusStatusCancelled
+		return nil
+	case ChannelScanStatusStatusError:
+		*s = ChannelScanStatusStatusError
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+type ChannelScanType string
+
+const (
+	ChannelScanTypeGR ChannelScanType = "GR"
+	ChannelScanTypeBS ChannelScanType = "BS"
+	ChannelScanTypeCS ChannelScanType = "CS"
+)
+
+// AllValues returns all ChannelScanType values.
+func (ChannelScanType) AllValues() []ChannelScanType {
+	return []ChannelScanType{
+		ChannelScanTypeGR,
+		ChannelScanTypeBS,
+		ChannelScanTypeCS,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ChannelScanType) MarshalText() ([]byte, error) {
+	switch s {
+	case ChannelScanTypeGR:
+		return []byte(s), nil
+	case ChannelScanTypeBS:
+		return []byte(s), nil
+	case ChannelScanTypeCS:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ChannelScanType) UnmarshalText(data []byte) error {
+	switch ChannelScanType(data) {
+	case ChannelScanTypeGR:
+		*s = ChannelScanTypeGR
+		return nil
+	case ChannelScanTypeBS:
+		*s = ChannelScanTypeBS
+		return nil
+	case ChannelScanTypeCS:
+		*s = ChannelScanTypeCS
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/ChannelType
+type ChannelType string
+
+const (
+	ChannelTypeGR   ChannelType = "GR"
+	ChannelTypeBS   ChannelType = "BS"
+	ChannelTypeCS   ChannelType = "CS"
+	ChannelTypeSKY  ChannelType = "SKY"
+	ChannelTypeEXT1 ChannelType = "EXT1"
+	ChannelTypeEXT2 ChannelType = "EXT2"
+	ChannelTypeEXT3 ChannelType = "EXT3"
+	ChannelTypeEXT4 ChannelType = "EXT4"
+	ChannelTypeEXT5 ChannelType = "EXT5"
+	ChannelTypeEXT6 ChannelType = "EXT6"
+	ChannelTypeEXT7 ChannelType = "EXT7"
+	ChannelTypeEXT8 ChannelType = "EXT8"
+	ChannelTypeEXT9 ChannelType = "EXT9"
+)
+
+// AllValues returns all ChannelType values.
+func (ChannelType) AllValues() []ChannelType {
+	return []ChannelType{
+		ChannelTypeGR,
+		ChannelTypeBS,
+		ChannelTypeCS,
+		ChannelTypeSKY,
+		ChannelTypeEXT1,
+		ChannelTypeEXT2,
+		ChannelTypeEXT3,
+		ChannelTypeEXT4,
+		ChannelTypeEXT5,
+		ChannelTypeEXT6,
+		ChannelTypeEXT7,
+		ChannelTypeEXT8,
+		ChannelTypeEXT9,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s ChannelType) MarshalText() ([]byte, error) {
+	switch s {
+	case ChannelTypeGR:
+		return []byte(s), nil
+	case ChannelTypeBS:
+		return []byte(s), nil
+	case ChannelTypeCS:
+		return []byte(s), nil
+	case ChannelTypeSKY:
+		return []byte(s), nil
+	case ChannelTypeEXT1:
+		return []byte(s), nil
+	case ChannelTypeEXT2:
+		return []byte(s), nil
+	case ChannelTypeEXT3:
+		return []byte(s), nil
+	case ChannelTypeEXT4:
+		return []byte(s), nil
+	case ChannelTypeEXT5:
+		return []byte(s), nil
+	case ChannelTypeEXT6:
+		return []byte(s), nil
+	case ChannelTypeEXT7:
+		return []byte(s), nil
+	case ChannelTypeEXT8:
+		return []byte(s), nil
+	case ChannelTypeEXT9:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *ChannelType) UnmarshalText(data []byte) error {
+	switch ChannelType(data) {
+	case ChannelTypeGR:
+		*s = ChannelTypeGR
+		return nil
+	case ChannelTypeBS:
+		*s = ChannelTypeBS
+		return nil
+	case ChannelTypeCS:
+		*s = ChannelTypeCS
+		return nil
+	case ChannelTypeSKY:
+		*s = ChannelTypeSKY
+		return nil
+	case ChannelTypeEXT1:
+		*s = ChannelTypeEXT1
+		return nil
+	case ChannelTypeEXT2:
+		*s = ChannelTypeEXT2
+		return nil
+	case ChannelTypeEXT3:
+		*s = ChannelTypeEXT3
+		return nil
+	case ChannelTypeEXT4:
+		*s = ChannelTypeEXT4
+		return nil
+	case ChannelTypeEXT5:
+		*s = ChannelTypeEXT5
+		return nil
+	case ChannelTypeEXT6:
+		*s = ChannelTypeEXT6
+		return nil
+	case ChannelTypeEXT7:
+		*s = ChannelTypeEXT7
+		return nil
+	case ChannelTypeEXT8:
+		*s = ChannelTypeEXT8
+		return nil
+	case ChannelTypeEXT9:
+		*s = ChannelTypeEXT9
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // ChannelsTypeChannelServicesIDStreamHeadDef is default response for ChannelsTypeChannelServicesIDStreamHead operation.
 type ChannelsTypeChannelServicesIDStreamHeadDef struct {
 	StatusCode int
@@ -165,15 +668,22 @@ type ChannelsTypeChannelStreamHeadServiceUnavailable struct{}
 
 func (*ChannelsTypeChannelStreamHeadServiceUnavailable) channelsTypeChannelStreamHeadRes() {}
 
+type ConfigChannels []ConfigChannelsItem
+
+func (*ConfigChannels) getChannelsConfigRes()    {}
+func (*ConfigChannels) updateChannelsConfigRes() {}
+
 // Ref: #/components/schemas/ConfigChannelsItem
 type ConfigChannelsItem struct {
-	Name        string                         `json:"name"`
-	Type        string                         `json:"type"`
-	Channel     string                         `json:"channel"`
-	ServiceId   OptServiceId                   `json:"serviceId"`
-	TsmfRelTs   OptInt                         `json:"tsmfRelTs"`
-	CommandVars *ConfigChannelsItemCommandVars `json:"commandVars"`
-	IsDisabled  OptBool                        `json:"isDisabled"`
+	Name            string                         `json:"name"`
+	Type            string                         `json:"type"`
+	Channel         string                         `json:"channel"`
+	ServiceId       OptServiceId                   `json:"serviceId"`
+	TsmfRelTs       OptInt                         `json:"tsmfRelTs"`
+	CommandVars     *ConfigChannelsItemCommandVars `json:"commandVars"`
+	IsDisabled      OptBool                        `json:"isDisabled"`
+	ServicesCommand OptString                      `json:"servicesCommand"`
+	ProgramsCommand OptString                      `json:"programsCommand"`
 }
 
 // GetName returns the value of Name.
@@ -211,6 +721,16 @@ func (s *ConfigChannelsItem) GetIsDisabled() OptBool {
 	return s.IsDisabled
 }
 
+// GetServicesCommand returns the value of ServicesCommand.
+func (s *ConfigChannelsItem) GetServicesCommand() OptString {
+	return s.ServicesCommand
+}
+
+// GetProgramsCommand returns the value of ProgramsCommand.
+func (s *ConfigChannelsItem) GetProgramsCommand() OptString {
+	return s.ProgramsCommand
+}
+
 // SetName sets the value of Name.
 func (s *ConfigChannelsItem) SetName(val string) {
 	s.Name = val
@@ -246,7 +766,330 @@ func (s *ConfigChannelsItem) SetIsDisabled(val OptBool) {
 	s.IsDisabled = val
 }
 
+// SetServicesCommand sets the value of ServicesCommand.
+func (s *ConfigChannelsItem) SetServicesCommand(val OptString) {
+	s.ServicesCommand = val
+}
+
+// SetProgramsCommand sets the value of ProgramsCommand.
+func (s *ConfigChannelsItem) SetProgramsCommand(val OptString) {
+	s.ProgramsCommand = val
+}
+
 type ConfigChannelsItemCommandVars struct{}
+
+// Ref: #/components/schemas/ConfigServer
+type ConfigServer struct {
+	Path                      OptString `json:"path"`
+	Port                      OptInt    `json:"port"`
+	Hostname                  OptString `json:"hostname"`
+	DisableIPv6               OptBool   `json:"disableIPv6"`
+	LogLevel                  OptInt    `json:"logLevel"`
+	MaxLogHistory             OptInt    `json:"maxLogHistory"`
+	JobMaxRunning             OptInt    `json:"jobMaxRunning"`
+	JobMaxStandby             OptInt    `json:"jobMaxStandby"`
+	MaxBufferBytesBeforeReady OptInt    `json:"maxBufferBytesBeforeReady"`
+	EventEndTimeout           OptInt    `json:"eventEndTimeout"`
+	ProgramGCJobSchedule      OptString `json:"programGCJobSchedule"`
+	EpgGatheringJobSchedule   OptString `json:"epgGatheringJobSchedule"`
+	EpgRetrievalTime          OptInt    `json:"epgRetrievalTime"`
+	LogoDataInterval          OptInt    `json:"logoDataInterval"`
+	DisableEITParsing         OptBool   `json:"disableEITParsing"`
+	DisableWebUI              OptBool   `json:"disableWebUI"`
+	AllowIPv4CidrRanges       []string  `json:"allowIPv4CidrRanges"`
+	AllowIPv6CidrRanges       []string  `json:"allowIPv6CidrRanges"`
+}
+
+// GetPath returns the value of Path.
+func (s *ConfigServer) GetPath() OptString {
+	return s.Path
+}
+
+// GetPort returns the value of Port.
+func (s *ConfigServer) GetPort() OptInt {
+	return s.Port
+}
+
+// GetHostname returns the value of Hostname.
+func (s *ConfigServer) GetHostname() OptString {
+	return s.Hostname
+}
+
+// GetDisableIPv6 returns the value of DisableIPv6.
+func (s *ConfigServer) GetDisableIPv6() OptBool {
+	return s.DisableIPv6
+}
+
+// GetLogLevel returns the value of LogLevel.
+func (s *ConfigServer) GetLogLevel() OptInt {
+	return s.LogLevel
+}
+
+// GetMaxLogHistory returns the value of MaxLogHistory.
+func (s *ConfigServer) GetMaxLogHistory() OptInt {
+	return s.MaxLogHistory
+}
+
+// GetJobMaxRunning returns the value of JobMaxRunning.
+func (s *ConfigServer) GetJobMaxRunning() OptInt {
+	return s.JobMaxRunning
+}
+
+// GetJobMaxStandby returns the value of JobMaxStandby.
+func (s *ConfigServer) GetJobMaxStandby() OptInt {
+	return s.JobMaxStandby
+}
+
+// GetMaxBufferBytesBeforeReady returns the value of MaxBufferBytesBeforeReady.
+func (s *ConfigServer) GetMaxBufferBytesBeforeReady() OptInt {
+	return s.MaxBufferBytesBeforeReady
+}
+
+// GetEventEndTimeout returns the value of EventEndTimeout.
+func (s *ConfigServer) GetEventEndTimeout() OptInt {
+	return s.EventEndTimeout
+}
+
+// GetProgramGCJobSchedule returns the value of ProgramGCJobSchedule.
+func (s *ConfigServer) GetProgramGCJobSchedule() OptString {
+	return s.ProgramGCJobSchedule
+}
+
+// GetEpgGatheringJobSchedule returns the value of EpgGatheringJobSchedule.
+func (s *ConfigServer) GetEpgGatheringJobSchedule() OptString {
+	return s.EpgGatheringJobSchedule
+}
+
+// GetEpgRetrievalTime returns the value of EpgRetrievalTime.
+func (s *ConfigServer) GetEpgRetrievalTime() OptInt {
+	return s.EpgRetrievalTime
+}
+
+// GetLogoDataInterval returns the value of LogoDataInterval.
+func (s *ConfigServer) GetLogoDataInterval() OptInt {
+	return s.LogoDataInterval
+}
+
+// GetDisableEITParsing returns the value of DisableEITParsing.
+func (s *ConfigServer) GetDisableEITParsing() OptBool {
+	return s.DisableEITParsing
+}
+
+// GetDisableWebUI returns the value of DisableWebUI.
+func (s *ConfigServer) GetDisableWebUI() OptBool {
+	return s.DisableWebUI
+}
+
+// GetAllowIPv4CidrRanges returns the value of AllowIPv4CidrRanges.
+func (s *ConfigServer) GetAllowIPv4CidrRanges() []string {
+	return s.AllowIPv4CidrRanges
+}
+
+// GetAllowIPv6CidrRanges returns the value of AllowIPv6CidrRanges.
+func (s *ConfigServer) GetAllowIPv6CidrRanges() []string {
+	return s.AllowIPv6CidrRanges
+}
+
+// SetPath sets the value of Path.
+func (s *ConfigServer) SetPath(val OptString) {
+	s.Path = val
+}
+
+// SetPort sets the value of Port.
+func (s *ConfigServer) SetPort(val OptInt) {
+	s.Port = val
+}
+
+// SetHostname sets the value of Hostname.
+func (s *ConfigServer) SetHostname(val OptString) {
+	s.Hostname = val
+}
+
+// SetDisableIPv6 sets the value of DisableIPv6.
+func (s *ConfigServer) SetDisableIPv6(val OptBool) {
+	s.DisableIPv6 = val
+}
+
+// SetLogLevel sets the value of LogLevel.
+func (s *ConfigServer) SetLogLevel(val OptInt) {
+	s.LogLevel = val
+}
+
+// SetMaxLogHistory sets the value of MaxLogHistory.
+func (s *ConfigServer) SetMaxLogHistory(val OptInt) {
+	s.MaxLogHistory = val
+}
+
+// SetJobMaxRunning sets the value of JobMaxRunning.
+func (s *ConfigServer) SetJobMaxRunning(val OptInt) {
+	s.JobMaxRunning = val
+}
+
+// SetJobMaxStandby sets the value of JobMaxStandby.
+func (s *ConfigServer) SetJobMaxStandby(val OptInt) {
+	s.JobMaxStandby = val
+}
+
+// SetMaxBufferBytesBeforeReady sets the value of MaxBufferBytesBeforeReady.
+func (s *ConfigServer) SetMaxBufferBytesBeforeReady(val OptInt) {
+	s.MaxBufferBytesBeforeReady = val
+}
+
+// SetEventEndTimeout sets the value of EventEndTimeout.
+func (s *ConfigServer) SetEventEndTimeout(val OptInt) {
+	s.EventEndTimeout = val
+}
+
+// SetProgramGCJobSchedule sets the value of ProgramGCJobSchedule.
+func (s *ConfigServer) SetProgramGCJobSchedule(val OptString) {
+	s.ProgramGCJobSchedule = val
+}
+
+// SetEpgGatheringJobSchedule sets the value of EpgGatheringJobSchedule.
+func (s *ConfigServer) SetEpgGatheringJobSchedule(val OptString) {
+	s.EpgGatheringJobSchedule = val
+}
+
+// SetEpgRetrievalTime sets the value of EpgRetrievalTime.
+func (s *ConfigServer) SetEpgRetrievalTime(val OptInt) {
+	s.EpgRetrievalTime = val
+}
+
+// SetLogoDataInterval sets the value of LogoDataInterval.
+func (s *ConfigServer) SetLogoDataInterval(val OptInt) {
+	s.LogoDataInterval = val
+}
+
+// SetDisableEITParsing sets the value of DisableEITParsing.
+func (s *ConfigServer) SetDisableEITParsing(val OptBool) {
+	s.DisableEITParsing = val
+}
+
+// SetDisableWebUI sets the value of DisableWebUI.
+func (s *ConfigServer) SetDisableWebUI(val OptBool) {
+	s.DisableWebUI = val
+}
+
+// SetAllowIPv4CidrRanges sets the value of AllowIPv4CidrRanges.
+func (s *ConfigServer) SetAllowIPv4CidrRanges(val []string) {
+	s.AllowIPv4CidrRanges = val
+}
+
+// SetAllowIPv6CidrRanges sets the value of AllowIPv6CidrRanges.
+func (s *ConfigServer) SetAllowIPv6CidrRanges(val []string) {
+	s.AllowIPv6CidrRanges = val
+}
+
+func (*ConfigServer) getServerConfigRes()    {}
+func (*ConfigServer) updateServerConfigRes() {}
+
+type ConfigTuners []ConfigTunersItem
+
+func (*ConfigTuners) getTunersConfigRes()    {}
+func (*ConfigTuners) updateTunersConfigRes() {}
+
+// Ref: #/components/schemas/ConfigTunersItem
+type ConfigTunersItem struct {
+	Name                   string        `json:"name"`
+	Types                  []ChannelType `json:"types"`
+	Command                OptString     `json:"command"`
+	DvbDevicePath          OptString     `json:"dvbDevicePath"`
+	RemoteMirakurunHost    OptString     `json:"remoteMirakurunHost"`
+	RemoteMirakurunPort    OptInt        `json:"remoteMirakurunPort"`
+	RemoteMirakurunDecoder OptBool       `json:"remoteMirakurunDecoder"`
+	Decoder                OptString     `json:"decoder"`
+	IsDisabled             OptBool       `json:"isDisabled"`
+}
+
+// GetName returns the value of Name.
+func (s *ConfigTunersItem) GetName() string {
+	return s.Name
+}
+
+// GetTypes returns the value of Types.
+func (s *ConfigTunersItem) GetTypes() []ChannelType {
+	return s.Types
+}
+
+// GetCommand returns the value of Command.
+func (s *ConfigTunersItem) GetCommand() OptString {
+	return s.Command
+}
+
+// GetDvbDevicePath returns the value of DvbDevicePath.
+func (s *ConfigTunersItem) GetDvbDevicePath() OptString {
+	return s.DvbDevicePath
+}
+
+// GetRemoteMirakurunHost returns the value of RemoteMirakurunHost.
+func (s *ConfigTunersItem) GetRemoteMirakurunHost() OptString {
+	return s.RemoteMirakurunHost
+}
+
+// GetRemoteMirakurunPort returns the value of RemoteMirakurunPort.
+func (s *ConfigTunersItem) GetRemoteMirakurunPort() OptInt {
+	return s.RemoteMirakurunPort
+}
+
+// GetRemoteMirakurunDecoder returns the value of RemoteMirakurunDecoder.
+func (s *ConfigTunersItem) GetRemoteMirakurunDecoder() OptBool {
+	return s.RemoteMirakurunDecoder
+}
+
+// GetDecoder returns the value of Decoder.
+func (s *ConfigTunersItem) GetDecoder() OptString {
+	return s.Decoder
+}
+
+// GetIsDisabled returns the value of IsDisabled.
+func (s *ConfigTunersItem) GetIsDisabled() OptBool {
+	return s.IsDisabled
+}
+
+// SetName sets the value of Name.
+func (s *ConfigTunersItem) SetName(val string) {
+	s.Name = val
+}
+
+// SetTypes sets the value of Types.
+func (s *ConfigTunersItem) SetTypes(val []ChannelType) {
+	s.Types = val
+}
+
+// SetCommand sets the value of Command.
+func (s *ConfigTunersItem) SetCommand(val OptString) {
+	s.Command = val
+}
+
+// SetDvbDevicePath sets the value of DvbDevicePath.
+func (s *ConfigTunersItem) SetDvbDevicePath(val OptString) {
+	s.DvbDevicePath = val
+}
+
+// SetRemoteMirakurunHost sets the value of RemoteMirakurunHost.
+func (s *ConfigTunersItem) SetRemoteMirakurunHost(val OptString) {
+	s.RemoteMirakurunHost = val
+}
+
+// SetRemoteMirakurunPort sets the value of RemoteMirakurunPort.
+func (s *ConfigTunersItem) SetRemoteMirakurunPort(val OptInt) {
+	s.RemoteMirakurunPort = val
+}
+
+// SetRemoteMirakurunDecoder sets the value of RemoteMirakurunDecoder.
+func (s *ConfigTunersItem) SetRemoteMirakurunDecoder(val OptBool) {
+	s.RemoteMirakurunDecoder = val
+}
+
+// SetDecoder sets the value of Decoder.
+func (s *ConfigTunersItem) SetDecoder(val OptString) {
+	s.Decoder = val
+}
+
+// SetIsDisabled sets the value of IsDisabled.
+func (s *ConfigTunersItem) SetIsDisabled(val OptBool) {
+	s.IsDisabled = val
+}
 
 // Ref: #/components/schemas/Error
 type Error struct {
@@ -294,6 +1137,7 @@ func (*Error) getTunerRes()         {}
 func (*Error) killTunerProcessRes() {}
 func (*Error) rerunJobRes()         {}
 func (*Error) runJobScheduleRes()   {}
+func (*Error) stopChannelScanRes()  {}
 
 // Ref: #/components/schemas/ErrorOfOpenAPI
 type ErrorOfOpenAPI struct {
@@ -359,10 +1203,12 @@ func (s *ErrorStatusCode) SetResponse(val Error) {
 }
 
 func (*ErrorStatusCode) abortJobRes()                {}
+func (*ErrorStatusCode) channelScanRes()             {}
 func (*ErrorStatusCode) checkVersionRes()            {}
 func (*ErrorStatusCode) getApiDocumentationRes()     {}
 func (*ErrorStatusCode) getChannelRes()              {}
 func (*ErrorStatusCode) getChannelsByTypeRes()       {}
+func (*ErrorStatusCode) getChannelsConfigRes()       {}
 func (*ErrorStatusCode) getChannelsRes()             {}
 func (*ErrorStatusCode) getEventsRes()               {}
 func (*ErrorStatusCode) getEventsStreamRes()         {}
@@ -370,6 +1216,7 @@ func (*ErrorStatusCode) getJobSchedulesRes()         {}
 func (*ErrorStatusCode) getJobsRes()                 {}
 func (*ErrorStatusCode) getProgramRes()              {}
 func (*ErrorStatusCode) getProgramsRes()             {}
+func (*ErrorStatusCode) getServerConfigRes()         {}
 func (*ErrorStatusCode) getServiceByChannelRes()     {}
 func (*ErrorStatusCode) getServiceProgramsRes()      {}
 func (*ErrorStatusCode) getServiceRes()              {}
@@ -378,6 +1225,7 @@ func (*ErrorStatusCode) getServicesRes()             {}
 func (*ErrorStatusCode) getStatusRes()               {}
 func (*ErrorStatusCode) getTunerProcessRes()         {}
 func (*ErrorStatusCode) getTunerRes()                {}
+func (*ErrorStatusCode) getTunersConfigRes()         {}
 func (*ErrorStatusCode) getTunersRes()               {}
 func (*ErrorStatusCode) iptvDiscoverJSONGetRes()     {}
 func (*ErrorStatusCode) iptvLineupJSONGetRes()       {}
@@ -386,7 +1234,12 @@ func (*ErrorStatusCode) iptvPlaylistGetRes()         {}
 func (*ErrorStatusCode) iptvXmltvGetRes()            {}
 func (*ErrorStatusCode) killTunerProcessRes()        {}
 func (*ErrorStatusCode) rerunJobRes()                {}
+func (*ErrorStatusCode) restartRes()                 {}
 func (*ErrorStatusCode) runJobScheduleRes()          {}
+func (*ErrorStatusCode) stopChannelScanRes()         {}
+func (*ErrorStatusCode) updateChannelsConfigRes()    {}
+func (*ErrorStatusCode) updateServerConfigRes()      {}
+func (*ErrorStatusCode) updateTunersConfigRes()      {}
 
 // Ref: #/components/schemas/Event
 type Event struct {
@@ -1564,6 +2417,282 @@ func (o OptChannel) Or(d Channel) Channel {
 	return d
 }
 
+// NewOptChannelScanAcceptedStatus returns new OptChannelScanAcceptedStatus with value set to v.
+func NewOptChannelScanAcceptedStatus(v ChannelScanAcceptedStatus) OptChannelScanAcceptedStatus {
+	return OptChannelScanAcceptedStatus{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptChannelScanAcceptedStatus is optional ChannelScanAcceptedStatus.
+type OptChannelScanAcceptedStatus struct {
+	Value ChannelScanAcceptedStatus
+	Set   bool
+}
+
+// IsSet returns true if OptChannelScanAcceptedStatus was set.
+func (o OptChannelScanAcceptedStatus) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptChannelScanAcceptedStatus) Reset() {
+	var v ChannelScanAcceptedStatus
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptChannelScanAcceptedStatus) SetTo(v ChannelScanAcceptedStatus) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptChannelScanAcceptedStatus) Get() (v ChannelScanAcceptedStatus, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptChannelScanAcceptedStatus) Or(d ChannelScanAcceptedStatus) ChannelScanAcceptedStatus {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptChannelScanScanMode returns new OptChannelScanScanMode with value set to v.
+func NewOptChannelScanScanMode(v ChannelScanScanMode) OptChannelScanScanMode {
+	return OptChannelScanScanMode{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptChannelScanScanMode is optional ChannelScanScanMode.
+type OptChannelScanScanMode struct {
+	Value ChannelScanScanMode
+	Set   bool
+}
+
+// IsSet returns true if OptChannelScanScanMode was set.
+func (o OptChannelScanScanMode) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptChannelScanScanMode) Reset() {
+	var v ChannelScanScanMode
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptChannelScanScanMode) SetTo(v ChannelScanScanMode) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptChannelScanScanMode) Get() (v ChannelScanScanMode, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptChannelScanScanMode) Or(d ChannelScanScanMode) ChannelScanScanMode {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptChannelScanStatusStatus returns new OptChannelScanStatusStatus with value set to v.
+func NewOptChannelScanStatusStatus(v ChannelScanStatusStatus) OptChannelScanStatusStatus {
+	return OptChannelScanStatusStatus{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptChannelScanStatusStatus is optional ChannelScanStatusStatus.
+type OptChannelScanStatusStatus struct {
+	Value ChannelScanStatusStatus
+	Set   bool
+}
+
+// IsSet returns true if OptChannelScanStatusStatus was set.
+func (o OptChannelScanStatusStatus) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptChannelScanStatusStatus) Reset() {
+	var v ChannelScanStatusStatus
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptChannelScanStatusStatus) SetTo(v ChannelScanStatusStatus) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptChannelScanStatusStatus) Get() (v ChannelScanStatusStatus, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptChannelScanStatusStatus) Or(d ChannelScanStatusStatus) ChannelScanStatusStatus {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptChannelScanType returns new OptChannelScanType with value set to v.
+func NewOptChannelScanType(v ChannelScanType) OptChannelScanType {
+	return OptChannelScanType{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptChannelScanType is optional ChannelScanType.
+type OptChannelScanType struct {
+	Value ChannelScanType
+	Set   bool
+}
+
+// IsSet returns true if OptChannelScanType was set.
+func (o OptChannelScanType) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptChannelScanType) Reset() {
+	var v ChannelScanType
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptChannelScanType) SetTo(v ChannelScanType) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptChannelScanType) Get() (v ChannelScanType, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptChannelScanType) Or(d ChannelScanType) ChannelScanType {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptChannelType returns new OptChannelType with value set to v.
+func NewOptChannelType(v ChannelType) OptChannelType {
+	return OptChannelType{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptChannelType is optional ChannelType.
+type OptChannelType struct {
+	Value ChannelType
+	Set   bool
+}
+
+// IsSet returns true if OptChannelType was set.
+func (o OptChannelType) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptChannelType) Reset() {
+	var v ChannelType
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptChannelType) SetTo(v ChannelType) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptChannelType) Get() (v ChannelType, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptChannelType) Or(d ChannelType) ChannelType {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptConfigServer returns new OptConfigServer with value set to v.
+func NewOptConfigServer(v ConfigServer) OptConfigServer {
+	return OptConfigServer{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptConfigServer is optional ConfigServer.
+type OptConfigServer struct {
+	Value ConfigServer
+	Set   bool
+}
+
+// IsSet returns true if OptConfigServer was set.
+func (o OptConfigServer) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptConfigServer) Reset() {
+	var v ConfigServer
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptConfigServer) SetTo(v ConfigServer) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptConfigServer) Get() (v ConfigServer, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptConfigServer) Or(d ConfigServer) ConfigServer {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptFloat64 returns new OptFloat64 with value set to v.
 func NewOptFloat64(v float64) OptFloat64 {
 	return OptFloat64{
@@ -2570,6 +3699,52 @@ func (o OptStatusTimerAccuracyM5) Get() (v StatusTimerAccuracyM5, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptStatusTimerAccuracyM5) Or(d StatusTimerAccuracyM5) StatusTimerAccuracyM5 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptStopChannelScanPartialContentStatus returns new OptStopChannelScanPartialContentStatus with value set to v.
+func NewOptStopChannelScanPartialContentStatus(v StopChannelScanPartialContentStatus) OptStopChannelScanPartialContentStatus {
+	return OptStopChannelScanPartialContentStatus{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptStopChannelScanPartialContentStatus is optional StopChannelScanPartialContentStatus.
+type OptStopChannelScanPartialContentStatus struct {
+	Value StopChannelScanPartialContentStatus
+	Set   bool
+}
+
+// IsSet returns true if OptStopChannelScanPartialContentStatus was set.
+func (o OptStopChannelScanPartialContentStatus) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptStopChannelScanPartialContentStatus) Reset() {
+	var v StopChannelScanPartialContentStatus
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptStopChannelScanPartialContentStatus) SetTo(v StopChannelScanPartialContentStatus) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptStopChannelScanPartialContentStatus) Get() (v StopChannelScanPartialContentStatus, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptStopChannelScanPartialContentStatus) Or(d StopChannelScanPartialContentStatus) StopChannelScanPartialContentStatus {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -3617,6 +4792,11 @@ type RerunJobAccepted struct{}
 
 func (*RerunJobAccepted) rerunJobRes() {}
 
+// RestartAccepted is response for Restart operation.
+type RestartAccepted struct{}
+
+func (*RestartAccepted) restartRes() {}
+
 // RunJobScheduleAccepted is response for RunJobSchedule operation.
 type RunJobScheduleAccepted struct{}
 
@@ -3636,6 +4816,7 @@ type Service struct {
 	EpgReady           OptBool              `json:"epgReady"`
 	EpgUpdatedAt       OptUnixtimeMS        `json:"epgUpdatedAt"`
 	Channel            OptChannel           `json:"channel"`
+	LogoData           OptString            `json:"logoData"`
 }
 
 // GetID returns the value of ID.
@@ -3698,6 +4879,11 @@ func (s *Service) GetChannel() OptChannel {
 	return s.Channel
 }
 
+// GetLogoData returns the value of LogoData.
+func (s *Service) GetLogoData() OptString {
+	return s.LogoData
+}
+
 // SetID sets the value of ID.
 func (s *Service) SetID(val ServiceItemId) {
 	s.ID = val
@@ -3756,6 +4942,11 @@ func (s *Service) SetEpgUpdatedAt(val OptUnixtimeMS) {
 // SetChannel sets the value of Channel.
 func (s *Service) SetChannel(val OptChannel) {
 	s.Channel = val
+}
+
+// SetLogoData sets the value of LogoData.
+func (s *Service) SetLogoData(val OptString) {
+	s.LogoData = val
 }
 
 func (*Service) getServiceRes() {}
@@ -4283,6 +5474,67 @@ func (s *StatusTimerAccuracyM5) SetMin(val OptFloat64) {
 // SetMax sets the value of Max.
 func (s *StatusTimerAccuracyM5) SetMax(val OptFloat64) {
 	s.Max = val
+}
+
+type StopChannelScanPartialContent struct {
+	Status  OptStopChannelScanPartialContentStatus `json:"status"`
+	Message OptString                              `json:"message"`
+}
+
+// GetStatus returns the value of Status.
+func (s *StopChannelScanPartialContent) GetStatus() OptStopChannelScanPartialContentStatus {
+	return s.Status
+}
+
+// GetMessage returns the value of Message.
+func (s *StopChannelScanPartialContent) GetMessage() OptString {
+	return s.Message
+}
+
+// SetStatus sets the value of Status.
+func (s *StopChannelScanPartialContent) SetStatus(val OptStopChannelScanPartialContentStatus) {
+	s.Status = val
+}
+
+// SetMessage sets the value of Message.
+func (s *StopChannelScanPartialContent) SetMessage(val OptString) {
+	s.Message = val
+}
+
+func (*StopChannelScanPartialContent) stopChannelScanRes() {}
+
+type StopChannelScanPartialContentStatus string
+
+const (
+	StopChannelScanPartialContentStatusStopping StopChannelScanPartialContentStatus = "stopping"
+)
+
+// AllValues returns all StopChannelScanPartialContentStatus values.
+func (StopChannelScanPartialContentStatus) AllValues() []StopChannelScanPartialContentStatus {
+	return []StopChannelScanPartialContentStatus{
+		StopChannelScanPartialContentStatusStopping,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s StopChannelScanPartialContentStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case StopChannelScanPartialContentStatusStopping:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *StopChannelScanPartialContentStatus) UnmarshalText(data []byte) error {
+	switch StopChannelScanPartialContentStatus(data) {
+	case StopChannelScanPartialContentStatusStopping:
+		*s = StopChannelScanPartialContentStatusStopping
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
 }
 
 type TransportStreamId int

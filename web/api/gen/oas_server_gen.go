@@ -14,6 +14,12 @@ type Handler interface {
 	//
 	// PUT /jobs/{id}/abort
 	AbortJob(ctx context.Context, params AbortJobParams) (AbortJobRes, error)
+	// ChannelScan implements channelScan operation.
+	//
+	// Channel Scan.
+	//
+	// PUT /config/channels/scan
+	ChannelScan(ctx context.Context, params ChannelScanParams) (ChannelScanRes, error)
 	// ChannelsTypeChannelServicesIDStreamHead implements HEAD /channels/{type}/{channel}/services/{id}/stream operation.
 	//
 	// HEAD /channels/{type}/{channel}/services/{id}/stream
@@ -34,6 +40,12 @@ type Handler interface {
 	//
 	// GET /channels/{type}/{channel}
 	GetChannel(ctx context.Context, params GetChannelParams) (GetChannelRes, error)
+	// GetChannelScanStatus implements getChannelScanStatus operation.
+	//
+	// Returns the current or last completed scan status and results.
+	//
+	// GET /config/channels/scan
+	GetChannelScanStatus(ctx context.Context) (*ChannelScanStatus, error)
 	// GetChannelStream implements getChannelStream operation.
 	//
 	// GET /channels/{type}/{channel}/stream
@@ -46,6 +58,10 @@ type Handler interface {
 	//
 	// GET /channels/{type}
 	GetChannelsByType(ctx context.Context, params GetChannelsByTypeParams) (GetChannelsByTypeRes, error)
+	// GetChannelsConfig implements getChannelsConfig operation.
+	//
+	// GET /config/channels
+	GetChannelsConfig(ctx context.Context) (GetChannelsConfigRes, error)
 	// GetEvents implements getEvents operation.
 	//
 	// GET /events
@@ -86,6 +102,10 @@ type Handler interface {
 	//
 	// GET /programs
 	GetPrograms(ctx context.Context, params GetProgramsParams) (GetProgramsRes, error)
+	// GetServerConfig implements getServerConfig operation.
+	//
+	// GET /config/server
+	GetServerConfig(ctx context.Context) (GetServerConfigRes, error)
 	// GetService implements getService operation.
 	//
 	// GET /services/{id}
@@ -134,6 +154,10 @@ type Handler interface {
 	//
 	// GET /tuners
 	GetTuners(ctx context.Context) (GetTunersRes, error)
+	// GetTunersConfig implements getTunersConfig operation.
+	//
+	// GET /config/tuners
+	GetTunersConfig(ctx context.Context) (GetTunersConfigRes, error)
 	// IptvDiscoverJSONGet implements GET /iptv/discover.json operation.
 	//
 	// IPTV - Media Server Support.
@@ -180,6 +204,12 @@ type Handler interface {
 	//
 	// PUT /jobs/{id}/rerun
 	RerunJob(ctx context.Context, params RerunJobParams) (RerunJobRes, error)
+	// Restart implements restart operation.
+	//
+	// Restart Mirakurun.
+	//
+	// PUT /restart
+	Restart(ctx context.Context) (RestartRes, error)
 	// RunJobSchedule implements runJobSchedule operation.
 	//
 	// Request to run a job schedule.
@@ -190,6 +220,24 @@ type Handler interface {
 	//
 	// HEAD /services/{id}/stream
 	ServicesIDStreamHead(ctx context.Context, params ServicesIDStreamHeadParams) (ServicesIDStreamHeadRes, error)
+	// StopChannelScan implements stopChannelScan operation.
+	//
+	// Stops a currently running channel scan operation.
+	//
+	// DELETE /config/channels/scan
+	StopChannelScan(ctx context.Context) (StopChannelScanRes, error)
+	// UpdateChannelsConfig implements updateChannelsConfig operation.
+	//
+	// PUT /config/channels
+	UpdateChannelsConfig(ctx context.Context, req ConfigChannels) (UpdateChannelsConfigRes, error)
+	// UpdateServerConfig implements updateServerConfig operation.
+	//
+	// PUT /config/server
+	UpdateServerConfig(ctx context.Context, req OptConfigServer) (UpdateServerConfigRes, error)
+	// UpdateTunersConfig implements updateTunersConfig operation.
+	//
+	// PUT /config/tuners
+	UpdateTunersConfig(ctx context.Context, req ConfigTuners) (UpdateTunersConfigRes, error)
 }
 
 // Server implements http server based on OpenAPI v3 specification and

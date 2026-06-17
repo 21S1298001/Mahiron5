@@ -8,26 +8,23 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/ogen-go/ogen/conv"
 	ht "github.com/ogen-go/ogen/http"
 	"github.com/ogen-go/ogen/uri"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func encodeAbortJobResponse(response AbortJobRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *AbortJobAccepted:
 		w.WriteHeader(202)
-		span.SetStatus(codes.Ok, http.StatusText(202))
 
 		return nil
 
 	case *Error:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(409)
-		span.SetStatus(codes.Error, http.StatusText(409))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -45,10 +42,88 @@ func encodeAbortJobResponse(response AbortJobRes, w http.ResponseWriter, span tr
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeChannelScanResponse(response ChannelScanRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ChannelScanOK:
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(200)
+
+		writer := w
+		if closer, ok := response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
+		if _, err := io.Copy(writer, response); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ChannelScanAccepted:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(202)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ChannelScanBadRequest:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(400)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ChannelScanConflict:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(409)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -70,6 +145,7 @@ func encodeAbortJobResponse(response AbortJobRes, w http.ResponseWriter, span tr
 func encodeChannelsTypeChannelServicesIDStreamHeadResponse(response ChannelsTypeChannelServicesIDStreamHeadRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *ChannelsTypeChannelServicesIDStreamHeadOK:
+		w.Header().Set("Access-Control-Expose-Headers", "X-Mirakurun-Tuner-User-Id")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -90,13 +166,11 @@ func encodeChannelsTypeChannelServicesIDStreamHeadResponse(response ChannelsType
 			}
 		}
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		return nil
 
 	case *ChannelsTypeChannelServicesIDStreamHeadNotFound:
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 
@@ -113,10 +187,8 @@ func encodeChannelsTypeChannelServicesIDStreamHeadResponse(response ChannelsType
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		if code >= http.StatusInternalServerError {
@@ -132,6 +204,7 @@ func encodeChannelsTypeChannelServicesIDStreamHeadResponse(response ChannelsType
 func encodeChannelsTypeChannelStreamHeadResponse(response ChannelsTypeChannelStreamHeadRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *ChannelsTypeChannelStreamHeadOK:
+		w.Header().Set("Access-Control-Expose-Headers", "X-Mirakurun-Tuner-User-Id")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -152,13 +225,11 @@ func encodeChannelsTypeChannelStreamHeadResponse(response ChannelsTypeChannelStr
 			}
 		}
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		return nil
 
 	case *ChannelsTypeChannelStreamHeadNotFound:
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 
@@ -175,10 +246,8 @@ func encodeChannelsTypeChannelStreamHeadResponse(response ChannelsTypeChannelStr
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		if code >= http.StatusInternalServerError {
@@ -196,7 +265,6 @@ func encodeCheckVersionResponse(response CheckVersionRes, w http.ResponseWriter,
 	case *Version:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -214,10 +282,8 @@ func encodeCheckVersionResponse(response CheckVersionRes, w http.ResponseWriter,
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -241,7 +307,6 @@ func encodeGetApiDocumentationResponse(response GetApiDocumentationRes, w http.R
 	case *GetApiDocumentationOK:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -259,10 +324,8 @@ func encodeGetApiDocumentationResponse(response GetApiDocumentationRes, w http.R
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -286,7 +349,6 @@ func encodeGetChannelResponse(response GetChannelRes, w http.ResponseWriter, spa
 	case *Channel:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -299,7 +361,6 @@ func encodeGetChannelResponse(response GetChannelRes, w http.ResponseWriter, spa
 	case *Error:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -317,10 +378,8 @@ func encodeGetChannelResponse(response GetChannelRes, w http.ResponseWriter, spa
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -339,10 +398,24 @@ func encodeGetChannelResponse(response GetChannelRes, w http.ResponseWriter, spa
 	}
 }
 
+func encodeGetChannelScanStatusResponse(response *ChannelScanStatus, w http.ResponseWriter, span trace.Span) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(200)
+
+	e := new(jx.Encoder)
+	response.Encode(e)
+	if _, err := e.WriteTo(w); err != nil {
+		return errors.Wrap(err, "write")
+	}
+
+	return nil
+}
+
 func encodeGetChannelStreamResponse(response GetChannelStreamRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *GetChannelStreamOKHeaders:
 		w.Header().Set("Content-Type", "video/mp2t")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Mirakurun-Tuner-User-Id")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -363,9 +436,11 @@ func encodeGetChannelStreamResponse(response GetChannelStreamRes, w http.Respons
 			}
 		}
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		writer := w
+		if closer, ok := response.Response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
 		if _, err := io.Copy(writer, response.Response); err != nil {
 			return errors.Wrap(err, "write")
 		}
@@ -374,7 +449,6 @@ func encodeGetChannelStreamResponse(response GetChannelStreamRes, w http.Respons
 
 	case *GetChannelStreamNotFound:
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 
@@ -391,10 +465,8 @@ func encodeGetChannelStreamResponse(response GetChannelStreamRes, w http.Respons
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		if code >= http.StatusInternalServerError {
@@ -412,7 +484,6 @@ func encodeGetChannelsResponse(response GetChannelsRes, w http.ResponseWriter, s
 	case *GetChannelsOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -430,10 +501,8 @@ func encodeGetChannelsResponse(response GetChannelsRes, w http.ResponseWriter, s
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -457,7 +526,6 @@ func encodeGetChannelsByTypeResponse(response GetChannelsByTypeRes, w http.Respo
 	case *GetChannelsByTypeOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -475,10 +543,52 @@ func encodeGetChannelsByTypeResponse(response GetChannelsByTypeRes, w http.Respo
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetChannelsConfigResponse(response GetChannelsConfigRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ConfigChannels:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+
+		e := new(jx.Encoder)
+		if response != nil {
+			response.Encode(e)
+		}
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -502,7 +612,6 @@ func encodeGetEventsResponse(response GetEventsRes, w http.ResponseWriter, span 
 	case *GetEventsOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -520,10 +629,8 @@ func encodeGetEventsResponse(response GetEventsRes, w http.ResponseWriter, span 
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -547,7 +654,6 @@ func encodeGetEventsStreamResponse(response GetEventsStreamRes, w http.ResponseW
 	case *GetEventsStreamOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := jx.NewStreamingEncoder(w, -1)
 		response.Encode(e)
@@ -565,10 +671,8 @@ func encodeGetEventsStreamResponse(response GetEventsStreamRes, w http.ResponseW
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -592,7 +696,6 @@ func encodeGetJobSchedulesResponse(response GetJobSchedulesRes, w http.ResponseW
 	case *GetJobSchedulesOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -610,10 +713,8 @@ func encodeGetJobSchedulesResponse(response GetJobSchedulesRes, w http.ResponseW
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -637,7 +738,6 @@ func encodeGetJobsResponse(response GetJobsRes, w http.ResponseWriter, span trac
 	case *GetJobsOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -655,10 +755,8 @@ func encodeGetJobsResponse(response GetJobsRes, w http.ResponseWriter, span trac
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -682,9 +780,11 @@ func encodeGetLogResponse(response GetLogRes, w http.ResponseWriter, span trace.
 	case *GetLogOK:
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		writer := w
+		if closer, ok := response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
 		if _, err := io.Copy(writer, response); err != nil {
 			return errors.Wrap(err, "write")
 		}
@@ -698,10 +798,8 @@ func encodeGetLogResponse(response GetLogRes, w http.ResponseWriter, span trace.
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		if code >= http.StatusInternalServerError {
@@ -719,9 +817,11 @@ func encodeGetLogStreamResponse(response GetLogStreamRes, w http.ResponseWriter,
 	case *GetLogStreamOK:
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		writer := w
+		if closer, ok := response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
 		if _, err := io.Copy(writer, response); err != nil {
 			return errors.Wrap(err, "write")
 		}
@@ -735,10 +835,8 @@ func encodeGetLogStreamResponse(response GetLogStreamRes, w http.ResponseWriter,
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		if code >= http.StatusInternalServerError {
@@ -756,9 +854,11 @@ func encodeGetLogoImageResponse(response GetLogoImageRes, w http.ResponseWriter,
 	case *GetLogoImageOK:
 		w.Header().Set("Content-Type", "image/png")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		writer := w
+		if closer, ok := response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
 		if _, err := io.Copy(writer, response); err != nil {
 			return errors.Wrap(err, "write")
 		}
@@ -767,7 +867,6 @@ func encodeGetLogoImageResponse(response GetLogoImageRes, w http.ResponseWriter,
 
 	case *GetLogoImageNotFound:
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 
@@ -784,10 +883,8 @@ func encodeGetLogoImageResponse(response GetLogoImageRes, w http.ResponseWriter,
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		if code >= http.StatusInternalServerError {
@@ -805,7 +902,6 @@ func encodeGetProgramResponse(response GetProgramRes, w http.ResponseWriter, spa
 	case *Program:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -818,7 +914,6 @@ func encodeGetProgramResponse(response GetProgramRes, w http.ResponseWriter, spa
 	case *Error:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -836,10 +931,8 @@ func encodeGetProgramResponse(response GetProgramRes, w http.ResponseWriter, spa
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -862,6 +955,7 @@ func encodeGetProgramStreamResponse(response GetProgramStreamRes, w http.Respons
 	switch response := response.(type) {
 	case *GetProgramStreamOKHeaders:
 		w.Header().Set("Content-Type", "video/mp2t")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Mirakurun-Tuner-User-Id")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -882,9 +976,11 @@ func encodeGetProgramStreamResponse(response GetProgramStreamRes, w http.Respons
 			}
 		}
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		writer := w
+		if closer, ok := response.Response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
 		if _, err := io.Copy(writer, response.Response); err != nil {
 			return errors.Wrap(err, "write")
 		}
@@ -893,7 +989,6 @@ func encodeGetProgramStreamResponse(response GetProgramStreamRes, w http.Respons
 
 	case *GetProgramStreamNotFound:
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 
@@ -910,10 +1005,8 @@ func encodeGetProgramStreamResponse(response GetProgramStreamRes, w http.Respons
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		if code >= http.StatusInternalServerError {
@@ -931,7 +1024,6 @@ func encodeGetProgramsResponse(response GetProgramsRes, w http.ResponseWriter, s
 	case *GetProgramsOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -949,10 +1041,50 @@ func encodeGetProgramsResponse(response GetProgramsRes, w http.ResponseWriter, s
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetServerConfigResponse(response GetServerConfigRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ConfigServer:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -976,7 +1108,6 @@ func encodeGetServiceResponse(response GetServiceRes, w http.ResponseWriter, spa
 	case *Service:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -989,7 +1120,6 @@ func encodeGetServiceResponse(response GetServiceRes, w http.ResponseWriter, spa
 	case *Error:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1007,10 +1137,8 @@ func encodeGetServiceResponse(response GetServiceRes, w http.ResponseWriter, spa
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1034,7 +1162,6 @@ func encodeGetServiceByChannelResponse(response GetServiceByChannelRes, w http.R
 	case *GetServiceByChannelOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1052,10 +1179,8 @@ func encodeGetServiceByChannelResponse(response GetServiceByChannelRes, w http.R
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1079,7 +1204,6 @@ func encodeGetServiceProgramsResponse(response GetServiceProgramsRes, w http.Res
 	case *GetServiceProgramsOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1097,10 +1221,8 @@ func encodeGetServiceProgramsResponse(response GetServiceProgramsRes, w http.Res
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1123,6 +1245,7 @@ func encodeGetServiceStreamResponse(response GetServiceStreamRes, w http.Respons
 	switch response := response.(type) {
 	case *GetServiceStreamOKHeaders:
 		w.Header().Set("Content-Type", "video/mp2t")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Mirakurun-Tuner-User-Id")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -1143,9 +1266,11 @@ func encodeGetServiceStreamResponse(response GetServiceStreamRes, w http.Respons
 			}
 		}
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		writer := w
+		if closer, ok := response.Response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
 		if _, err := io.Copy(writer, response.Response); err != nil {
 			return errors.Wrap(err, "write")
 		}
@@ -1154,7 +1279,6 @@ func encodeGetServiceStreamResponse(response GetServiceStreamRes, w http.Respons
 
 	case *GetServiceStreamNotFound:
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 
@@ -1171,10 +1295,8 @@ func encodeGetServiceStreamResponse(response GetServiceStreamRes, w http.Respons
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		if code >= http.StatusInternalServerError {
@@ -1191,6 +1313,7 @@ func encodeGetServiceStreamByChannelResponse(response GetServiceStreamByChannelR
 	switch response := response.(type) {
 	case *GetServiceStreamByChannelOKHeaders:
 		w.Header().Set("Content-Type", "video/mp2t")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Mirakurun-Tuner-User-Id")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -1211,9 +1334,11 @@ func encodeGetServiceStreamByChannelResponse(response GetServiceStreamByChannelR
 			}
 		}
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		writer := w
+		if closer, ok := response.Response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
 		if _, err := io.Copy(writer, response.Response); err != nil {
 			return errors.Wrap(err, "write")
 		}
@@ -1222,7 +1347,6 @@ func encodeGetServiceStreamByChannelResponse(response GetServiceStreamByChannelR
 
 	case *GetServiceStreamByChannelNotFound:
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 
@@ -1239,10 +1363,8 @@ func encodeGetServiceStreamByChannelResponse(response GetServiceStreamByChannelR
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		if code >= http.StatusInternalServerError {
@@ -1260,7 +1382,6 @@ func encodeGetServicesResponse(response GetServicesRes, w http.ResponseWriter, s
 	case *GetServicesOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1278,10 +1399,8 @@ func encodeGetServicesResponse(response GetServicesRes, w http.ResponseWriter, s
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1305,7 +1424,6 @@ func encodeGetServicesByChannelResponse(response GetServicesByChannelRes, w http
 	case *GetServicesByChannelOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1323,10 +1441,8 @@ func encodeGetServicesByChannelResponse(response GetServicesByChannelRes, w http
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1350,7 +1466,6 @@ func encodeGetStatusResponse(response GetStatusRes, w http.ResponseWriter, span 
 	case *Status:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1368,10 +1483,8 @@ func encodeGetStatusResponse(response GetStatusRes, w http.ResponseWriter, span 
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1395,7 +1508,6 @@ func encodeGetTunerResponse(response GetTunerRes, w http.ResponseWriter, span tr
 	case *TunerDevice:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1408,7 +1520,6 @@ func encodeGetTunerResponse(response GetTunerRes, w http.ResponseWriter, span tr
 	case *Error:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1426,10 +1537,8 @@ func encodeGetTunerResponse(response GetTunerRes, w http.ResponseWriter, span tr
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1453,7 +1562,6 @@ func encodeGetTunerProcessResponse(response GetTunerProcessRes, w http.ResponseW
 	case *TunerProcess:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1466,7 +1574,6 @@ func encodeGetTunerProcessResponse(response GetTunerProcessRes, w http.ResponseW
 	case *Error:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1484,10 +1591,8 @@ func encodeGetTunerProcessResponse(response GetTunerProcessRes, w http.ResponseW
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1511,7 +1616,6 @@ func encodeGetTunersResponse(response GetTunersRes, w http.ResponseWriter, span 
 	case *GetTunersOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1529,10 +1633,52 @@ func encodeGetTunersResponse(response GetTunersRes, w http.ResponseWriter, span 
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeGetTunersConfigResponse(response GetTunersConfigRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ConfigTuners:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+
+		e := new(jx.Encoder)
+		if response != nil {
+			response.Encode(e)
+		}
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1556,7 +1702,6 @@ func encodeIptvDiscoverJSONGetResponse(response IptvDiscoverJSONGetRes, w http.R
 	case *IptvDiscoverJSONGetOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1574,10 +1719,8 @@ func encodeIptvDiscoverJSONGetResponse(response IptvDiscoverJSONGetRes, w http.R
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1601,7 +1744,6 @@ func encodeIptvLineupJSONGetResponse(response IptvLineupJSONGetRes, w http.Respo
 	case *IptvLineupJSONGetOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1619,10 +1761,8 @@ func encodeIptvLineupJSONGetResponse(response IptvLineupJSONGetRes, w http.Respo
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1646,7 +1786,6 @@ func encodeIptvLineupStatusJSONGetResponse(response IptvLineupStatusJSONGetRes, 
 	case *IptvLineupStatusJSONGetOKApplicationJSON:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1664,10 +1803,8 @@ func encodeIptvLineupStatusJSONGetResponse(response IptvLineupStatusJSONGetRes, 
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1691,9 +1828,11 @@ func encodeIptvPlaylistGetResponse(response IptvPlaylistGetRes, w http.ResponseW
 	case *IptvPlaylistGetOK:
 		w.Header().Set("Content-Type", "application/x-mpegurl")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		writer := w
+		if closer, ok := response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
 		if _, err := io.Copy(writer, response); err != nil {
 			return errors.Wrap(err, "write")
 		}
@@ -1708,10 +1847,8 @@ func encodeIptvPlaylistGetResponse(response IptvPlaylistGetRes, w http.ResponseW
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1735,9 +1872,11 @@ func encodeIptvXmltvGetResponse(response IptvXmltvGetRes, w http.ResponseWriter,
 	case *IptvXmltvGetOK:
 		w.Header().Set("Content-Type", "text/xml")
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		writer := w
+		if closer, ok := response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
 		if _, err := io.Copy(writer, response); err != nil {
 			return errors.Wrap(err, "write")
 		}
@@ -1752,10 +1891,8 @@ func encodeIptvXmltvGetResponse(response IptvXmltvGetRes, w http.ResponseWriter,
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1778,14 +1915,12 @@ func encodeKillTunerProcessResponse(response KillTunerProcessRes, w http.Respons
 	switch response := response.(type) {
 	case *KillTunerProcessNoContent:
 		w.WriteHeader(204)
-		span.SetStatus(codes.Ok, http.StatusText(204))
 
 		return nil
 
 	case *Error:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1803,10 +1938,8 @@ func encodeKillTunerProcessResponse(response KillTunerProcessRes, w http.Respons
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1828,6 +1961,7 @@ func encodeKillTunerProcessResponse(response KillTunerProcessRes, w http.Respons
 func encodeProgramsIDStreamHeadResponse(response ProgramsIDStreamHeadRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *ProgramsIDStreamHeadOK:
+		w.Header().Set("Access-Control-Expose-Headers", "X-Mirakurun-Tuner-User-Id")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -1848,13 +1982,11 @@ func encodeProgramsIDStreamHeadResponse(response ProgramsIDStreamHeadRes, w http
 			}
 		}
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		return nil
 
 	case *ProgramsIDStreamHeadNotFound:
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 
@@ -1871,10 +2003,8 @@ func encodeProgramsIDStreamHeadResponse(response ProgramsIDStreamHeadRes, w http
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		if code >= http.StatusInternalServerError {
@@ -1891,14 +2021,12 @@ func encodeRerunJobResponse(response RerunJobRes, w http.ResponseWriter, span tr
 	switch response := response.(type) {
 	case *RerunJobAccepted:
 		w.WriteHeader(202)
-		span.SetStatus(codes.Ok, http.StatusText(202))
 
 		return nil
 
 	case *Error:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(409)
-		span.SetStatus(codes.Error, http.StatusText(409))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1916,10 +2044,43 @@ func encodeRerunJobResponse(response RerunJobRes, w http.ResponseWriter, span tr
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeRestartResponse(response RestartRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *RestartAccepted:
+		w.WriteHeader(202)
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1942,14 +2103,12 @@ func encodeRunJobScheduleResponse(response RunJobScheduleRes, w http.ResponseWri
 	switch response := response.(type) {
 	case *RunJobScheduleAccepted:
 		w.WriteHeader(202)
-		span.SetStatus(codes.Ok, http.StatusText(202))
 
 		return nil
 
 	case *Error:
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		e := new(jx.Encoder)
 		response.Encode(e)
@@ -1967,10 +2126,8 @@ func encodeRunJobScheduleResponse(response RunJobScheduleRes, w http.ResponseWri
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
 		}
 
 		e := new(jx.Encoder)
@@ -1992,6 +2149,7 @@ func encodeRunJobScheduleResponse(response RunJobScheduleRes, w http.ResponseWri
 func encodeServicesIDStreamHeadResponse(response ServicesIDStreamHeadRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
 	case *ServicesIDStreamHeadOK:
+		w.Header().Set("Access-Control-Expose-Headers", "X-Mirakurun-Tuner-User-Id")
 		// Encoding response headers.
 		{
 			h := uri.NewHeaderEncoder(w.Header())
@@ -2012,13 +2170,11 @@ func encodeServicesIDStreamHeadResponse(response ServicesIDStreamHeadRes, w http
 			}
 		}
 		w.WriteHeader(200)
-		span.SetStatus(codes.Ok, http.StatusText(200))
 
 		return nil
 
 	case *ServicesIDStreamHeadNotFound:
 		w.WriteHeader(404)
-		span.SetStatus(codes.Error, http.StatusText(404))
 
 		return nil
 
@@ -2035,10 +2191,192 @@ func encodeServicesIDStreamHeadResponse(response ServicesIDStreamHeadRes, w http
 			code = http.StatusOK
 		}
 		w.WriteHeader(code)
-		if st := http.StatusText(code); code >= http.StatusBadRequest {
-			span.SetStatus(codes.Error, st)
-		} else {
-			span.SetStatus(codes.Ok, st)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeStopChannelScanResponse(response StopChannelScanRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *StopChannelScanPartialContent:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(206)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *Error:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(404)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeUpdateChannelsConfigResponse(response UpdateChannelsConfigRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ConfigChannels:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+
+		e := new(jx.Encoder)
+		if response != nil {
+			response.Encode(e)
+		}
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeUpdateServerConfigResponse(response UpdateServerConfigRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ConfigServer:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+
+		e := new(jx.Encoder)
+		response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		if code >= http.StatusInternalServerError {
+			return errors.Wrapf(ht.ErrInternalServerErrorResponse, "code: %d, message: %s", code, http.StatusText(code))
+		}
+		return nil
+
+	default:
+		return errors.Errorf("unexpected response type: %T", response)
+	}
+}
+
+func encodeUpdateTunersConfigResponse(response UpdateTunersConfigRes, w http.ResponseWriter, span trace.Span) error {
+	switch response := response.(type) {
+	case *ConfigTuners:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(200)
+
+		e := new(jx.Encoder)
+		if response != nil {
+			response.Encode(e)
+		}
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
+		}
+
+		return nil
+
+	case *ErrorStatusCode:
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		code := response.StatusCode
+		if code == 0 {
+			// Set default status code.
+			code = http.StatusOK
+		}
+		w.WriteHeader(code)
+		if code >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(code))
+		}
+
+		e := new(jx.Encoder)
+		response.Response.Encode(e)
+		if _, err := e.WriteTo(w); err != nil {
+			return errors.Wrap(err, "write")
 		}
 
 		if code >= http.StatusInternalServerError {

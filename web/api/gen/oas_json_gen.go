@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/jx"
-
 	"github.com/ogen-go/ogen/validate"
 )
 
@@ -188,6 +187,637 @@ func (s *Channel) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
+func (s *ChannelScanAccepted) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ChannelScanAccepted) encodeFields(e *jx.Encoder) {
+	{
+		if s.Status.Set {
+			e.FieldStart("status")
+			s.Status.Encode(e)
+		}
+	}
+	{
+		if s.Message.Set {
+			e.FieldStart("message")
+			s.Message.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfChannelScanAccepted = [2]string{
+	0: "status",
+	1: "message",
+}
+
+// Decode decodes ChannelScanAccepted from json.
+func (s *ChannelScanAccepted) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChannelScanAccepted to nil")
+	}
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "status":
+			if err := func() error {
+				s.Status.Reset()
+				if err := s.Status.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"status\"")
+			}
+		case "message":
+			if err := func() error {
+				s.Message.Reset()
+				if err := s.Message.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"message\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ChannelScanAccepted")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ChannelScanAccepted) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChannelScanAccepted) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ChannelScanAcceptedStatus as json.
+func (s ChannelScanAcceptedStatus) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes ChannelScanAcceptedStatus from json.
+func (s *ChannelScanAcceptedStatus) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChannelScanAcceptedStatus to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch ChannelScanAcceptedStatus(v) {
+	case ChannelScanAcceptedStatusAccepted:
+		*s = ChannelScanAcceptedStatusAccepted
+	default:
+		*s = ChannelScanAcceptedStatus(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ChannelScanAcceptedStatus) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChannelScanAcceptedStatus) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ChannelScanBadRequest as json.
+func (s *ChannelScanBadRequest) Encode(e *jx.Encoder) {
+	unwrapped := (*Error)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes ChannelScanBadRequest from json.
+func (s *ChannelScanBadRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChannelScanBadRequest to nil")
+	}
+	var unwrapped Error
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ChannelScanBadRequest(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ChannelScanBadRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChannelScanBadRequest) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ChannelScanConflict as json.
+func (s *ChannelScanConflict) Encode(e *jx.Encoder) {
+	unwrapped := (*Error)(s)
+
+	unwrapped.Encode(e)
+}
+
+// Decode decodes ChannelScanConflict from json.
+func (s *ChannelScanConflict) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChannelScanConflict to nil")
+	}
+	var unwrapped Error
+	if err := func() error {
+		if err := unwrapped.Decode(d); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ChannelScanConflict(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ChannelScanConflict) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChannelScanConflict) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *ChannelScanStatus) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ChannelScanStatus) encodeFields(e *jx.Encoder) {
+	{
+		if s.Status.Set {
+			e.FieldStart("status")
+			s.Status.Encode(e)
+		}
+	}
+	{
+		if s.IsScanning.Set {
+			e.FieldStart("isScanning")
+			s.IsScanning.Encode(e)
+		}
+	}
+	{
+		if s.Type.Set {
+			e.FieldStart("type")
+			s.Type.Encode(e)
+		}
+	}
+	{
+		if s.DryRun.Set {
+			e.FieldStart("dryRun")
+			s.DryRun.Encode(e)
+		}
+	}
+	{
+		if s.Progress.Set {
+			e.FieldStart("progress")
+			s.Progress.Encode(e)
+		}
+	}
+	{
+		if s.CurrentChannel.Set {
+			e.FieldStart("currentChannel")
+			s.CurrentChannel.Encode(e)
+		}
+	}
+	{
+		if s.ScanLog != nil {
+			e.FieldStart("scanLog")
+			e.ArrStart()
+			for _, elem := range s.ScanLog {
+				e.Str(elem)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
+		if s.NewCount.Set {
+			e.FieldStart("newCount")
+			s.NewCount.Encode(e)
+		}
+	}
+	{
+		if s.TakeoverCount.Set {
+			e.FieldStart("takeoverCount")
+			s.TakeoverCount.Encode(e)
+		}
+	}
+	{
+		if s.Result != nil {
+			e.FieldStart("result")
+			e.ArrStart()
+			for _, elem := range s.Result {
+				elem.Encode(e)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
+		if s.StartTime.Set {
+			e.FieldStart("startTime")
+			s.StartTime.Encode(e)
+		}
+	}
+	{
+		if s.UpdateTime.Set {
+			e.FieldStart("updateTime")
+			s.UpdateTime.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfChannelScanStatus = [12]string{
+	0:  "status",
+	1:  "isScanning",
+	2:  "type",
+	3:  "dryRun",
+	4:  "progress",
+	5:  "currentChannel",
+	6:  "scanLog",
+	7:  "newCount",
+	8:  "takeoverCount",
+	9:  "result",
+	10: "startTime",
+	11: "updateTime",
+}
+
+// Decode decodes ChannelScanStatus from json.
+func (s *ChannelScanStatus) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChannelScanStatus to nil")
+	}
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "status":
+			if err := func() error {
+				s.Status.Reset()
+				if err := s.Status.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"status\"")
+			}
+		case "isScanning":
+			if err := func() error {
+				s.IsScanning.Reset()
+				if err := s.IsScanning.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"isScanning\"")
+			}
+		case "type":
+			if err := func() error {
+				s.Type.Reset()
+				if err := s.Type.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"type\"")
+			}
+		case "dryRun":
+			if err := func() error {
+				s.DryRun.Reset()
+				if err := s.DryRun.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"dryRun\"")
+			}
+		case "progress":
+			if err := func() error {
+				s.Progress.Reset()
+				if err := s.Progress.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"progress\"")
+			}
+		case "currentChannel":
+			if err := func() error {
+				s.CurrentChannel.Reset()
+				if err := s.CurrentChannel.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"currentChannel\"")
+			}
+		case "scanLog":
+			if err := func() error {
+				s.ScanLog = make([]string, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem string
+					v, err := d.Str()
+					elem = string(v)
+					if err != nil {
+						return err
+					}
+					s.ScanLog = append(s.ScanLog, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"scanLog\"")
+			}
+		case "newCount":
+			if err := func() error {
+				s.NewCount.Reset()
+				if err := s.NewCount.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"newCount\"")
+			}
+		case "takeoverCount":
+			if err := func() error {
+				s.TakeoverCount.Reset()
+				if err := s.TakeoverCount.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"takeoverCount\"")
+			}
+		case "result":
+			if err := func() error {
+				s.Result = make([]ConfigChannelsItem, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem ConfigChannelsItem
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Result = append(s.Result, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"result\"")
+			}
+		case "startTime":
+			if err := func() error {
+				s.StartTime.Reset()
+				if err := s.StartTime.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"startTime\"")
+			}
+		case "updateTime":
+			if err := func() error {
+				s.UpdateTime.Reset()
+				if err := s.UpdateTime.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"updateTime\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ChannelScanStatus")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ChannelScanStatus) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChannelScanStatus) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ChannelScanStatusStatus as json.
+func (s ChannelScanStatusStatus) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes ChannelScanStatusStatus from json.
+func (s *ChannelScanStatusStatus) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChannelScanStatusStatus to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch ChannelScanStatusStatus(v) {
+	case ChannelScanStatusStatusNotStarted:
+		*s = ChannelScanStatusStatusNotStarted
+	case ChannelScanStatusStatusScanning:
+		*s = ChannelScanStatusStatusScanning
+	case ChannelScanStatusStatusCompleted:
+		*s = ChannelScanStatusStatusCompleted
+	case ChannelScanStatusStatusCancelled:
+		*s = ChannelScanStatusStatusCancelled
+	case ChannelScanStatusStatusError:
+		*s = ChannelScanStatusStatusError
+	default:
+		*s = ChannelScanStatusStatus(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ChannelScanStatusStatus) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChannelScanStatusStatus) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ChannelType as json.
+func (s ChannelType) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes ChannelType from json.
+func (s *ChannelType) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ChannelType to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch ChannelType(v) {
+	case ChannelTypeGR:
+		*s = ChannelTypeGR
+	case ChannelTypeBS:
+		*s = ChannelTypeBS
+	case ChannelTypeCS:
+		*s = ChannelTypeCS
+	case ChannelTypeSKY:
+		*s = ChannelTypeSKY
+	case ChannelTypeEXT1:
+		*s = ChannelTypeEXT1
+	case ChannelTypeEXT2:
+		*s = ChannelTypeEXT2
+	case ChannelTypeEXT3:
+		*s = ChannelTypeEXT3
+	case ChannelTypeEXT4:
+		*s = ChannelTypeEXT4
+	case ChannelTypeEXT5:
+		*s = ChannelTypeEXT5
+	case ChannelTypeEXT6:
+		*s = ChannelTypeEXT6
+	case ChannelTypeEXT7:
+		*s = ChannelTypeEXT7
+	case ChannelTypeEXT8:
+		*s = ChannelTypeEXT8
+	case ChannelTypeEXT9:
+		*s = ChannelTypeEXT9
+	default:
+		*s = ChannelType(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ChannelType) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ChannelType) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ConfigChannels as json.
+func (s ConfigChannels) Encode(e *jx.Encoder) {
+	unwrapped := []ConfigChannelsItem(s)
+	if unwrapped == nil {
+		e.ArrEmpty()
+		return
+	}
+	if unwrapped != nil {
+		e.ArrStart()
+		for _, elem := range unwrapped {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+}
+
+// Decode decodes ConfigChannels from json.
+func (s *ConfigChannels) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ConfigChannels to nil")
+	}
+	var unwrapped []ConfigChannelsItem
+	if err := func() error {
+		unwrapped = make([]ConfigChannelsItem, 0)
+		if err := d.Arr(func(d *jx.Decoder) error {
+			var elem ConfigChannelsItem
+			if err := elem.Decode(d); err != nil {
+				return err
+			}
+			unwrapped = append(unwrapped, elem)
+			return nil
+		}); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ConfigChannels(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ConfigChannels) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ConfigChannels) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
 func (s *ConfigChannelsItem) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
@@ -232,9 +862,21 @@ func (s *ConfigChannelsItem) encodeFields(e *jx.Encoder) {
 			s.IsDisabled.Encode(e)
 		}
 	}
+	{
+		if s.ServicesCommand.Set {
+			e.FieldStart("servicesCommand")
+			s.ServicesCommand.Encode(e)
+		}
+	}
+	{
+		if s.ProgramsCommand.Set {
+			e.FieldStart("programsCommand")
+			s.ProgramsCommand.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfConfigChannelsItem = [7]string{
+var jsonFieldsNameOfConfigChannelsItem = [9]string{
 	0: "name",
 	1: "type",
 	2: "channel",
@@ -242,6 +884,8 @@ var jsonFieldsNameOfConfigChannelsItem = [7]string{
 	4: "tsmfRelTs",
 	5: "commandVars",
 	6: "isDisabled",
+	7: "servicesCommand",
+	8: "programsCommand",
 }
 
 // Decode decodes ConfigChannelsItem from json.
@@ -249,7 +893,7 @@ func (s *ConfigChannelsItem) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ConfigChannelsItem to nil")
 	}
-	var requiredBitSet [1]uint8
+	var requiredBitSet [2]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -331,6 +975,26 @@ func (s *ConfigChannelsItem) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"isDisabled\"")
 			}
+		case "servicesCommand":
+			if err := func() error {
+				s.ServicesCommand.Reset()
+				if err := s.ServicesCommand.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"servicesCommand\"")
+			}
+		case "programsCommand":
+			if err := func() error {
+				s.ProgramsCommand.Reset()
+				if err := s.ProgramsCommand.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"programsCommand\"")
+			}
 		default:
 			return d.Skip()
 		}
@@ -340,8 +1004,9 @@ func (s *ConfigChannelsItem) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [1]uint8{
+	for i, mask := range [2]uint8{
 		0b00000111,
+		0b00000000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -427,6 +1092,682 @@ func (s *ConfigChannelsItemCommandVars) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *ConfigChannelsItemCommandVars) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *ConfigServer) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ConfigServer) encodeFields(e *jx.Encoder) {
+	{
+		if s.Path.Set {
+			e.FieldStart("path")
+			s.Path.Encode(e)
+		}
+	}
+	{
+		if s.Port.Set {
+			e.FieldStart("port")
+			s.Port.Encode(e)
+		}
+	}
+	{
+		if s.Hostname.Set {
+			e.FieldStart("hostname")
+			s.Hostname.Encode(e)
+		}
+	}
+	{
+		if s.DisableIPv6.Set {
+			e.FieldStart("disableIPv6")
+			s.DisableIPv6.Encode(e)
+		}
+	}
+	{
+		if s.LogLevel.Set {
+			e.FieldStart("logLevel")
+			s.LogLevel.Encode(e)
+		}
+	}
+	{
+		if s.MaxLogHistory.Set {
+			e.FieldStart("maxLogHistory")
+			s.MaxLogHistory.Encode(e)
+		}
+	}
+	{
+		if s.JobMaxRunning.Set {
+			e.FieldStart("jobMaxRunning")
+			s.JobMaxRunning.Encode(e)
+		}
+	}
+	{
+		if s.JobMaxStandby.Set {
+			e.FieldStart("jobMaxStandby")
+			s.JobMaxStandby.Encode(e)
+		}
+	}
+	{
+		if s.MaxBufferBytesBeforeReady.Set {
+			e.FieldStart("maxBufferBytesBeforeReady")
+			s.MaxBufferBytesBeforeReady.Encode(e)
+		}
+	}
+	{
+		if s.EventEndTimeout.Set {
+			e.FieldStart("eventEndTimeout")
+			s.EventEndTimeout.Encode(e)
+		}
+	}
+	{
+		if s.ProgramGCJobSchedule.Set {
+			e.FieldStart("programGCJobSchedule")
+			s.ProgramGCJobSchedule.Encode(e)
+		}
+	}
+	{
+		if s.EpgGatheringJobSchedule.Set {
+			e.FieldStart("epgGatheringJobSchedule")
+			s.EpgGatheringJobSchedule.Encode(e)
+		}
+	}
+	{
+		if s.EpgRetrievalTime.Set {
+			e.FieldStart("epgRetrievalTime")
+			s.EpgRetrievalTime.Encode(e)
+		}
+	}
+	{
+		if s.LogoDataInterval.Set {
+			e.FieldStart("logoDataInterval")
+			s.LogoDataInterval.Encode(e)
+		}
+	}
+	{
+		if s.DisableEITParsing.Set {
+			e.FieldStart("disableEITParsing")
+			s.DisableEITParsing.Encode(e)
+		}
+	}
+	{
+		if s.DisableWebUI.Set {
+			e.FieldStart("disableWebUI")
+			s.DisableWebUI.Encode(e)
+		}
+	}
+	{
+		if s.AllowIPv4CidrRanges != nil {
+			e.FieldStart("allowIPv4CidrRanges")
+			e.ArrStart()
+			for _, elem := range s.AllowIPv4CidrRanges {
+				e.Str(elem)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
+		if s.AllowIPv6CidrRanges != nil {
+			e.FieldStart("allowIPv6CidrRanges")
+			e.ArrStart()
+			for _, elem := range s.AllowIPv6CidrRanges {
+				e.Str(elem)
+			}
+			e.ArrEnd()
+		}
+	}
+}
+
+var jsonFieldsNameOfConfigServer = [18]string{
+	0:  "path",
+	1:  "port",
+	2:  "hostname",
+	3:  "disableIPv6",
+	4:  "logLevel",
+	5:  "maxLogHistory",
+	6:  "jobMaxRunning",
+	7:  "jobMaxStandby",
+	8:  "maxBufferBytesBeforeReady",
+	9:  "eventEndTimeout",
+	10: "programGCJobSchedule",
+	11: "epgGatheringJobSchedule",
+	12: "epgRetrievalTime",
+	13: "logoDataInterval",
+	14: "disableEITParsing",
+	15: "disableWebUI",
+	16: "allowIPv4CidrRanges",
+	17: "allowIPv6CidrRanges",
+}
+
+// Decode decodes ConfigServer from json.
+func (s *ConfigServer) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ConfigServer to nil")
+	}
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "path":
+			if err := func() error {
+				s.Path.Reset()
+				if err := s.Path.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"path\"")
+			}
+		case "port":
+			if err := func() error {
+				s.Port.Reset()
+				if err := s.Port.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"port\"")
+			}
+		case "hostname":
+			if err := func() error {
+				s.Hostname.Reset()
+				if err := s.Hostname.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"hostname\"")
+			}
+		case "disableIPv6":
+			if err := func() error {
+				s.DisableIPv6.Reset()
+				if err := s.DisableIPv6.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"disableIPv6\"")
+			}
+		case "logLevel":
+			if err := func() error {
+				s.LogLevel.Reset()
+				if err := s.LogLevel.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"logLevel\"")
+			}
+		case "maxLogHistory":
+			if err := func() error {
+				s.MaxLogHistory.Reset()
+				if err := s.MaxLogHistory.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"maxLogHistory\"")
+			}
+		case "jobMaxRunning":
+			if err := func() error {
+				s.JobMaxRunning.Reset()
+				if err := s.JobMaxRunning.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"jobMaxRunning\"")
+			}
+		case "jobMaxStandby":
+			if err := func() error {
+				s.JobMaxStandby.Reset()
+				if err := s.JobMaxStandby.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"jobMaxStandby\"")
+			}
+		case "maxBufferBytesBeforeReady":
+			if err := func() error {
+				s.MaxBufferBytesBeforeReady.Reset()
+				if err := s.MaxBufferBytesBeforeReady.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"maxBufferBytesBeforeReady\"")
+			}
+		case "eventEndTimeout":
+			if err := func() error {
+				s.EventEndTimeout.Reset()
+				if err := s.EventEndTimeout.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"eventEndTimeout\"")
+			}
+		case "programGCJobSchedule":
+			if err := func() error {
+				s.ProgramGCJobSchedule.Reset()
+				if err := s.ProgramGCJobSchedule.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"programGCJobSchedule\"")
+			}
+		case "epgGatheringJobSchedule":
+			if err := func() error {
+				s.EpgGatheringJobSchedule.Reset()
+				if err := s.EpgGatheringJobSchedule.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"epgGatheringJobSchedule\"")
+			}
+		case "epgRetrievalTime":
+			if err := func() error {
+				s.EpgRetrievalTime.Reset()
+				if err := s.EpgRetrievalTime.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"epgRetrievalTime\"")
+			}
+		case "logoDataInterval":
+			if err := func() error {
+				s.LogoDataInterval.Reset()
+				if err := s.LogoDataInterval.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"logoDataInterval\"")
+			}
+		case "disableEITParsing":
+			if err := func() error {
+				s.DisableEITParsing.Reset()
+				if err := s.DisableEITParsing.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"disableEITParsing\"")
+			}
+		case "disableWebUI":
+			if err := func() error {
+				s.DisableWebUI.Reset()
+				if err := s.DisableWebUI.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"disableWebUI\"")
+			}
+		case "allowIPv4CidrRanges":
+			if err := func() error {
+				s.AllowIPv4CidrRanges = make([]string, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem string
+					v, err := d.Str()
+					elem = string(v)
+					if err != nil {
+						return err
+					}
+					s.AllowIPv4CidrRanges = append(s.AllowIPv4CidrRanges, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"allowIPv4CidrRanges\"")
+			}
+		case "allowIPv6CidrRanges":
+			if err := func() error {
+				s.AllowIPv6CidrRanges = make([]string, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem string
+					v, err := d.Str()
+					elem = string(v)
+					if err != nil {
+						return err
+					}
+					s.AllowIPv6CidrRanges = append(s.AllowIPv6CidrRanges, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"allowIPv6CidrRanges\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ConfigServer")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ConfigServer) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ConfigServer) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ConfigTuners as json.
+func (s ConfigTuners) Encode(e *jx.Encoder) {
+	unwrapped := []ConfigTunersItem(s)
+	if unwrapped == nil {
+		e.ArrEmpty()
+		return
+	}
+	if unwrapped != nil {
+		e.ArrStart()
+		for _, elem := range unwrapped {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+}
+
+// Decode decodes ConfigTuners from json.
+func (s *ConfigTuners) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ConfigTuners to nil")
+	}
+	var unwrapped []ConfigTunersItem
+	if err := func() error {
+		unwrapped = make([]ConfigTunersItem, 0)
+		if err := d.Arr(func(d *jx.Decoder) error {
+			var elem ConfigTunersItem
+			if err := elem.Decode(d); err != nil {
+				return err
+			}
+			unwrapped = append(unwrapped, elem)
+			return nil
+		}); err != nil {
+			return err
+		}
+		return nil
+	}(); err != nil {
+		return errors.Wrap(err, "alias")
+	}
+	*s = ConfigTuners(unwrapped)
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ConfigTuners) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ConfigTuners) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *ConfigTunersItem) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *ConfigTunersItem) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("name")
+		e.Str(s.Name)
+	}
+	{
+		e.FieldStart("types")
+		e.ArrStart()
+		for _, elem := range s.Types {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+	{
+		if s.Command.Set {
+			e.FieldStart("command")
+			s.Command.Encode(e)
+		}
+	}
+	{
+		if s.DvbDevicePath.Set {
+			e.FieldStart("dvbDevicePath")
+			s.DvbDevicePath.Encode(e)
+		}
+	}
+	{
+		if s.RemoteMirakurunHost.Set {
+			e.FieldStart("remoteMirakurunHost")
+			s.RemoteMirakurunHost.Encode(e)
+		}
+	}
+	{
+		if s.RemoteMirakurunPort.Set {
+			e.FieldStart("remoteMirakurunPort")
+			s.RemoteMirakurunPort.Encode(e)
+		}
+	}
+	{
+		if s.RemoteMirakurunDecoder.Set {
+			e.FieldStart("remoteMirakurunDecoder")
+			s.RemoteMirakurunDecoder.Encode(e)
+		}
+	}
+	{
+		if s.Decoder.Set {
+			e.FieldStart("decoder")
+			s.Decoder.Encode(e)
+		}
+	}
+	{
+		if s.IsDisabled.Set {
+			e.FieldStart("isDisabled")
+			s.IsDisabled.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfConfigTunersItem = [9]string{
+	0: "name",
+	1: "types",
+	2: "command",
+	3: "dvbDevicePath",
+	4: "remoteMirakurunHost",
+	5: "remoteMirakurunPort",
+	6: "remoteMirakurunDecoder",
+	7: "decoder",
+	8: "isDisabled",
+}
+
+// Decode decodes ConfigTunersItem from json.
+func (s *ConfigTunersItem) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ConfigTunersItem to nil")
+	}
+	var requiredBitSet [2]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "name":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				v, err := d.Str()
+				s.Name = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"name\"")
+			}
+		case "types":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				s.Types = make([]ChannelType, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem ChannelType
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Types = append(s.Types, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"types\"")
+			}
+		case "command":
+			if err := func() error {
+				s.Command.Reset()
+				if err := s.Command.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"command\"")
+			}
+		case "dvbDevicePath":
+			if err := func() error {
+				s.DvbDevicePath.Reset()
+				if err := s.DvbDevicePath.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"dvbDevicePath\"")
+			}
+		case "remoteMirakurunHost":
+			if err := func() error {
+				s.RemoteMirakurunHost.Reset()
+				if err := s.RemoteMirakurunHost.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"remoteMirakurunHost\"")
+			}
+		case "remoteMirakurunPort":
+			if err := func() error {
+				s.RemoteMirakurunPort.Reset()
+				if err := s.RemoteMirakurunPort.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"remoteMirakurunPort\"")
+			}
+		case "remoteMirakurunDecoder":
+			if err := func() error {
+				s.RemoteMirakurunDecoder.Reset()
+				if err := s.RemoteMirakurunDecoder.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"remoteMirakurunDecoder\"")
+			}
+		case "decoder":
+			if err := func() error {
+				s.Decoder.Reset()
+				if err := s.Decoder.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"decoder\"")
+			}
+		case "isDisabled":
+			if err := func() error {
+				s.IsDisabled.Reset()
+				if err := s.IsDisabled.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"isDisabled\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ConfigTunersItem")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [2]uint8{
+		0b00000011,
+		0b00000000,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfConfigTunersItem) {
+					name = jsonFieldsNameOfConfigTunersItem[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *ConfigTunersItem) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ConfigTunersItem) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -2529,6 +3870,138 @@ func (s *OptChannel) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes ChannelScanAcceptedStatus as json.
+func (o OptChannelScanAcceptedStatus) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes ChannelScanAcceptedStatus from json.
+func (o *OptChannelScanAcceptedStatus) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptChannelScanAcceptedStatus to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptChannelScanAcceptedStatus) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptChannelScanAcceptedStatus) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ChannelScanStatusStatus as json.
+func (o OptChannelScanStatusStatus) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes ChannelScanStatusStatus from json.
+func (o *OptChannelScanStatusStatus) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptChannelScanStatusStatus to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptChannelScanStatusStatus) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptChannelScanStatusStatus) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ChannelType as json.
+func (o OptChannelType) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes ChannelType from json.
+func (o *OptChannelType) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptChannelType to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptChannelType) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptChannelType) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ConfigServer as json.
+func (o OptConfigServer) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes ConfigServer from json.
+func (o *OptConfigServer) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptConfigServer to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptConfigServer) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptConfigServer) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes float64 as json.
 func (o OptFloat64) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -3189,6 +4662,39 @@ func (s OptStatusTimerAccuracyM5) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *OptStatusTimerAccuracyM5) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes StopChannelScanPartialContentStatus as json.
+func (o OptStopChannelScanPartialContentStatus) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes StopChannelScanPartialContentStatus from json.
+func (o *OptStopChannelScanPartialContentStatus) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptStopChannelScanPartialContentStatus to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptStopChannelScanPartialContentStatus) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptStopChannelScanPartialContentStatus) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -4829,9 +6335,15 @@ func (s *Service) encodeFields(e *jx.Encoder) {
 			s.Channel.Encode(e)
 		}
 	}
+	{
+		if s.LogoData.Set {
+			e.FieldStart("logoData")
+			s.LogoData.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfService = [12]string{
+var jsonFieldsNameOfService = [13]string{
 	0:  "id",
 	1:  "serviceId",
 	2:  "networkId",
@@ -4844,6 +6356,7 @@ var jsonFieldsNameOfService = [12]string{
 	9:  "epgReady",
 	10: "epgUpdatedAt",
 	11: "channel",
+	12: "logoData",
 }
 
 // Decode decodes Service from json.
@@ -4978,6 +6491,16 @@ func (s *Service) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"channel\"")
+			}
+		case "logoData":
+			if err := func() error {
+				s.LogoData.Reset()
+				if err := s.LogoData.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"logoData\"")
 			}
 		default:
 			return d.Skip()
@@ -6355,6 +7878,124 @@ func (s *StatusTimerAccuracyM5) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *StatusTimerAccuracyM5) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *StopChannelScanPartialContent) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *StopChannelScanPartialContent) encodeFields(e *jx.Encoder) {
+	{
+		if s.Status.Set {
+			e.FieldStart("status")
+			s.Status.Encode(e)
+		}
+	}
+	{
+		if s.Message.Set {
+			e.FieldStart("message")
+			s.Message.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfStopChannelScanPartialContent = [2]string{
+	0: "status",
+	1: "message",
+}
+
+// Decode decodes StopChannelScanPartialContent from json.
+func (s *StopChannelScanPartialContent) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode StopChannelScanPartialContent to nil")
+	}
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "status":
+			if err := func() error {
+				s.Status.Reset()
+				if err := s.Status.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"status\"")
+			}
+		case "message":
+			if err := func() error {
+				s.Message.Reset()
+				if err := s.Message.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"message\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode StopChannelScanPartialContent")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *StopChannelScanPartialContent) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *StopChannelScanPartialContent) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes StopChannelScanPartialContentStatus as json.
+func (s StopChannelScanPartialContentStatus) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes StopChannelScanPartialContentStatus from json.
+func (s *StopChannelScanPartialContentStatus) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode StopChannelScanPartialContentStatus to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch StopChannelScanPartialContentStatus(v) {
+	case StopChannelScanPartialContentStatusStopping:
+		*s = StopChannelScanPartialContentStatusStopping
+	default:
+		*s = StopChannelScanPartialContentStatus(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s StopChannelScanPartialContentStatus) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *StopChannelScanPartialContentStatus) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

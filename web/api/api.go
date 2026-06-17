@@ -35,6 +35,10 @@ func (h *Handler) AbortJob(ctx context.Context, params apigen.AbortJobParams) (a
 	panic("implement me")
 }
 
+func (h *Handler) ChannelScan(ctx context.Context, params apigen.ChannelScanParams) (apigen.ChannelScanRes, error) {
+	panic("implement me")
+}
+
 func (h *Handler) ChannelsTypeChannelServicesIDStreamHead(ctx context.Context, params apigen.ChannelsTypeChannelServicesIDStreamHeadParams) (apigen.ChannelsTypeChannelServicesIDStreamHeadRes, error) {
 	panic("implement me")
 }
@@ -55,6 +59,10 @@ func (h *Handler) GetChannel(ctx context.Context, params apigen.GetChannelParams
 	return GetChannel(ctx, h, params)
 }
 
+func (h *Handler) GetChannelScanStatus(ctx context.Context) (*apigen.ChannelScanStatus, error) {
+	panic("implement me")
+}
+
 func (h *Handler) GetChannelStream(ctx context.Context, params apigen.GetChannelStreamParams) (apigen.GetChannelStreamRes, error) {
 	return GetChannelStream(ctx, h, params)
 }
@@ -65,6 +73,10 @@ func (h *Handler) GetChannels(ctx context.Context, params apigen.GetChannelsPara
 
 func (h *Handler) GetChannelsByType(ctx context.Context, params apigen.GetChannelsByTypeParams) (apigen.GetChannelsByTypeRes, error) {
 	return GetChannelsByType(ctx, h, params)
+}
+
+func (h *Handler) GetChannelsConfig(ctx context.Context) (apigen.GetChannelsConfigRes, error) {
+	panic("implement me")
 }
 
 func (h *Handler) GetEvents(ctx context.Context) (apigen.GetEventsRes, error) {
@@ -104,6 +116,10 @@ func (h *Handler) GetProgramStream(ctx context.Context, params apigen.GetProgram
 }
 
 func (h *Handler) GetPrograms(ctx context.Context, params apigen.GetProgramsParams) (apigen.GetProgramsRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) GetServerConfig(ctx context.Context) (apigen.GetServerConfigRes, error) {
 	panic("implement me")
 }
 
@@ -151,6 +167,10 @@ func (h *Handler) GetTuners(ctx context.Context) (apigen.GetTunersRes, error) {
 	panic("implement me")
 }
 
+func (h *Handler) GetTunersConfig(ctx context.Context) (apigen.GetTunersConfigRes, error) {
+	panic("implement me")
+}
+
 func (h *Handler) IptvDiscoverJSONGet(ctx context.Context) (apigen.IptvDiscoverJSONGetRes, error) {
 	panic("implement me")
 }
@@ -183,10 +203,30 @@ func (h *Handler) RerunJob(ctx context.Context, params apigen.RerunJobParams) (a
 	panic("implement me")
 }
 
+func (h *Handler) Restart(ctx context.Context) (apigen.RestartRes, error) {
+	panic("implement me")
+}
+
 func (h *Handler) RunJobSchedule(ctx context.Context, params apigen.RunJobScheduleParams) (apigen.RunJobScheduleRes, error) {
 	panic("implement me")
 }
 
 func (h *Handler) ServicesIDStreamHead(ctx context.Context, params apigen.ServicesIDStreamHeadParams) (apigen.ServicesIDStreamHeadRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) StopChannelScan(ctx context.Context) (apigen.StopChannelScanRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) UpdateChannelsConfig(ctx context.Context, req apigen.ConfigChannels) (apigen.UpdateChannelsConfigRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) UpdateServerConfig(ctx context.Context, req apigen.OptConfigServer) (apigen.UpdateServerConfigRes, error) {
+	panic("implement me")
+}
+
+func (h *Handler) UpdateTunersConfig(ctx context.Context, req apigen.ConfigTuners) (apigen.UpdateTunersConfigRes, error) {
 	panic("implement me")
 }
