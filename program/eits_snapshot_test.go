@@ -54,6 +54,49 @@ func TestEITSnapshotServiceCompleteFalseOnMissingSegment(t *testing.T) {
 	}
 }
 
+func TestEITSnapshotServiceCompleteAllowsElapsedLeadingSegments(t *testing.T) {
+	snap := NewEITSnapshot()
+	now := time.Unix(0, 0)
+	for segment := uint8(7); segment < 32; segment++ {
+		section := segment * 8
+		item := makeSection(1, 100, 2, 0x50, section, 248, 1)
+		item.SegmentLastSectionNumber = section
+		snap.Observe(item, now)
+	}
+
+	key := ServiceKey{1, 100}
+	if !snap.ServiceComplete(key) {
+		t.Fatalf("ServiceComplete should allow elapsed leading segments: %+v", snap.CompletionReport(key))
+	}
+	report := snap.CompletionReport(key)
+	if got := report.Tables[0].MissingSegmentInfo; len(got) != 0 {
+		t.Fatalf("MissingSegmentInfo = %v, want none", got)
+	}
+}
+
+func TestEITSnapshotServiceCompleteRejectsMissingMiddleSegment(t *testing.T) {
+	snap := NewEITSnapshot()
+	now := time.Unix(0, 0)
+	for segment := uint8(7); segment < 32; segment++ {
+		if segment == 12 {
+			continue
+		}
+		section := segment * 8
+		item := makeSection(1, 100, 2, 0x50, section, 248, 1)
+		item.SegmentLastSectionNumber = section
+		snap.Observe(item, now)
+	}
+
+	key := ServiceKey{1, 100}
+	if snap.ServiceComplete(key) {
+		t.Fatal("ServiceComplete should reject a missing middle segment")
+	}
+	report := snap.CompletionReport(key)
+	if got := report.Tables[0].MissingSegmentInfo; len(got) != 1 || got[0] != 12 {
+		t.Fatalf("MissingSegmentInfo = %v, want [12]", got)
+	}
+}
+
 func TestEITSnapshotCompletionReport(t *testing.T) {
 	snap := NewEITSnapshot()
 	now := time.Unix(0, 0)

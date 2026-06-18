@@ -398,7 +398,7 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 	}
 	select {
 	case err := <-pfErrCh:
-		if err != nil && !errors.Is(err, context.Canceled) {
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.ErrClosedPipe) {
 			slog.Debug("EITPF upsert finished with error", "err", err)
 		}
 	case <-time.After(2 * time.Second):

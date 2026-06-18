@@ -147,7 +147,7 @@ func (s *EITSnapshot) ServiceComplete(key ServiceKey) bool {
 		}
 		for tableID := base; tableID <= maxTable; tableID++ {
 			table := tables[tableID]
-			if table == nil || !snapshotTableComplete(table) {
+			if table == nil || !snapshotTableComplete(table, tableID == base) {
 				return false
 			}
 		}
@@ -186,13 +186,21 @@ func (s *EITSnapshot) CompletionReport(key ServiceKey) EITSnapshotReport {
 			Version:          int(table.version),
 			LastSection:      int(table.lastSection),
 			ObservedSections: len(table.sections),
-			Complete:         snapshotTableComplete(table),
+			Complete:         snapshotTableComplete(table, tableID == base),
+		}
+		firstObservedSegment := uint8(0)
+		if tableID == base {
+			firstObservedSegment = firstSegmentWithInfo(table)
 		}
 		lastSegment := table.lastSection / 8
 		for segment := uint8(0); segment <= lastSegment; segment++ {
 			segmentLast, ok := table.segmentLast[segment]
 			if !ok {
-				tableReport.MissingSegmentInfo = append(tableReport.MissingSegmentInfo, int(segment))
+				// The first schedule table stops carrying elapsed three-hour
+				// segments.  A contiguous leading gap is therefore expected.
+				if tableID != base || segment >= firstObservedSegment {
+					tableReport.MissingSegmentInfo = append(tableReport.MissingSegmentInfo, int(segment))
+				}
 			} else {
 				first := segment * 8
 				last := segmentLast
@@ -232,11 +240,18 @@ func (s *EITSnapshot) CompletionReport(key ServiceKey) EITSnapshotReport {
 	return report
 }
 
-func snapshotTableComplete(table *snapshotTable) bool {
+func snapshotTableComplete(table *snapshotTable, allowLeadingMissing bool) bool {
+	firstObservedSegment := uint8(0)
+	if allowLeadingMissing {
+		firstObservedSegment = firstSegmentWithInfo(table)
+	}
 	lastSegment := table.lastSection / 8
 	for segment := uint8(0); segment <= lastSegment; segment++ {
 		segmentLast, ok := table.segmentLast[segment]
 		if !ok {
+			if allowLeadingMissing && segment < firstObservedSegment {
+				continue
+			}
 			return false
 		}
 		first := segment * 8
@@ -260,6 +275,19 @@ func snapshotTableComplete(table *snapshotTable) bool {
 		}
 	}
 	return true
+}
+
+func firstSegmentWithInfo(table *snapshotTable) uint8 {
+	if len(table.segmentLast) == 0 {
+		return 0
+	}
+	first := table.lastSection/8 + 1
+	for segment := range table.segmentLast {
+		if segment < first {
+			first = segment
+		}
+	}
+	return first
 }
 
 func (s *EITSnapshot) AllComplete(expected []ServiceKey) bool {
