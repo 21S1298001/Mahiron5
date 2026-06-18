@@ -8,10 +8,12 @@ import (
 )
 
 type SystemConfig struct {
-	Addresses     []ServerAddress     `json:"addresses"`
-	LogLevel      string              `json:"logLevel,omitempty"`
-	JobMaxRunning int                 `json:"jobMaxRunning,omitempty"`
-	Jobs          []JobScheduleConfig `json:"jobs,omitempty"`
+	Addresses        []ServerAddress     `json:"addresses"`
+	LogLevel         string              `json:"logLevel,omitempty"`
+	JobMaxRunning    int                 `json:"jobMaxRunning,omitempty"`
+	Jobs             []JobScheduleConfig `json:"jobs,omitempty"`
+	DatabasePath     string              `json:"databasePath,omitempty"`
+	EpgRetentionDays int                 `json:"epgRetentionDays,omitempty"`
 }
 
 type JobScheduleConfig struct {
@@ -30,7 +32,10 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 		return nil, err
 	}
 
-	var config SystemConfig
+	config := SystemConfig{
+		DatabasePath:     "./mahiron.db",
+		EpgRetentionDays: 3,
+	}
 	err = yaml.Unmarshal(file, &config)
 	if err != nil {
 		return nil, err
@@ -67,6 +72,10 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 	if config.JobMaxRunning < 1 || config.JobMaxRunning > 100 {
 		return nil, errors.New("jobMaxRunning must be between 1 and 100")
+	}
+
+	if config.EpgRetentionDays < 0 {
+		return nil, errors.New("epgRetentionDays must be >= 0 (0 = unlimited)")
 	}
 
 	return &config, nil

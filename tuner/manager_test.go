@@ -15,24 +15,24 @@ func TestTunerManagerReservesIndividualTuners(t *testing.T) {
 		{Name: "second", Types: []string{"GR"}, Command: "second", Decoder: "decode-second"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
-	first, firstDecoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, false)
+	first, firstDecoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, secondDecoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, false)
+	second, secondDecoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if firstDecoder != "decode-first" || secondDecoder != "decode-second" {
 		t.Fatalf("decoders = %q, %q", firstDecoder, secondDecoder)
 	}
-	if _, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, false); !errors.Is(err, ErrTunerUnavailable) {
+	if _, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false); !errors.Is(err, ErrTunerUnavailable) {
 		t.Fatalf("third acquire error = %v", err)
 	}
 	if err := first.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	reused, decoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, false)
+	reused, decoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
 	if err != nil || decoder != "decode-first" {
 		t.Fatalf("reused decoder = %q, err = %v", decoder, err)
 	}
@@ -45,13 +45,13 @@ func TestTunerManagerWaitCanBeCancelled(t *testing.T) {
 		{Name: "only", Types: []string{"GR"}, Command: "only"},
 	}})
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
-	device, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, false)
+	device, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if _, _, err := mgr.AcquireDevice(ctx, "GR", channel, true); !errors.Is(err, context.DeadlineExceeded) {
+	if _, _, err := mgr.AcquireDevice(ctx, "GR", channel, channel, true); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("waiting acquire error = %v", err)
 	}
 	_ = device.Stop(context.Background())
@@ -65,7 +65,7 @@ func TestTunerManagerSelectsTunersRoundRobin(t *testing.T) {
 	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
 	want := []string{"decode-first", "decode-second", "decode-first", "decode-second"}
 	for i, expected := range want {
-		device, decoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, false)
+		device, decoder, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
 		if err != nil {
 			t.Fatalf("acquire %d: %v", i, err)
 		}

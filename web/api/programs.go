@@ -9,12 +9,19 @@ import (
 )
 
 func GetPrograms(ctx context.Context, h *Handler, params apigen.GetProgramsParams) (apigen.GetProgramsRes, error) {
-	res := apigen.GetProgramsOKApplicationJSON(apiPrograms(h.programManager.List(programQuery(params))))
+	programs, err := h.programManager.List(ctx, programQuery(params))
+	if err != nil {
+		return nil, err
+	}
+	res := apigen.GetProgramsOKApplicationJSON(apiPrograms(programs))
 	return &res, nil
 }
 
 func GetProgram(ctx context.Context, h *Handler, params apigen.GetProgramParams) (apigen.GetProgramRes, error) {
-	p, ok := h.programManager.Get(params.ID)
+	p, ok, err := h.programManager.Get(ctx, params.ID)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
 		return notFound("program not found"), nil
 	}
@@ -22,16 +29,23 @@ func GetProgram(ctx context.Context, h *Handler, params apigen.GetProgramParams)
 }
 
 func GetServicePrograms(ctx context.Context, h *Handler, params apigen.GetServiceProgramsParams) (apigen.GetServiceProgramsRes, error) {
-	service := h.serviceManager.GetServiceById(strconv.FormatInt(params.ID, 10))
+	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
+	if err != nil {
+		return nil, err
+	}
 	if service == nil {
 		return notFound("service not found"), nil
 	}
 	networkID := service.NetworkId
 	serviceID := service.ServiceId
-	res := apigen.GetServiceProgramsOKApplicationJSON(apiPrograms(h.programManager.List(program.Query{
+	programs, err := h.programManager.List(ctx, program.Query{
 		NetworkID: &networkID,
 		ServiceID: &serviceID,
-	})))
+	})
+	if err != nil {
+		return nil, err
+	}
+	res := apigen.GetServiceProgramsOKApplicationJSON(apiPrograms(programs))
 	return &res, nil
 }
 

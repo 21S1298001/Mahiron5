@@ -192,7 +192,7 @@ func (m *StreamManager) newRouteDevice(ctx context.Context, channel *config.Chan
 			var decoder string
 			var err error
 			if allocator, ok := m.tunerManager.(TunerAllocator); ok {
-				device, decoder, err = allocator.AcquireDevice(ctx, route.Type, &routeChannel, false)
+				device, decoder, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, false)
 			} else {
 				device, err = m.tunerManager.NewDeviceByType(route.Type, &routeChannel)
 			}
@@ -258,7 +258,7 @@ type TunerManager interface {
 }
 
 type TunerAllocator interface {
-	AcquireDevice(context.Context, string, *config.ChannelConfig, bool) (TunerDevice, string, error)
+	AcquireDevice(context.Context, string, *config.ChannelConfig, *config.ChannelConfig, bool) (TunerDevice, string, error)
 }
 
 type DecoderCommandProvider interface {
@@ -281,5 +281,5 @@ type EITCollector interface {
 }
 
 type EITSectionUpdater interface {
-	UpsertEITSectionJSON([]byte) error
+	UpsertEITSectionJSON(ctx context.Context, data []byte) error
 }

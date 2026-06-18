@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/config"
+	"github.com/21S1298001/Mahiron5/db"
 	"github.com/21S1298001/Mahiron5/program"
 	"github.com/21S1298001/Mahiron5/service"
 	apigen "github.com/21S1298001/Mahiron5/web/api/gen"
@@ -12,42 +13,42 @@ import (
 
 func testProgramHandler(t *testing.T) *Handler {
 	t.Helper()
-	pm := program.NewProgramManager(nil)
-	if err := pm.Upsert(&program.Program{
-		ID:        program.ProgramID(1, 101, 10),
-		NetworkID: 1,
-		ServiceID: 101,
-		EventID:   10,
-		StartAt:   2000,
-		Duration:  30000,
-		IsFree:    true,
-		Name:      "second",
-	}); err != nil {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := pm.Upsert(&program.Program{
-		ID:        program.ProgramID(1, 101, 9),
-		NetworkID: 1,
-		ServiceID: 101,
-		EventID:   9,
-		StartAt:   1000,
-		Duration:  30000,
-		IsFree:    true,
-		Name:      "first",
+	t.Cleanup(func() { database.Close() })
+	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	if err := pm.UpsertEITSection(ctx, &program.EITSection{
+		OriginalNetworkID: 1,
+		ServiceID:         101,
+		Events: []program.EITEvent{
+			{EventID: 10, StartTime: 2000, Duration: 30000, Scrambled: false,
+				Descriptors: []program.EITDescriptor{
+					{Type: "ShortEvent", EventName: "second"},
+				},
+			},
+			{EventID: 9, StartTime: 1000, Duration: 30000, Scrambled: false,
+				Descriptors: []program.EITDescriptor{
+					{Type: "ShortEvent", EventName: "first"},
+				},
+			},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
+	serviceStore := service.NewSQLiteStore(database)
+	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
+		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK Service", ChannelType: "GR", ChannelId: "27"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	return NewHandler(HandlerConfig{
 		ProgramManager: pm,
-		ServiceManager: service.NewServiceManager(&service.ServiceManagerConfig{
-			Channels: config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27"}},
-			Services: []*service.Service{{
-				Id:        "0000100101",
-				ServiceId: 101,
-				NetworkId: 1,
-				Name:      "NHK Service",
-			}},
+		ServiceManager: service.NewServiceManager(serviceStore, config.ChannelsConfig{
+			{Name: "NHK", Type: "GR", Channel: "27"},
 		}),
 	})
 }

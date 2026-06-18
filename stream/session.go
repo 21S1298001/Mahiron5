@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/config"
+	"github.com/21S1298001/Mahiron5/tuner"
 	"github.com/21S1298001/Mahiron5/util"
+	"github.com/google/uuid"
 )
 
 type ChannelSession struct {
@@ -77,7 +79,7 @@ func (s *ChannelSession) ChannelStream(ctx context.Context, decode bool, dst io.
 		Kind:        PipelineChannelStream,
 		Decode:      decode,
 	}
-	return s.attachPipeline(ctx, key, dst)
+	return s.withTunerUser(ctx, func() error { return s.attachPipeline(ctx, key, dst) })
 }
 
 func (s *ChannelSession) ServiceStream(ctx context.Context, serviceID uint16, decode bool, dst io.Writer) error {
@@ -88,10 +90,14 @@ func (s *ChannelSession) ServiceStream(ctx context.Context, serviceID uint16, de
 		ServiceID:   serviceID,
 		Decode:      decode,
 	}
-	return s.attachPipeline(ctx, key, dst)
+	return s.withTunerUser(ctx, func() error { return s.attachPipeline(ctx, key, dst) })
 }
 
 func (s *ChannelSession) ScanServices(ctx context.Context, dst io.Writer) error {
+	return s.withTunerUser(ctx, func() error { return s.scanServices(ctx, dst) })
+}
+
+func (s *ChannelSession) scanServices(ctx context.Context, dst io.Writer) error {
 	r, w := io.Pipe()
 	scannerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -134,14 +140,36 @@ func (s *ChannelSession) CollectEITS(ctx context.Context, dst io.Writer) error {
 	if s.eitCollector == nil {
 		return errors.New("EIT collector not configured")
 	}
-	return s.collectEIT(ctx, dst, s.eitCollector.CollectEITS)
+	return s.withTunerUser(ctx, func() error { return s.collectEIT(ctx, dst, s.eitCollector.CollectEITS) })
 }
 
 func (s *ChannelSession) CollectEITPF(ctx context.Context, dst io.Writer) error {
 	if s.eitCollector == nil {
 		return errors.New("EIT collector not configured")
 	}
-	return s.collectEIT(ctx, dst, s.eitCollector.CollectEITPF)
+	return s.withTunerUser(ctx, func() error { return s.collectEIT(ctx, dst, s.eitCollector.CollectEITPF) })
+}
+
+type tunerUserDevice interface {
+	AddUser(tuner.User)
+	RemoveUser(string)
+}
+
+func (s *ChannelSession) withTunerUser(ctx context.Context, run func() error) error {
+	device, ok := s.device.(tunerUserDevice)
+	if !ok {
+		return run()
+	}
+	user, ok := tuner.UserFromContext(ctx)
+	if !ok {
+		user = tuner.User{
+			ID: uuid.NewString(), Agent: "Mahiron Internal",
+			StreamSetting: tuner.StreamSetting{Channel: &config.ChannelConfig{Type: s.typ, Channel: s.channel}},
+		}
+	}
+	device.AddUser(user)
+	defer device.RemoveUser(user.ID)
+	return run()
 }
 
 func (s *ChannelSession) Stop(ctx context.Context) error {
@@ -381,7 +409,7 @@ func (s *ChannelSession) startEITPFLocked() {
 		scanner := bufio.NewScanner(pr)
 		scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 		for scanner.Scan() {
-			if err := s.eitUpdater.UpsertEITSectionJSON(scanner.Bytes()); err != nil {
+			if err := s.eitUpdater.UpsertEITSectionJSON(ctx, scanner.Bytes()); err != nil {
 				slog.Error("failed to update EITPF", "type", s.typ, "channel", s.channel, "err", err)
 			}
 		}

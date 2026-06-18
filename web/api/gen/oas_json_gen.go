@@ -6971,9 +6971,21 @@ func (s *TunerDevice) encodeFields(e *jx.Encoder) {
 			s.CurrentChannel.Encode(e)
 		}
 	}
+	{
+		if s.TunedChannelType.Set {
+			e.FieldStart("tunedChannelType")
+			s.TunedChannelType.Encode(e)
+		}
+	}
+	{
+		if s.TunedChannel.Set {
+			e.FieldStart("tunedChannel")
+			s.TunedChannel.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfTunerDevice = [13]string{
+var jsonFieldsNameOfTunerDevice = [15]string{
 	0:  "index",
 	1:  "name",
 	2:  "types",
@@ -6987,6 +6999,8 @@ var jsonFieldsNameOfTunerDevice = [13]string{
 	10: "isFault",
 	11: "currentChannelType",
 	12: "currentChannel",
+	13: "tunedChannelType",
+	14: "tunedChannel",
 }
 
 // Decode decodes TunerDevice from json.
@@ -7161,6 +7175,26 @@ func (s *TunerDevice) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"currentChannel\"")
+			}
+		case "tunedChannelType":
+			if err := func() error {
+				s.TunedChannelType.Reset()
+				if err := s.TunedChannelType.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"tunedChannelType\"")
+			}
+		case "tunedChannel":
+			if err := func() error {
+				s.TunedChannel.Reset()
+				if err := s.TunedChannel.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"tunedChannel\"")
 			}
 		default:
 			return d.Skip()

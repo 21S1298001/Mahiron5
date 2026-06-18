@@ -37,11 +37,15 @@ func (t *Tuner) Command() string {
 	return t.config.Command
 }
 
+func (t *Tuner) IsRemote() bool {
+	return t.config.RemoteMirakurunHost != "" || t.config.Remote != nil
+}
+
 func (t *Tuner) DecoderCommand() string {
 	return t.config.Decoder
 }
 
-func (t *Tuner) NewDevice(channel *config.ChannelConfig) Device {
+func (t *Tuner) NewDevice(channel *config.ChannelConfig) *TunerDevice {
 	return NewTunerDevice(TunerDeviceConfig{
 		Channel: channel,
 		Command: t.config.Command,

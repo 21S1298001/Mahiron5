@@ -148,7 +148,7 @@ func (h *Handler) GetStatus(ctx context.Context) (apigen.GetStatusRes, error) {
 }
 
 func (h *Handler) GetTuner(ctx context.Context, params apigen.GetTunerParams) (apigen.GetTunerRes, error) {
-	panic("implement me")
+	return GetTuner(ctx, h, params)
 }
 
 func (h *Handler) GetTunerProcess(ctx context.Context, params apigen.GetTunerProcessParams) (apigen.GetTunerProcessRes, error) {
@@ -156,7 +156,7 @@ func (h *Handler) GetTunerProcess(ctx context.Context, params apigen.GetTunerPro
 }
 
 func (h *Handler) GetTuners(ctx context.Context) (apigen.GetTunersRes, error) {
-	panic("implement me")
+	return GetTuners(ctx, h)
 }
 
 func (h *Handler) IptvDiscoverJSONGet(ctx context.Context) (apigen.IptvDiscoverJSONGetRes, error) {

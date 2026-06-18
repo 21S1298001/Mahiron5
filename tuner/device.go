@@ -82,6 +82,19 @@ func (d *TunerDevice) Err() error {
 	return d.err
 }
 
+func (d *TunerDevice) Pid() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.tunerProcess == nil {
+		return 0
+	}
+	return d.tunerProcess.Pid()
+}
+
+func (d *TunerDevice) Command() string {
+	return replaceCommandTemplate(d.command, d.channel)
+}
+
 func (d *TunerDevice) Stop(ctx context.Context) error {
 	d.mu.Lock()
 	tunerProcess := d.tunerProcess
@@ -138,12 +151,18 @@ func replaceCommandTemplate(template string, channel *config.ChannelConfig) stri
 }
 
 func (d *TunerDevice) copyRaw(src io.Reader, dst io.Writer) {
-	_, err := io.Copy(dst, src)
-	if err == nil || util.IsExpectedStreamCloseError(err) {
-		d.finish(nil)
-		return
+	_, copyErr := io.Copy(dst, src)
+	if util.IsExpectedStreamCloseError(copyErr) {
+		copyErr = nil
 	}
-	d.finish(err)
+	d.mu.Lock()
+	process := d.tunerProcess
+	d.mu.Unlock()
+	var waitErr error
+	if process != nil {
+		waitErr = process.Wait()
+	}
+	d.finish(errors.Join(copyErr, waitErr))
 }
 
 func (d *TunerDevice) stopOnContext(ctx context.Context) {

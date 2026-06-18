@@ -12,7 +12,11 @@ import (
 
 func GetChannels(ctx context.Context, h *Handler, params apigen.GetChannelsParams) (apigen.GetChannelsRes, error) {
 	channels := h.serviceManager.GetChannels()
-	res := apigen.GetChannelsOKApplicationJSON(apiChannels(h, filterChannels(channels, params.Type, params.Channel, params.Name)))
+	items, err := apiChannels(ctx, h, filterChannels(channels, params.Type, params.Channel, params.Name))
+	if err != nil {
+		return nil, err
+	}
+	res := apigen.GetChannelsOKApplicationJSON(items)
 	return &res, nil
 }
 
@@ -22,7 +26,11 @@ func GetChannelsByType(ctx context.Context, h *Handler, params apigen.GetChannel
 	for _, channel := range filterChannels(channels, apigen.NewOptString(params.Type), params.Channel, params.Name) {
 		filtered = append(filtered, channel)
 	}
-	res := apigen.GetChannelsByTypeOKApplicationJSON(apiChannels(h, filtered))
+	items, err := apiChannels(ctx, h, filtered)
+	if err != nil {
+		return nil, err
+	}
+	res := apigen.GetChannelsByTypeOKApplicationJSON(items)
 	return &res, nil
 }
 
@@ -31,18 +39,24 @@ func GetChannel(ctx context.Context, h *Handler, params apigen.GetChannelParams)
 	if channel == nil {
 		return notFound("channel not found"), nil
 	}
-	return apiChannel(h, *channel, true), nil
+	return apiChannelWithServices(ctx, h, *channel)
 }
 
 func GetServices(ctx context.Context, h *Handler, params apigen.GetServicesParams) (apigen.GetServicesRes, error) {
-	services := h.serviceManager.GetServices()
+	services, err := h.serviceManager.GetServices(ctx)
+	if err != nil {
+		return nil, err
+	}
 	filtered := filterServices(services, params)
 	res := apigen.GetServicesOKApplicationJSON(apiServices(h, filtered, true))
 	return &res, nil
 }
 
 func GetService(ctx context.Context, h *Handler, params apigen.GetServiceParams) (apigen.GetServiceRes, error) {
-	service := h.serviceManager.GetServiceById(strconv.FormatInt(params.ID, 10))
+	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
+	if err != nil {
+		return nil, err
+	}
 	if service == nil {
 		return notFound("service not found"), nil
 	}
@@ -53,7 +67,11 @@ func GetServicesByChannel(ctx context.Context, h *Handler, params apigen.GetServ
 	if h.serviceManager.GetChannel(params.Type, params.Channel) == nil {
 		return notFound("channel not found"), nil
 	}
-	res := apigen.GetServicesByChannelOKApplicationJSON(apiServices(h, h.serviceManager.GetServicesByChannel(params.Type, params.Channel), true))
+	services, err := h.serviceManager.GetServicesByChannel(ctx, params.Type, params.Channel)
+	if err != nil {
+		return nil, err
+	}
+	res := apigen.GetServicesByChannelOKApplicationJSON(apiServices(h, services, true))
 	return &res, nil
 }
 
@@ -61,7 +79,10 @@ func GetServiceByChannel(ctx context.Context, h *Handler, params apigen.GetServi
 	if h.serviceManager.GetChannel(params.Type, params.Channel) == nil {
 		return notFound("channel not found"), nil
 	}
-	svc := h.serviceManager.GetServiceByChannelAndId(params.Type, params.Channel, strconv.FormatInt(params.ID, 10))
+	svc, err := h.serviceManager.GetServiceByChannelAndId(ctx, params.Type, params.Channel, strconv.FormatInt(params.ID, 10))
+	if err != nil {
+		return nil, err
+	}
 	if svc == nil {
 		return notFound("service not found"), nil
 	}
@@ -69,12 +90,16 @@ func GetServiceByChannel(ctx context.Context, h *Handler, params apigen.GetServi
 	return &res, nil
 }
 
-func apiChannels(h *Handler, channels config.ChannelsConfig) []apigen.Channel {
+func apiChannels(ctx context.Context, h *Handler, channels config.ChannelsConfig) ([]apigen.Channel, error) {
 	result := make([]apigen.Channel, len(channels))
 	for i, channel := range channels {
-		result[i] = *apiChannel(h, channel, true)
+		item, err := apiChannelWithServices(ctx, h, channel)
+		if err != nil {
+			return nil, err
+		}
+		result[i] = *item
 	}
-	return result
+	return result, nil
 }
 
 func filterChannels(channels config.ChannelsConfig, channelType apigen.OptString, channelId apigen.OptString, name apigen.OptString) config.ChannelsConfig {
@@ -120,7 +145,17 @@ func filterServices(services []*service.Service, params apigen.GetServicesParams
 	return filtered
 }
 
-func apiChannel(h *Handler, channel config.ChannelConfig, includeServices bool) *apigen.Channel {
+func apiChannelWithServices(ctx context.Context, h *Handler, channel config.ChannelConfig) (*apigen.Channel, error) {
+	result := apiChannelWithoutServices(h, channel)
+	services, err := h.serviceManager.GetServicesByChannel(ctx, channel.Type, channel.Channel)
+	if err != nil {
+		return nil, err
+	}
+	result.Services = apiServices(h, services, false)
+	return result, nil
+}
+
+func apiChannelWithoutServices(h *Handler, channel config.ChannelConfig) *apigen.Channel {
 	result := &apigen.Channel{
 		Type:    channel.Type,
 		Channel: channel.Channel,
@@ -129,9 +164,6 @@ func apiChannel(h *Handler, channel config.ChannelConfig, includeServices bool) 
 	}
 	if channel.TsmfRelTs != nil {
 		result.TsmfRelTs = apigen.NewOptInt(int(*channel.TsmfRelTs))
-	}
-	if includeServices {
-		result.Services = apiServices(h, h.serviceManager.GetServicesByChannel(channel.Type, channel.Channel), false)
 	}
 	return result
 }
@@ -176,7 +208,7 @@ func apiService(h *Handler, service *service.Service, includeChannel bool) *apig
 	}
 	if includeChannel {
 		if channel := h.serviceManager.GetChannel(service.ChannelType, service.ChannelId); channel != nil {
-			result.Channel = apigen.NewOptChannel(*apiChannel(h, *channel, false))
+			result.Channel = apigen.NewOptChannel(*apiChannelWithoutServices(h, *channel))
 		}
 	}
 	return result

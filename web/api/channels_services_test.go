@@ -5,52 +5,65 @@ import (
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/config"
+	"github.com/21S1298001/Mahiron5/db"
 	"github.com/21S1298001/Mahiron5/program"
 	"github.com/21S1298001/Mahiron5/service"
 	apigen "github.com/21S1298001/Mahiron5/web/api/gen"
 )
 
-func testListHandler() *Handler {
+func testListHandler(t *testing.T) *Handler {
+	t.Helper()
+	ctx := context.Background()
 	no := false
 	yes := true
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	serviceStore := service.NewSQLiteStore(database)
+	services := []*service.Service{
+		{
+			Id:                 "0000100101",
+			ServiceId:          101,
+			NetworkId:          1,
+			TransportStreamId:  10,
+			Name:               "NHK Service",
+			Type:               1,
+			RemoteControlKeyId: 3,
+			ChannelType:        "GR",
+			ChannelId:          "27",
+		},
+		{
+			Id:                 "0000200102",
+			ServiceId:          102,
+			NetworkId:          2,
+			TransportStreamId:  20,
+			Name:               "BS Service",
+			Type:               1,
+			RemoteControlKeyId: 4,
+			ChannelType:        "BS",
+			ChannelId:          "101",
+		},
+	}
+	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{services[0]}); err != nil {
+		t.Fatal(err)
+	}
+	if err := serviceStore.ReplaceChannelServices(ctx, "BS", "101", []*service.Service{services[1]}); err != nil {
+		t.Fatal(err)
+	}
 	return NewHandler(HandlerConfig{
-		ProgramManager: program.NewProgramManager(nil),
-		ServiceManager: service.NewServiceManager(&service.ServiceManagerConfig{
-			Channels: config.ChannelsConfig{
-				{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
-				{Name: "BS", Type: "BS", Channel: "101", IsDisabled: &no},
-				{Name: "Disabled", Type: "GR", Channel: "28", IsDisabled: &yes},
-			},
-			Services: []*service.Service{
-				{
-					Id:                 "0000100101",
-					ServiceId:          101,
-					NetworkId:          1,
-					TransportStreamId:  10,
-					Name:               "NHK Service",
-					Type:               1,
-					RemoteControlKeyId: 3,
-					ChannelType:        "GR",
-					ChannelId:          "27",
-				},
-				{
-					Id:                 "0000200102",
-					ServiceId:          102,
-					NetworkId:          2,
-					TransportStreamId:  20,
-					Name:               "BS Service",
-					Type:               1,
-					RemoteControlKeyId: 4,
-					ChannelType:        "BS",
-					ChannelId:          "101",
-				},
-			},
+		ProgramManager: program.NewProgramManager(program.NewSQLiteStore(database)),
+		ServiceManager: service.NewServiceManager(serviceStore, config.ChannelsConfig{
+			{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no},
+			{Name: "BS", Type: "BS", Channel: "101", IsDisabled: &no},
+			{Name: "Disabled", Type: "GR", Channel: "28", IsDisabled: &yes},
 		}),
 	})
 }
 
 func TestGetChannelsReturnsEnabledChannelsWithServices(t *testing.T) {
-	handler := testListHandler()
+	handler := testListHandler(t)
 
 	res, err := handler.GetChannels(context.Background(), apigen.GetChannelsParams{})
 	if err != nil {
@@ -77,8 +90,25 @@ func TestGetChannelsReturnsEnabledChannelsWithServices(t *testing.T) {
 	}
 }
 
+func TestGetChannelsPropagatesStoreError(t *testing.T) {
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := service.NewSQLiteStore(database)
+	handler := NewHandler(HandlerConfig{
+		ServiceManager: service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}}),
+	})
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handler.GetChannels(context.Background(), apigen.GetChannelsParams{}); err == nil {
+		t.Fatal("GetChannels succeeded after database was closed")
+	}
+}
+
 func TestGetChannelReturnsNotFoundForDisabledChannel(t *testing.T) {
-	handler := testListHandler()
+	handler := testListHandler(t)
 
 	res, err := handler.GetChannel(context.Background(), apigen.GetChannelParams{
 		Type:    "GR",
@@ -93,7 +123,7 @@ func TestGetChannelReturnsNotFoundForDisabledChannel(t *testing.T) {
 }
 
 func TestGetServicesReturnsServicesWithChannelsAndFilters(t *testing.T) {
-	handler := testListHandler()
+	handler := testListHandler(t)
 
 	res, err := handler.GetServices(context.Background(), apigen.GetServicesParams{
 		ChannelType: apigen.NewOptString("BS"),
@@ -121,7 +151,7 @@ func TestGetServicesReturnsServicesWithChannelsAndFilters(t *testing.T) {
 }
 
 func TestGetServicesByChannelAndGetServiceByChannel(t *testing.T) {
-	handler := testListHandler()
+	handler := testListHandler(t)
 
 	listRes, err := handler.GetServicesByChannel(context.Background(), apigen.GetServicesByChannelParams{
 		Type:    "GR",
@@ -156,7 +186,7 @@ func TestGetServicesByChannelAndGetServiceByChannel(t *testing.T) {
 }
 
 func TestGetServiceReturnsNotFound(t *testing.T) {
-	handler := testListHandler()
+	handler := testListHandler(t)
 
 	res, err := handler.GetService(context.Background(), apigen.GetServiceParams{ID: 999})
 	if err != nil {

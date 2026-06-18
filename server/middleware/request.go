@@ -12,6 +12,8 @@ var RequestInfoNotFoundError = errors.New("request info not found")
 
 type RequestInfo struct {
 	RemoteAddr string
+	UserAgent  string
+	URL        string
 }
 
 func RequestInfoMiddleware() *Middleware {
@@ -21,6 +23,8 @@ func RequestInfoMiddleware() *Middleware {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestInfoMiddlewareContextKey, &RequestInfo{
 					RemoteAddr: r.RemoteAddr,
+					UserAgent:  r.UserAgent(),
+					URL:        r.URL.String(),
 				})))
 			})
 		},

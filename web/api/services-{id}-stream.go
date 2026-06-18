@@ -12,10 +12,17 @@ import (
 )
 
 func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceStreamParams) (apigen.GetServiceStreamRes, error) {
-	service := h.serviceManager.GetServiceById(strconv.FormatInt(params.ID, 10))
+	service, err := h.serviceManager.GetServiceById(ctx, strconv.FormatInt(params.ID, 10))
+	if err != nil {
+		return nil, err
+	}
 	if service == nil {
 		return &apigen.GetServiceStreamNotFound{}, nil
 	}
+	decode := shouldDecode(params.Decode)
+	serviceID := service.ServiceId
+	networkID := service.NetworkId
+	ctx, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(service.ChannelType, service.ChannelId), &networkID, &serviceID)
 
 	session, err := h.streamManager.GetOrCreate(ctx, service.ChannelType, service.ChannelId)
 	if err != nil {
@@ -31,13 +38,13 @@ func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceS
 	fo, fi := io.Pipe()
 	go func() {
 		defer fi.Close()
-		if err := session.ServiceStream(ctx, service.ServiceId, shouldDecode(params.Decode), fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		if err := session.ServiceStream(ctx, service.ServiceId, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 			slog.Error("failed to stream service", "service", service.Id, "err", err)
 		}
 	}()
 
 	return &apigen.GetServiceStreamOKHeaders{
-		XMirakurunTunerUserID: apigen.OptString{},
+		XMirakurunTunerUserID: apigen.NewOptString(userID),
 		Response: apigen.GetServiceStreamOK{
 			Data: fo,
 		},

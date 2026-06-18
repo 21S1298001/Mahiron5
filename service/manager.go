@@ -6,61 +6,75 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"sync"
 
 	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/stream"
+	"github.com/21S1298001/Mahiron5/tuner"
+	"github.com/google/uuid"
 )
 
 type ServiceManager struct {
-	mu       sync.RWMutex
+	store    Store
 	channels config.ChannelsConfig
-	services []*Service
 }
 
-type ServiceManagerConfig struct {
-	Channels config.ChannelsConfig
-	Services []*Service
-}
-
-func NewServiceManager(config *ServiceManagerConfig) *ServiceManager {
+func NewServiceManager(store Store, channels config.ChannelsConfig) *ServiceManager {
 	return &ServiceManager{
-		channels: config.Channels,
-		services: cloneServices(
-			config.Services,
-		),
+		store:    store,
+		channels: channels,
 	}
 }
 
-func (s *ServiceManager) CountServices() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.services)
+func (s *ServiceManager) CountServices(ctx context.Context) (int, error) {
+	services, err := s.store.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return len(services), nil
 }
 
-func (s *ServiceManager) GetServices() []*Service {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return cloneServices(s.services)
+func (s *ServiceManager) GetServices(ctx context.Context) ([]*Service, error) {
+	return s.store.List(ctx)
 }
 
-func (s *ServiceManager) GetServiceById(id string) *Service {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	parsedId, parseErr := strconv.ParseInt(id, 10, 64)
-	for _, service := range s.services {
-		if service.Id == id || (parseErr == nil && service.ItemId() == parsedId) {
-			return cloneService(service)
+func (s *ServiceManager) ReconcileChannels(ctx context.Context) error {
+	active := make([]ChannelKey, 0, len(s.channels))
+	for _, channel := range s.channels {
+		if !isDisabled(channel) {
+			active = append(active, ChannelKey{Type: channel.Type, ID: channel.Channel})
 		}
 	}
+	return s.store.PruneChannels(ctx, active)
+}
 
-	return nil
+func (s *ServiceManager) GetServiceById(ctx context.Context, id string) (*Service, error) {
+	// Try exact string ID match first
+	svc, err := s.store.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if svc != nil {
+		return svc, nil
+	}
+
+	// Fall back to ItemId() match
+	parsedId, parseErr := strconv.ParseInt(id, 10, 64)
+	if parseErr != nil {
+		return nil, nil
+	}
+	services, err := s.store.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, service := range services {
+		if service.ItemId() == parsedId {
+			return service, nil
+		}
+	}
+	return nil, nil
 }
 
 func (s *ServiceManager) GetChannels() config.ChannelsConfig {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	channels := make(config.ChannelsConfig, 0, len(s.channels))
 	for _, channel := range s.channels {
 		if isDisabled(channel) {
@@ -72,9 +86,6 @@ func (s *ServiceManager) GetChannels() config.ChannelsConfig {
 }
 
 func (s *ServiceManager) GetChannel(channelType string, channelId string) *config.ChannelConfig {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	for i := range s.channels {
 		if s.channels[i].Type == channelType && s.channels[i].Channel == channelId && !isDisabled(s.channels[i]) {
 			channel := s.channels[i]
@@ -84,32 +95,22 @@ func (s *ServiceManager) GetChannel(channelType string, channelId string) *confi
 	return nil
 }
 
-func (s *ServiceManager) GetServicesByChannel(channelType string, channelId string) []*Service {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	services := make([]*Service, 0)
-	for _, service := range s.services {
-		if service.ChannelType == channelType && service.ChannelId == channelId {
-			services = append(services, cloneService(service))
-		}
-	}
-	return services
+func (s *ServiceManager) GetServicesByChannel(ctx context.Context, channelType string, channelId string) ([]*Service, error) {
+	return s.store.GetByChannel(ctx, channelType, channelId)
 }
 
-func (s *ServiceManager) GetServiceByChannelAndId(channelType string, channelId string, id string) *Service {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func (s *ServiceManager) GetServiceByChannelAndId(ctx context.Context, channelType string, channelId string, id string) (*Service, error) {
+	services, err := s.store.GetByChannel(ctx, channelType, channelId)
+	if err != nil {
+		return nil, err
+	}
 	parsedId, parseErr := strconv.ParseInt(id, 10, 64)
-
-	for _, service := range s.services {
-		if service.ChannelType == channelType &&
-			service.ChannelId == channelId &&
-			(service.Id == id || (parseErr == nil && service.ItemId() == parsedId)) {
-			return cloneService(service)
+	for _, service := range services {
+		if service.Id == id || (parseErr == nil && service.ItemId() == parsedId) {
+			return service, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 type scanService struct {
@@ -132,6 +133,14 @@ func (s *ServiceManager) ScanServicesWait(ctx context.Context, streamManager *st
 
 func (s *ServiceManager) scanServices(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string, wait bool) error {
 	out := bytes.Buffer{}
+	yes := true
+	ctx = tuner.WithUser(ctx, tuner.User{
+		ID: uuid.NewString(), Priority: -1, Agent: "Mahiron Service Scanner",
+		StreamSetting: tuner.StreamSetting{
+			Channel:  &config.ChannelConfig{Type: channelType, Channel: channelId},
+			ParseNIT: &yes, ParseSDT: &yes,
+		},
+	})
 
 	var session *stream.ChannelSession
 	var err error
@@ -153,58 +162,21 @@ func (s *ServiceManager) scanServices(ctx context.Context, streamManager *stream
 	}
 
 	scanned := make([]*Service, len(services))
-	for i, service := range services {
+	for i, svc := range services {
 		scanned[i] = &Service{
-			Id:                 fmt.Sprintf("%05d%05d", service.Nid, service.Sid),
-			ServiceId:          service.Sid,
-			NetworkId:          service.Nid,
-			TransportStreamId:  service.Tsid,
-			Name:               service.Name,
-			Type:               service.Type,
-			RemoteControlKeyId: service.RemoteControlKeyId,
+			Id:                 fmt.Sprintf("%05d%05d", svc.Nid, svc.Sid),
+			ServiceId:          svc.Sid,
+			NetworkId:          svc.Nid,
+			TransportStreamId:  svc.Tsid,
+			Name:               svc.Name,
+			Type:               svc.Type,
+			RemoteControlKeyId: svc.RemoteControlKeyId,
 			ChannelType:        channelType,
 			ChannelId:          channelId,
 		}
 	}
 
-	s.updateServices(scanned)
-
-	return nil
-}
-
-func (s *ServiceManager) updateServices(scanned []*Service) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	positions := make(map[string]int, len(s.services))
-	for i, service := range s.services {
-		positions[service.Id] = i
-	}
-	for _, service := range scanned {
-		cloned := cloneService(service)
-		if i, ok := positions[service.Id]; ok {
-			s.services[i] = cloned
-			continue
-		}
-		positions[service.Id] = len(s.services)
-		s.services = append(s.services, cloned)
-	}
-}
-
-func cloneServices(services []*Service) []*Service {
-	cloned := make([]*Service, len(services))
-	for i, service := range services {
-		cloned[i] = cloneService(service)
-	}
-	return cloned
-}
-
-func cloneService(service *Service) *Service {
-	if service == nil {
-		return nil
-	}
-	cloned := *service
-	return &cloned
+	return s.store.ReplaceChannelServices(ctx, channelType, channelId, scanned)
 }
 
 func isDisabled(channel config.ChannelConfig) bool {

@@ -4488,6 +4488,8 @@ type TunerDevice struct {
 	IsFault            bool        `json:"isFault"`
 	CurrentChannelType OptString   `json:"currentChannelType"`
 	CurrentChannel     OptString   `json:"currentChannel"`
+	TunedChannelType   OptString   `json:"tunedChannelType"`
+	TunedChannel       OptString   `json:"tunedChannel"`
 }
 
 // GetIndex returns the value of Index.
@@ -4555,6 +4557,16 @@ func (s *TunerDevice) GetCurrentChannel() OptString {
 	return s.CurrentChannel
 }
 
+// GetTunedChannelType returns the value of TunedChannelType.
+func (s *TunerDevice) GetTunedChannelType() OptString {
+	return s.TunedChannelType
+}
+
+// GetTunedChannel returns the value of TunedChannel.
+func (s *TunerDevice) GetTunedChannel() OptString {
+	return s.TunedChannel
+}
+
 // SetIndex sets the value of Index.
 func (s *TunerDevice) SetIndex(val int) {
 	s.Index = val
@@ -4618,6 +4630,16 @@ func (s *TunerDevice) SetCurrentChannelType(val OptString) {
 // SetCurrentChannel sets the value of CurrentChannel.
 func (s *TunerDevice) SetCurrentChannel(val OptString) {
 	s.CurrentChannel = val
+}
+
+// SetTunedChannelType sets the value of TunedChannelType.
+func (s *TunerDevice) SetTunedChannelType(val OptString) {
+	s.TunedChannelType = val
+}
+
+// SetTunedChannel sets the value of TunedChannel.
+func (s *TunerDevice) SetTunedChannel(val OptString) {
+	s.TunedChannel = val
 }
 
 func (*TunerDevice) getTunerRes() {}

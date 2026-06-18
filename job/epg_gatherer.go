@@ -10,11 +10,14 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/program"
 	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/stream"
+	"github.com/21S1298001/Mahiron5/tuner"
+	"github.com/google/uuid"
 )
 
 const (
@@ -24,20 +27,23 @@ const (
 	EPGGathererDefaultSchedule = "20,50 * * * *"
 )
 
-func RegisterEPGGatherer(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig) {
+func RegisterEPGGatherer(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig, epgRetentionDays int) {
 	mgr.Register(JobDefinition{
 		Key:          EPGGathererKey,
 		Name:         EPGGathererName,
-		Handler:      epgGathererHandler(mgr, pm, sm, stm, channels),
+		Handler:      epgGathererHandler(mgr, pm, sm, stm, channels, epgRetentionDays),
 		IsRerunnable: true,
 	})
 }
 
 type epgCandidate struct{ typ, channel string }
 
-func epgGathererHandler(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig) func(context.Context) error {
+func epgGathererHandler(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig, epgRetentionDays int) func(context.Context) error {
 	return func(ctx context.Context) error {
-		services := sm.GetServices()
+		services, err := sm.GetServices(ctx)
+		if err != nil {
+			return fmt.Errorf("get services: %w", err)
+		}
 		byChannel := make(map[string][]uint16)
 		for _, item := range services {
 			key := item.ChannelType + "\x00" + item.ChannelId
@@ -83,6 +89,14 @@ func epgGathererHandler(mgr *JobManager, pm *program.ProgramManager, sm *service
 			queued++
 		}
 		slog.Info("EPG gatherer dispatched", "networks", len(groups), "queued", queued)
+
+		if epgRetentionDays > 0 {
+			cutoff := time.Now().Add(-time.Duration(epgRetentionDays) * 24 * time.Hour).UnixMilli()
+			if err := pm.DeleteEndedBefore(ctx, cutoff); err != nil {
+				slog.Warn("failed to clean up old EPG data", "err", err)
+			}
+		}
+
 		return nil
 	}
 }
@@ -103,9 +117,17 @@ func gatherNetworkEPG(ctx context.Context, pm *program.ProgramManager, stm *stre
 	}
 	var result error
 	for _, candidate := range ordered {
-		session, err := stm.GetOrCreateWait(ctx, candidate.typ, candidate.channel)
+		yes := true
+		userCtx := tuner.WithUser(ctx, tuner.User{
+			ID: uuid.NewString(), Priority: -1, Agent: "Mahiron EPG Gatherer",
+			StreamSetting: tuner.StreamSetting{
+				Channel:  &config.ChannelConfig{Type: candidate.typ, Channel: candidate.channel},
+				ParseEIT: &yes,
+			},
+		})
+		session, err := stm.GetOrCreateWait(userCtx, candidate.typ, candidate.channel)
 		if err == nil {
-			err = collectSessionEPG(ctx, pm, session)
+			err = collectSessionEPG(userCtx, pm, session)
 		}
 		if err == nil {
 			slog.Debug("finished network EPG collection", "networkId", networkID, "type", candidate.typ, "channel", candidate.channel)
@@ -201,7 +223,7 @@ func readEITSUntilComplete(ctx context.Context, cancel context.CancelFunc, pm *p
 		if err := json.Unmarshal(line, &section); err != nil {
 			return err
 		}
-		if err := pm.UpsertEITSection(&section); err != nil {
+		if err := pm.UpsertEITSection(ctx, &section); err != nil {
 			return err
 		}
 		complete := tracker.Observe(&section)

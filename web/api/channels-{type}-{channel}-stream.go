@@ -11,6 +11,8 @@ import (
 )
 
 func GetChannelStream(ctx context.Context, h *Handler, params apigen.GetChannelStreamParams) (apigen.GetChannelStreamRes, error) {
+	decode := shouldDecode(params.Decode)
+	ctx, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(params.Type, params.Channel), nil, nil)
 	session, err := h.streamManager.GetOrCreate(ctx, params.Type, params.Channel)
 	if err != nil {
 		if errors.Is(err, stream.ErrChannelNotFound) {
@@ -25,13 +27,13 @@ func GetChannelStream(ctx context.Context, h *Handler, params apigen.GetChannelS
 	fo, fi := io.Pipe()
 	go func() {
 		defer fi.Close()
-		if err := session.ChannelStream(ctx, shouldDecode(params.Decode), fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		if err := session.ChannelStream(ctx, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 			slog.Error("failed to stream channel", "type", params.Type, "channel", params.Channel, "err", err)
 		}
 	}()
 
 	return &apigen.GetChannelStreamOKHeaders{
-		XMirakurunTunerUserID: apigen.OptString{},
+		XMirakurunTunerUserID: apigen.NewOptString(userID),
 		Response: apigen.GetChannelStreamOK{
 			Data: fo,
 		},
@@ -39,6 +41,9 @@ func GetChannelStream(ctx context.Context, h *Handler, params apigen.GetChannelS
 }
 
 func GetServiceStreamByChannel(ctx context.Context, h *Handler, params apigen.GetServiceStreamByChannelParams) (apigen.GetServiceStreamByChannelRes, error) {
+	decode := shouldDecode(params.Decode)
+	serviceID := uint16(params.ID)
+	ctx, userID := tunerUserContext(ctx, params.XMirakurunPriority, decode, h.serviceManager.GetChannel(params.Type, params.Channel), nil, &serviceID)
 	session, err := h.streamManager.GetOrCreate(ctx, params.Type, params.Channel)
 	if err != nil {
 		if errors.Is(err, stream.ErrChannelNotFound) {
@@ -53,13 +58,13 @@ func GetServiceStreamByChannel(ctx context.Context, h *Handler, params apigen.Ge
 	fo, fi := io.Pipe()
 	go func() {
 		defer fi.Close()
-		if err := session.ServiceStream(ctx, uint16(params.ID), shouldDecode(params.Decode), fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		if err := session.ServiceStream(ctx, serviceID, decode, fi); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 			slog.Error("failed to stream service by channel", "type", params.Type, "channel", params.Channel, "service", params.ID, "err", err)
 		}
 	}()
 
 	return &apigen.GetServiceStreamByChannelOKHeaders{
-		XMirakurunTunerUserID: apigen.OptString{},
+		XMirakurunTunerUserID: apigen.NewOptString(userID),
 		Response: apigen.GetServiceStreamByChannelOK{
 			Data: fo,
 		},

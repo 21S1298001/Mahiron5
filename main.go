@@ -2,6 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -10,6 +14,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/config"
+	"github.com/21S1298001/Mahiron5/db"
 	"github.com/21S1298001/Mahiron5/job"
 	"github.com/21S1298001/Mahiron5/program"
 	"github.com/21S1298001/Mahiron5/server"
@@ -40,15 +45,27 @@ func main() {
 	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
 	slog.SetDefault(slog.New(h))
 
+	database, err := db.Open(cfg.System.DatabasePath)
+	if err != nil {
+		slog.Error("failed to open database", "err", err)
+		os.Exit(1)
+	}
+
+	if err := db.Migrate(context.Background(), database); err != nil {
+		slog.Error("failed to run migrations", "err", err)
+		os.Exit(1)
+	}
+
+	serviceStore := service.NewSQLiteStore(database)
+	programStore := program.NewSQLiteStore(database)
+
 	tm := tuner.NewTunerManager(&tuner.TunerManagerConfig{
 		TunersConfig: cfg.Tuners,
 	})
 
-	sm := service.NewServiceManager(&service.ServiceManagerConfig{
-		Channels: cfg.Channels,
-	})
+	sm := service.NewServiceManager(serviceStore, cfg.Channels)
 
-	pm := program.NewProgramManager(nil)
+	pm := program.NewProgramManager(programStore)
 
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:     cfg.Channels,
@@ -63,7 +80,7 @@ func main() {
 	}
 
 	job.RegisterServiceUpdater(jm, sm, stm, cfg.Channels)
-	job.RegisterEPGGatherer(jm, pm, sm, stm, cfg.Channels)
+	job.RegisterEPGGatherer(jm, pm, sm, stm, cfg.Channels, cfg.System.EpgRetentionDays)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {
@@ -100,21 +117,18 @@ func main() {
 		}
 	}
 
-	slog.Info("starting servers")
 	signalCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt, os.Kill)
 	defer stop()
 
 	s := server.NewServer(addresses, handler)
-	s.ListenAndServe()
-
 	jm.Start()
 
-	if sm.CountServices() == 0 {
-		slog.Info("no services cached, running initial service update")
-		if _, err := jm.Enqueue(job.ServiceUpdaterKey); err != nil {
-			slog.Error("failed to enqueue initial service update", "err", err)
-		}
+	if err := runStartupTasks(signalCtx, sm, pm, jm, database, cfg); err != nil {
+		slog.Error("startup tasks failed", "err", err)
 	}
+
+	slog.Info("starting servers")
+	s.ListenAndServe()
 
 	<-signalCtx.Done()
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -153,6 +167,79 @@ func main() {
 	}()
 	wg.Wait()
 
+	slog.Info("closing database")
+	if err := database.Close(); err != nil {
+		slog.Error("failed to close database", "err", err)
+	}
+	slog.Info("database closed")
+
 	slog.Info("exiting")
 	os.Exit(0)
+}
+
+func runStartupTasks(ctx context.Context, sm *service.ServiceManager, pm *program.ProgramManager, jm *job.JobManager, database *sql.DB, cfg *config.Config) error {
+	if err := sm.ReconcileChannels(ctx); err != nil {
+		return fmt.Errorf("reconcile service channels: %w", err)
+	}
+	channelsHash := hashChannelConfig(cfg.Channels)
+	storedHash, err := readMetadata(ctx, database, "channels_hash")
+	if err != nil {
+		slog.Warn("failed to read channels hash", "err", err)
+	}
+	if storedHash == "" || storedHash != channelsHash {
+		slog.Info("channel config changed, will trigger service update")
+		if err := writeMetadata(ctx, database, "channels_hash", channelsHash); err != nil {
+			slog.Warn("failed to write channels hash", "err", err)
+		}
+	}
+
+	count, err := sm.CountServices(ctx)
+	if err != nil {
+		return fmt.Errorf("count services: %w", err)
+	}
+
+	if count == 0 {
+		slog.Info("no services cached, running initial service update")
+		if _, err := jm.Enqueue(job.ServiceUpdaterKey); err != nil {
+			slog.Error("failed to enqueue initial service update", "err", err)
+		}
+	} else if storedHash != "" && storedHash != channelsHash {
+		slog.Info("channel config changed, enqueuing service update")
+		if _, err := jm.Enqueue(job.ServiceUpdaterKey); err != nil {
+			slog.Warn("failed to enqueue service update", "err", err)
+		}
+	}
+
+	if cfg.System.EpgRetentionDays > 0 {
+		cutoff := time.Now().Add(-time.Duration(cfg.System.EpgRetentionDays) * 24 * time.Hour).UnixMilli()
+		if err := pm.DeleteEndedBefore(ctx, cutoff); err != nil {
+			slog.Warn("failed to clean up old EPG data", "err", err)
+		} else {
+			slog.Info("cleaned up EPG data", "cutoffDays", cfg.System.EpgRetentionDays)
+		}
+	}
+
+	return nil
+}
+
+func hashChannelConfig(channels config.ChannelsConfig) string {
+	data, err := json.Marshal(channels)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
+func readMetadata(ctx context.Context, db *sql.DB, key string) (string, error) {
+	var value string
+	err := db.QueryRowContext(ctx, "SELECT value FROM metadata WHERE key = ?", key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return value, err
+}
+
+func writeMetadata(ctx context.Context, db *sql.DB, key, value string) error {
+	_, err := db.ExecContext(ctx, "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", key, value)
+	return err
 }
