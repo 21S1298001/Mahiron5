@@ -8,9 +8,10 @@ import (
 )
 
 type SystemConfig struct {
-	Addresses []ServerAddress     `json:"addresses"`
-	LogLevel  string              `json:"logLevel,omitempty"`
-	Jobs      []JobScheduleConfig `json:"jobs,omitempty"`
+	Addresses     []ServerAddress     `json:"addresses"`
+	LogLevel      string              `json:"logLevel,omitempty"`
+	JobMaxRunning int                 `json:"jobMaxRunning,omitempty"`
+	Jobs          []JobScheduleConfig `json:"jobs,omitempty"`
 }
 
 type JobScheduleConfig struct {
@@ -60,6 +61,12 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	case "debug", "info", "warn", "error":
 	default:
 		return nil, errors.New("invalid log level")
+	}
+	if config.JobMaxRunning == 0 {
+		config.JobMaxRunning = 1
+	}
+	if config.JobMaxRunning < 1 || config.JobMaxRunning > 100 {
+		return nil, errors.New("jobMaxRunning must be between 1 and 100")
 	}
 
 	return &config, nil

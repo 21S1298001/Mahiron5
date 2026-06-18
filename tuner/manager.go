@@ -3,79 +3,135 @@ package tuner
 import (
 	"context"
 	"errors"
+	"io"
 	"slices"
+	"sync"
 
 	"github.com/21S1298001/Mahiron5/config"
 )
 
 type TunerManager struct {
-	tuners []*Tuner
+	tuners     []*Tuner
+	mu         sync.Mutex
+	inUse      map[*Tuner]bool
+	nextByType map[string]int
+	changed    chan struct{}
 }
 
-type TunerManagerConfig struct {
-	TunersConfig config.TunersConfig
-}
+type TunerManagerConfig struct{ TunersConfig config.TunersConfig }
 
-func NewTunerManager(config *TunerManagerConfig) *TunerManager {
-	tuners := make([]*Tuner, len(config.TunersConfig))
-	for i, tunerConfig := range config.TunersConfig {
+func NewTunerManager(cfg *TunerManagerConfig) *TunerManager {
+	tuners := make([]*Tuner, len(cfg.TunersConfig))
+	for i, tunerConfig := range cfg.TunersConfig {
 		tuners[i] = NewTuner(tunerConfig)
 	}
-
 	return &TunerManager{
-		tuners: tuners,
+		tuners:     tuners,
+		inUse:      make(map[*Tuner]bool),
+		nextByType: make(map[string]int),
+		changed:    make(chan struct{}),
 	}
 }
 
-func (tm *TunerManager) Shutdown(ctx context.Context) error {
-	return nil
-}
+func (tm *TunerManager) Shutdown(context.Context) error { return nil }
 
 func (tm *TunerManager) GetTuner(name string) *Tuner {
-	for _, tuner := range tm.tuners {
-		if tuner.Name() == name {
-			return tuner
+	for _, item := range tm.tuners {
+		if item.Name() == name {
+			return item
 		}
 	}
 	return nil
 }
 
 func (tm *TunerManager) GetTunerByType(channelType string) *Tuner {
-	for _, tuner := range tm.tuners {
-		if !tuner.IsDisabled() && slices.Contains(tuner.Groups(), channelType) {
-			return tuner
+	for _, item := range tm.tuners {
+		if !item.IsDisabled() && slices.Contains(item.Groups(), channelType) {
+			return item
 		}
 	}
 	return nil
 }
 
+// NewDeviceByType reserves one physical tuner and returns a device that releases
+// that reservation when it stops.
 func (tm *TunerManager) NewDeviceByType(channelType string, channel *config.ChannelConfig) (Device, error) {
-	tuner := tm.GetTunerByType(channelType)
-	if tuner == nil {
-		return nil, ErrTunerNotFound
+	device, _, err := tm.AcquireDevice(context.Background(), channelType, channel, false)
+	return device, err
+}
+
+func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, channel *config.ChannelConfig, wait bool) (Device, string, error) {
+	for {
+		tm.mu.Lock()
+		found := false
+		usable := false
+		start := tm.nextByType[channelType]
+		for offset := range len(tm.tuners) {
+			index := (start + offset) % len(tm.tuners)
+			item := tm.tuners[index]
+			if item.IsDisabled() || !slices.Contains(item.Groups(), channelType) {
+				continue
+			}
+			found = true
+			if item.Command() == "" {
+				continue
+			}
+			usable = true
+			if tm.inUse[item] {
+				continue
+			}
+			tm.inUse[item] = true
+			tm.nextByType[channelType] = (index + 1) % len(tm.tuners)
+			base := item.NewDevice(channel)
+			managed := &managedDevice{Device: base, release: func() { tm.release(item) }}
+			decoder := item.DecoderCommand()
+			tm.mu.Unlock()
+			return managed, decoder, nil
+		}
+		changed := tm.changed
+		tm.mu.Unlock()
+
+		if !found {
+			return nil, "", ErrTunerNotFound
+		}
+		if !usable {
+			return nil, "", ErrUnsupportedTuner
+		}
+		if !wait {
+			return nil, "", ErrTunerUnavailable
+		}
+		select {
+		case <-ctx.Done():
+			return nil, "", ctx.Err()
+		case <-changed:
+		}
 	}
-	if tuner.Command() == "" {
-		return nil, ErrUnsupportedTuner
+}
+
+func (tm *TunerManager) release(item *Tuner) {
+	tm.mu.Lock()
+	if tm.inUse[item] {
+		delete(tm.inUse, item)
+		close(tm.changed)
+		tm.changed = make(chan struct{})
 	}
-	return tuner.NewDevice(channel), nil
+	tm.mu.Unlock()
 }
 
 func (tm *TunerManager) DecoderCommandByType(channelType string) string {
-	tuner := tm.GetTunerByType(channelType)
-	if tuner == nil {
+	item := tm.GetTunerByType(channelType)
+	if item == nil {
 		return ""
 	}
-	return tuner.DecoderCommand()
+	return item.DecoderCommand()
 }
 
-func (tm *TunerManager) TunerCount() int {
-	return len(tm.tuners)
-}
+func (tm *TunerManager) TunerCount() int { return len(tm.tuners) }
 
 func (tm *TunerManager) TunerCountByType(channelType string) int {
 	count := 0
-	for _, tuner := range tm.tuners {
-		if !tuner.IsDisabled() && slices.Contains(tuner.Groups(), channelType) {
+	for _, item := range tm.tuners {
+		if !item.IsDisabled() && slices.Contains(item.Groups(), channelType) {
 			count++
 		}
 	}
@@ -84,18 +140,41 @@ func (tm *TunerManager) TunerCountByType(channelType string) int {
 
 func (tm *TunerManager) CountTunersByType() map[string]int {
 	counts := make(map[string]int)
-	for _, tuner := range tm.tuners {
-		if tuner.IsDisabled() {
+	for _, item := range tm.tuners {
+		if item.IsDisabled() {
 			continue
 		}
-		for _, g := range tuner.Groups() {
-			counts[g]++
+		for _, group := range item.Groups() {
+			counts[group]++
 		}
 	}
 	return counts
 }
 
+type managedDevice struct {
+	Device
+	release func()
+	once    sync.Once
+}
+
+func (d *managedDevice) Start(ctx context.Context, dst io.Writer) error {
+	err := d.Device.Start(ctx, dst)
+	if err != nil {
+		d.releaseOnce()
+	}
+	return err
+}
+
+func (d *managedDevice) Stop(ctx context.Context) error {
+	err := d.Device.Stop(ctx)
+	d.releaseOnce()
+	return err
+}
+
+func (d *managedDevice) releaseOnce() { d.once.Do(d.release) }
+
 var (
 	ErrTunerNotFound    = errors.New("tuner not found")
 	ErrUnsupportedTuner = errors.New("unsupported tuner")
+	ErrTunerUnavailable = errors.New("tuner unavailable")
 )

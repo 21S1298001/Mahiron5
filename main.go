@@ -56,14 +56,14 @@ func main() {
 		TunerManager: tm,
 	})
 
-	jm, err := job.NewManager(job.Config{MaxHistory: 100})
+	jm, err := job.NewManager(job.Config{MaxHistory: 100, MaxRunning: cfg.System.JobMaxRunning})
 	if err != nil {
 		slog.Error("failed to create job manager", "err", err)
 		os.Exit(1)
 	}
 
-	job.RegisterServiceUpdater(jm, sm, stm, tm, cfg.Channels)
-	job.RegisterEPGGatherer(jm, pm, stm, tm, cfg.Channels)
+	job.RegisterServiceUpdater(jm, sm, stm, cfg.Channels)
+	job.RegisterEPGGatherer(jm, pm, sm, stm, cfg.Channels)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {

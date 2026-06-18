@@ -2,88 +2,52 @@ package job
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/stream"
-	"github.com/21S1298001/Mahiron5/tuner"
 )
 
 const (
-	ServiceUpdaterKey  = "service-updater"
-	ServiceUpdaterName = "Service Updater"
-
+	ServiceUpdaterKey             = "service-updater"
+	ServiceUpdaterName            = "Service Updater"
 	ServiceUpdaterDefaultSchedule = "5 6 * * *"
 )
 
-func RegisterServiceUpdater(mgr *JobManager, sm *service.ServiceManager, stm *stream.StreamManager, tm *tuner.TunerManager, channels config.ChannelsConfig) {
+func RegisterServiceUpdater(mgr *JobManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig) {
 	mgr.Register(JobDefinition{
-		Key:          ServiceUpdaterKey,
-		Name:         ServiceUpdaterName,
-		Handler:      serviceUpdaterHandler(sm, stm, tm, channels),
-		IsRerunnable: true,
-	})
-}
-
-func serviceUpdaterHandler(sm *service.ServiceManager, stm *stream.StreamManager, tm *tuner.TunerManager, channels config.ChannelsConfig) func(ctx context.Context) error {
-	return func(ctx context.Context) error {
-		var scanned, skipped, piggybacked int
-
-		for _, channel := range channels {
-			select {
-			case <-ctx.Done():
-				slog.Info("service updater aborted", "scanned", scanned, "skipped", skipped)
-				return ctx.Err()
-			default:
-			}
-
-			if channel.IsDisabled != nil && *channel.IsDisabled {
-				continue
-			}
-
-			if stm.HasSession(channel.Type, channel.Channel) {
-				if err := sm.ScanServices(ctx, stm, channel.Type, channel.Channel); err != nil {
-					slog.Error("failed to scan services (piggyback)", "channel", channel.Channel, "err", err)
+		Key: ServiceUpdaterKey, Name: ServiceUpdaterName, IsRerunnable: true,
+		Handler: func(ctx context.Context) error {
+			queued := 0
+			for _, configured := range channels {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if configured.IsDisabled != nil && *configured.IsDisabled {
 					continue
 				}
-				piggybacked++
-				slog.Debug("scanned services (piggyback)", "type", channel.Type, "channel", channel.Channel)
-				continue
+				channel := configured
+				definition := JobDefinition{
+					Key:          fmt.Sprintf("service-scan:%s:%s", channel.Type, channel.Channel),
+					Name:         fmt.Sprintf("Service Scan %s/%s", channel.Type, channel.Channel),
+					IsRerunnable: true,
+					Handler: func(childCtx context.Context) error {
+						return sm.ScanServicesWait(childCtx, stm, channel.Type, channel.Channel)
+					},
+				}
+				if _, err := mgr.EnqueueDefinition(definition); err != nil {
+					if errors.Is(err, ErrJobAlreadyRunning) {
+						continue
+					}
+					return err
+				}
+				queued++
 			}
-
-			if !hasAvailableRoute(stm, tm, channel) {
-				skipped++
-				slog.Info("skipping scan: tuner unavailable", "type", channel.Type, "channel", channel.Channel)
-				continue
-			}
-
-			if err := sm.ScanServices(ctx, stm, channel.Type, channel.Channel); err != nil {
-				slog.Error("failed to scan services", "channel", channel.Channel, "err", err)
-				continue
-			}
-			scanned++
-			slog.Debug("scanned services", "type", channel.Type, "channel", channel.Channel)
-		}
-
-		slog.Info("service updater completed",
-			"scanned", scanned,
-			"piggybacked", piggybacked,
-			"skipped", skipped,
-			"total", sm.CountServices(),
-		)
-		return nil
-	}
-}
-
-func hasAvailableRoute(stm *stream.StreamManager, tm *tuner.TunerManager, channel config.ChannelConfig) bool {
-	for _, route := range channel.RoutesOrDefault() {
-		if route.IsDisabled != nil && *route.IsDisabled {
-			continue
-		}
-		if stm.ActiveSessionCountByType(route.Type) < tm.TunerCountByType(route.Type) {
-			return true
-		}
-	}
-	return false
+			slog.Info("service updater dispatched", "queued", queued)
+			return nil
+		},
+	})
 }

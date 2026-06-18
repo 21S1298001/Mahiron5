@@ -257,9 +257,8 @@ func (s *ChannelSession) waitRaw(ctx context.Context) error {
 
 func (s *ChannelSession) attachRaw(dst io.Writer) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.stopped {
+		s.mu.Unlock()
 		return errors.New("channel session stopped")
 	}
 	s.refs++
@@ -267,8 +266,13 @@ func (s *ChannelSession) attachRaw(dst io.Writer) error {
 	if err := s.startLocked(); err != nil {
 		s.refs--
 		s.hub.Detach(dst)
+		s.mu.Unlock()
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.Stop(stopCtx)
 		return err
 	}
+	s.mu.Unlock()
 	return nil
 }
 

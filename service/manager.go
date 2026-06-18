@@ -123,9 +123,23 @@ type scanService struct {
 }
 
 func (s *ServiceManager) ScanServices(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string) error {
+	return s.scanServices(ctx, streamManager, channelType, channelId, false)
+}
+
+func (s *ServiceManager) ScanServicesWait(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string) error {
+	return s.scanServices(ctx, streamManager, channelType, channelId, true)
+}
+
+func (s *ServiceManager) scanServices(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string, wait bool) error {
 	out := bytes.Buffer{}
 
-	session, err := streamManager.GetOrCreate(ctx, channelType, channelId)
+	var session *stream.ChannelSession
+	var err error
+	if wait {
+		session, err = streamManager.GetOrCreateWait(ctx, channelType, channelId)
+	} else {
+		session, err = streamManager.GetOrCreate(ctx, channelType, channelId)
+	}
 	if err != nil {
 		return err
 	}

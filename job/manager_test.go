@@ -400,3 +400,65 @@ func TestEnqueueSingleton(t *testing.T) {
 		t.Errorf("expected no error after job completed, got %v", err)
 	}
 }
+
+func TestMaxRunningQueuesJobs(t *testing.T) {
+	mgr, err := NewManager(Config{MaxHistory: 10, MaxRunning: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan string, 3)
+	release := make(chan struct{})
+	for _, key := range []string{"one", "two", "three"} {
+		key := key
+		mgr.Register(JobDefinition{Key: key, Name: key, Handler: func(context.Context) error {
+			started <- key
+			<-release
+			return nil
+		}})
+		if _, err := mgr.Enqueue(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("first two jobs did not start")
+		}
+	}
+	select {
+	case key := <-started:
+		t.Fatalf("third job %q started above the limit", key)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("queued job did not start after a slot was released")
+	}
+}
+
+func TestAbortQueuedJob(t *testing.T) {
+	mgr := newTestManager(t)
+	block := make(chan struct{})
+	mgr.Register(JobDefinition{Key: "blocker", Handler: func(context.Context) error { <-block; return nil }})
+	mgr.Register(JobDefinition{Key: "queued", Handler: func(context.Context) error { t.Fatal("aborted queued job ran"); return nil }})
+	if _, err := mgr.Enqueue("blocker"); err != nil {
+		t.Fatal(err)
+	}
+	id, err := mgr.Enqueue("queued")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.Abort(id); err != nil {
+		t.Fatal(err)
+	}
+	close(block)
+	time.Sleep(50 * time.Millisecond)
+	for _, item := range mgr.GetJobs() {
+		if item.ID == id && (!item.HasAborted || item.Status != StatusFinished) {
+			t.Fatalf("queued abort state = %#v", item)
+		}
+	}
+}

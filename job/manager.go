@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -32,6 +33,7 @@ type Job struct {
 	UpdatedAt  time.Time
 	StartedAt  *time.Time
 	FinishedAt *time.Time
+	definition *JobDefinition
 }
 
 type JobDefinition struct {
@@ -46,36 +48,42 @@ type JobManager struct {
 	definitions    map[string]*JobDefinition
 	gocronIDs      map[string]uuid.UUID
 	history        []*Job
+	queue          []*Job
 	active         map[string]context.CancelFunc
 	activeKeys     map[string]bool
+	running        int
+	maxRunning     int
 	maxHistory     int
 	mu             sync.Mutex
+	wg             sync.WaitGroup
 	shutdownCtx    context.Context
 	shutdownCancel context.CancelFunc
 }
 
 type Config struct {
 	MaxHistory int
+	MaxRunning int
 }
 
 func NewManager(cfg Config) (*JobManager, error) {
 	if cfg.MaxHistory <= 0 {
 		cfg.MaxHistory = 100
 	}
-
+	if cfg.MaxRunning <= 0 {
+		cfg.MaxRunning = 1
+	}
 	scheduler, err := gocron.NewScheduler()
 	if err != nil {
 		return nil, err
 	}
-
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
-
 	return &JobManager{
 		scheduler:      scheduler,
 		definitions:    make(map[string]*JobDefinition),
 		gocronIDs:      make(map[string]uuid.UUID),
 		active:         make(map[string]context.CancelFunc),
 		activeKeys:     make(map[string]bool),
+		maxRunning:     cfg.MaxRunning,
 		maxHistory:     cfg.MaxHistory,
 		shutdownCtx:    shutdownCtx,
 		shutdownCancel: shutdownCancel,
@@ -91,12 +99,10 @@ func (m *JobManager) Register(definition JobDefinition) {
 func (m *JobManager) AddSchedule(key, schedule string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	def, ok := m.definitions[key]
 	if !ok {
 		return ErrDefinitionNotFound
 	}
-
 	gocronJob, err := m.scheduler.NewJob(
 		gocron.CronJob(schedule, false),
 		gocron.NewTask(m.wrapHandler(def)),
@@ -107,124 +113,169 @@ func (m *JobManager) AddSchedule(key, schedule string) error {
 	if err != nil {
 		return err
 	}
-
 	m.gocronIDs[key] = gocronJob.ID()
 	return nil
 }
 
-func (m *JobManager) Start() {
-	m.scheduler.Start()
-}
+func (m *JobManager) Start() { m.scheduler.Start() }
 
 func (m *JobManager) Shutdown(ctx context.Context) error {
 	m.shutdownCancel()
-	return m.scheduler.ShutdownWithContext(ctx)
+	m.mu.Lock()
+	queued := append([]*Job(nil), m.queue...)
+	m.queue = nil
+	for _, item := range queued {
+		item.IsAborting = true
+		m.finishLocked(item, context.Canceled, true)
+	}
+	for _, cancel := range m.active {
+		cancel()
+	}
+	m.mu.Unlock()
+	if err := m.scheduler.ShutdownWithContext(ctx); err != nil {
+		return err
+	}
+	done := make(chan struct{})
+	go func() {
+		m.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (m *JobManager) Enqueue(key string) (string, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	def, ok := m.definitions[key]
 	if !ok {
+		m.mu.Unlock()
 		return "", ErrDefinitionNotFound
 	}
+	id, err := m.enqueueLocked(def)
+	m.mu.Unlock()
+	return id, err
+}
 
-	if m.activeKeys[key] {
+func (m *JobManager) EnqueueDefinition(definition JobDefinition) (string, error) {
+	m.mu.Lock()
+	id, err := m.enqueueLocked(&definition)
+	m.mu.Unlock()
+	return id, err
+}
+
+func (m *JobManager) enqueueLocked(def *JobDefinition) (string, error) {
+	if m.shutdownCtx.Err() != nil {
+		return "", ErrManagerShutdown
+	}
+	if def.Key == "" || def.Handler == nil {
+		return "", ErrInvalidDefinition
+	}
+	if m.activeKeys[def.Key] {
 		return "", ErrJobAlreadyRunning
 	}
-
-	executionID := uuid.New().String()
 	now := time.Now()
-
-	job := &Job{
-		ID:        executionID,
-		Key:       def.Key,
-		Name:      def.Name,
-		Status:    StatusRunning,
-		CreatedAt: now,
-		UpdatedAt: now,
-		StartedAt: &now,
+	item := &Job{
+		ID: uuid.New().String(), Key: def.Key, Name: def.Name,
+		Status: StatusQueued, CreatedAt: now, UpdatedAt: now, definition: def,
 	}
-
-	m.history = append(m.history, job)
+	m.history = append(m.history, item)
 	m.trimHistory()
+	m.queue = append(m.queue, item)
+	m.activeKeys[def.Key] = true
+	slog.Info("job queued", "key", item.Key, "name", item.Name, "id", item.ID)
+	m.dispatchLocked()
+	return item.ID, nil
+}
 
-	ctx, cancel := context.WithCancel(m.shutdownCtx)
-	m.active[executionID] = cancel
-	m.activeKeys[key] = true
+func (m *JobManager) dispatchLocked() {
+	for m.running < m.maxRunning && len(m.queue) > 0 && m.shutdownCtx.Err() == nil {
+		item := m.queue[0]
+		m.queue = m.queue[1:]
+		now := time.Now()
+		item.Status = StatusRunning
+		item.StartedAt = &now
+		item.UpdatedAt = now
+		ctx, cancel := context.WithCancel(m.shutdownCtx)
+		m.active[item.ID] = cancel
+		m.running++
+		m.wg.Add(1)
+		slog.Info("job started", "key", item.Key, "name", item.Name, "id", item.ID)
+		go m.run(ctx, item)
+	}
+}
 
-	slog.Info("job started", "key", key, "name", def.Name, "id", executionID, "source", "enqueue")
+func (m *JobManager) run(ctx context.Context, item *Job) {
+	defer m.wg.Done()
+	err := item.definition.Handler(ctx)
+	m.mu.Lock()
+	delete(m.active, item.ID)
+	m.running--
+	m.finishLocked(item, err, item.HasAborted)
+	m.dispatchLocked()
+	m.mu.Unlock()
+}
 
-	go func() {
-		defer func() {
-			m.mu.Lock()
-			delete(m.active, executionID)
-			delete(m.activeKeys, key)
-			m.mu.Unlock()
-			cancel()
-		}()
-
-		err := def.Handler(ctx)
-		finishedAt := time.Now()
-
-		m.mu.Lock()
-		job.FinishedAt = &finishedAt
-		job.UpdatedAt = finishedAt
-		if err != nil {
-			job.Status = StatusFinished
-			job.HasFailed = true
-			job.Error = err.Error()
-			m.mu.Unlock()
-			slog.Error("job failed", "key", key, "id", executionID, "err", err, "duration", finishedAt.Sub(*job.StartedAt))
+func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
+	now := time.Now()
+	item.Status = StatusFinished
+	item.UpdatedAt = now
+	item.FinishedAt = &now
+	item.HasAborted = item.HasAborted || aborted
+	if err != nil && !item.HasAborted && !errors.Is(err, context.Canceled) {
+		item.HasFailed = true
+		item.Error = err.Error()
+	}
+	delete(m.activeKeys, item.Key)
+	m.trimHistory()
+	if item.StartedAt != nil {
+		if item.HasFailed {
+			slog.Error("job failed", "key", item.Key, "id", item.ID, "err", err, "duration", now.Sub(*item.StartedAt))
 		} else {
-			job.Status = StatusFinished
-			m.mu.Unlock()
-			slog.Info("job completed", "key", key, "id", executionID, "duration", finishedAt.Sub(*job.StartedAt))
+			slog.Info("job completed", "key", item.Key, "id", item.ID, "duration", now.Sub(*item.StartedAt))
 		}
-	}()
-
-	return executionID, nil
+	}
 }
 
 func (m *JobManager) Abort(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	cancel, ok := m.active[id]
-	if !ok {
-		return ErrJobNotRunning
+	if cancel, ok := m.active[id]; ok {
+		if item := m.findJob(id); item != nil {
+			item.IsAborting = true
+			item.HasAborted = true
+			item.UpdatedAt = time.Now()
+		}
+		cancel()
+		return nil
 	}
-
-	job := m.findJob(id)
-	if job != nil {
-		job.IsAborting = true
-		job.HasAborted = true
-		job.UpdatedAt = time.Now()
-		slog.Info("job aborting", "key", job.Key, "id", id)
+	for i, item := range m.queue {
+		if item.ID == id {
+			m.queue = append(m.queue[:i], m.queue[i+1:]...)
+			item.IsAborting = true
+			m.finishLocked(item, context.Canceled, true)
+			return nil
+		}
 	}
-
-	cancel()
-	return nil
+	return ErrJobNotRunning
 }
 
 func (m *JobManager) Rerun(id string) error {
 	m.mu.Lock()
-	job := m.findJob(id)
-	if job == nil {
+	item := m.findJob(id)
+	if item == nil {
 		m.mu.Unlock()
 		return ErrJobNotFound
 	}
-
-	def, ok := m.definitions[job.Key]
+	def := item.definition
 	m.mu.Unlock()
-
-	if !ok || !def.IsRerunnable {
+	if def == nil || !def.IsRerunnable {
 		return ErrJobNotRerunnable
 	}
-
-	slog.Info("job rerun requested", "key", job.Key, "originalId", id)
-	_, err := m.Enqueue(job.Key)
+	_, err := m.EnqueueDefinition(*def)
 	return err
 }
 
@@ -232,168 +283,105 @@ func (m *JobManager) RunSchedule(key string) error {
 	m.mu.Lock()
 	gocronID, ok := m.gocronIDs[key]
 	m.mu.Unlock()
-
 	if !ok {
 		return ErrDefinitionNotFound
 	}
-
-	slog.Info("job schedule triggered manually", "key", key)
-
-	gocronJobs := m.scheduler.Jobs()
-	for _, gj := range gocronJobs {
-		if gj.ID() == gocronID {
-			return gj.RunNow()
+	for _, scheduled := range m.scheduler.Jobs() {
+		if scheduled.ID() == gocronID {
+			return scheduled.RunNow()
 		}
 	}
-
 	return ErrJobNotFound
 }
 
 func (m *JobManager) GetJobs() []*Job {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	result := make([]*Job, len(m.history))
-	copy(result, m.history)
+	for i, item := range m.history {
+		copy := *item
+		copy.definition = nil
+		result[i] = &copy
+	}
 	return result
 }
 
 func (m *JobManager) GetJobSchedules() []ScheduleInfo {
-	gocronJobs := m.scheduler.Jobs()
-
+	scheduled := m.scheduler.Jobs()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	var result []ScheduleInfo
-	for _, gj := range gocronJobs {
-		sched := gj.Schedule()
-		cronSched, ok := sched.(gocron.CronJobSchedule)
+	for _, item := range scheduled {
+		cronSchedule, ok := item.Schedule().(gocron.CronJobSchedule)
 		if !ok {
 			continue
 		}
-
 		key := ""
-		for k, id := range m.gocronIDs {
-			if id == gj.ID() {
-				key = k
+		for candidate, id := range m.gocronIDs {
+			if id == item.ID() {
+				key = candidate
 				break
 			}
 		}
-
-		defName := gj.Name()
+		name := item.Name()
 		if def, ok := m.definitions[key]; ok {
-			defName = def.Name
+			name = def.Name
 		}
-
-		result = append(result, ScheduleInfo{
-			Key:      key,
-			Schedule: cronSched.Crontab,
-			JobKey:   key,
-			JobName:  defName,
-		})
+		result = append(result, ScheduleInfo{Key: key, Schedule: cronSchedule.Crontab, JobKey: key, JobName: name})
 	}
-
 	return result
 }
 
 type ScheduleInfo struct {
-	Key      string
-	Schedule string
-	JobKey   string
-	JobName  string
+	Key, Schedule, JobKey, JobName string
 }
 
 func (m *JobManager) findJob(id string) *Job {
-	for _, j := range m.history {
-		if j.ID == id {
-			return j
+	for _, item := range m.history {
+		if item.ID == id {
+			return item
 		}
 	}
 	return nil
 }
 
 func (m *JobManager) trimHistory() {
-	if len(m.history) > m.maxHistory {
-		m.history = m.history[len(m.history)-m.maxHistory:]
+	for len(m.history) > m.maxHistory {
+		removed := false
+		for i, item := range m.history {
+			if item.Status == StatusFinished {
+				m.history = append(m.history[:i], m.history[i+1:]...)
+				removed = true
+				break
+			}
+		}
+		if !removed {
+			return
+		}
 	}
 }
 
 func (m *JobManager) wrapHandler(def *JobDefinition) func(context.Context) error {
-	return func(ctx context.Context) error {
-		executionID := uuid.New().String()
-		now := time.Now()
-
-		job := &Job{
-			ID:        executionID,
-			Key:       def.Key,
-			Name:      def.Name,
-			Status:    StatusRunning,
-			CreatedAt: now,
-			UpdatedAt: now,
-			StartedAt: &now,
-		}
-
-		m.mu.Lock()
-		if m.activeKeys[def.Key] {
-			m.mu.Unlock()
-			slog.Info("job already running, skipping scheduled execution", "key", def.Key)
+	return func(context.Context) error {
+		_, err := m.Enqueue(def.Key)
+		if errors.Is(err, ErrJobAlreadyRunning) {
+			slog.Info("job already queued or running, skipping scheduled execution", "key", def.Key)
 			return nil
 		}
-		m.history = append(m.history, job)
-		m.trimHistory()
-		m.activeKeys[def.Key] = true
-		m.mu.Unlock()
-
-		slog.Info("job started", "key", def.Key, "name", def.Name, "id", executionID, "source", "schedule")
-
-		ctx, cancel := context.WithCancel(ctx)
-		m.mu.Lock()
-		m.active[executionID] = cancel
-		m.mu.Unlock()
-
-		defer func() {
-			m.mu.Lock()
-			delete(m.active, executionID)
-			delete(m.activeKeys, def.Key)
-			m.mu.Unlock()
-			cancel()
-		}()
-
-		err := def.Handler(ctx)
-		finishedAt := time.Now()
-
-		m.mu.Lock()
-		job.FinishedAt = &finishedAt
-		job.UpdatedAt = finishedAt
-		if err != nil {
-			job.Status = StatusFinished
-			job.HasFailed = true
-			job.Error = err.Error()
-			m.mu.Unlock()
-			slog.Error("job failed", "key", def.Key, "id", executionID, "err", err, "duration", finishedAt.Sub(*job.StartedAt))
-		} else {
-			job.Status = StatusFinished
-			m.mu.Unlock()
-			slog.Info("job completed", "key", def.Key, "id", executionID, "duration", finishedAt.Sub(*job.StartedAt))
-		}
-
 		return err
 	}
 }
 
 var (
 	ErrDefinitionNotFound = &JobError{Code: "DEFINITION_NOT_FOUND", Message: "job definition not found"}
+	ErrInvalidDefinition  = &JobError{Code: "INVALID_DEFINITION", Message: "invalid job definition"}
+	ErrManagerShutdown    = &JobError{Code: "MANAGER_SHUTDOWN", Message: "job manager is shut down"}
 	ErrJobNotFound        = &JobError{Code: "JOB_NOT_FOUND", Message: "job not found"}
 	ErrJobNotRunning      = &JobError{Code: "JOB_NOT_RUNNING", Message: "job is not running"}
 	ErrJobNotRerunnable   = &JobError{Code: "JOB_NOT_RERUNNABLE", Message: "job is not rerunnable"}
-	ErrJobAlreadyRunning  = &JobError{Code: "JOB_ALREADY_RUNNING", Message: "job is already running"}
+	ErrJobAlreadyRunning  = &JobError{Code: "JOB_ALREADY_RUNNING", Message: "job is already queued or running"}
 )
 
-type JobError struct {
-	Code    string
-	Message string
-}
+type JobError struct{ Code, Message string }
 
-func (e *JobError) Error() string {
-	return e.Message
-}
+func (e *JobError) Error() string { return e.Message }

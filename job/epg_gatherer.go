@@ -6,14 +6,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
 
 	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/program"
+	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/stream"
-	"github.com/21S1298001/Mahiron5/tuner"
 )
 
 const (
@@ -23,74 +24,102 @@ const (
 	EPGGathererDefaultSchedule = "20,50 * * * *"
 )
 
-func RegisterEPGGatherer(mgr *JobManager, pm *program.ProgramManager, stm *stream.StreamManager, tm *tuner.TunerManager, channels config.ChannelsConfig) {
+func RegisterEPGGatherer(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig) {
 	mgr.Register(JobDefinition{
 		Key:          EPGGathererKey,
 		Name:         EPGGathererName,
-		Handler:      epgGathererHandler(pm, stm, tm, channels),
+		Handler:      epgGathererHandler(mgr, pm, sm, stm, channels),
 		IsRerunnable: true,
 	})
 }
 
-func epgGathererHandler(pm *program.ProgramManager, stm *stream.StreamManager, tm *tuner.TunerManager, channels config.ChannelsConfig) func(context.Context) error {
+type epgCandidate struct{ typ, channel string }
+
+func epgGathererHandler(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig) func(context.Context) error {
 	return func(ctx context.Context) error {
-		var collected, piggybacked, skipped, failed int
-
-		for _, channel := range channels {
-			select {
-			case <-ctx.Done():
-				slog.Info("EPG gatherer aborted", "collected", collected, "piggybacked", piggybacked, "skipped", skipped, "failed", failed)
-				return ctx.Err()
-			default:
-			}
-
-			if channel.IsDisabled != nil && *channel.IsDisabled {
-				continue
-			}
-
-			if stm.HasSession(channel.Type, channel.Channel) {
-				session, err := stm.GetOrCreate(ctx, channel.Type, channel.Channel)
-				if err != nil {
-					failed++
-					slog.Error("failed to get stream session for EPG piggyback", "channel", channel.Channel, "err", err)
-					continue
-				}
-				slog.Debug("starting EPG collection piggyback", "type", channel.Type, "channel", channel.Channel)
-				if err := collectSessionEPG(ctx, pm, session); err != nil {
-					failed++
-					slog.Error("failed to collect EPG (piggyback)", "channel", channel.Channel, "err", err)
-					continue
-				}
-				piggybacked++
-				slog.Debug("finished EPG collection piggyback", "type", channel.Type, "channel", channel.Channel)
-				continue
-			}
-
-			if !hasAvailableRoute(stm, tm, channel) {
-				skipped++
-				slog.Info("skipping EPG collection: tuner unavailable", "type", channel.Type, "channel", channel.Channel)
-				continue
-			}
-
-			session, err := stm.GetOrCreate(ctx, channel.Type, channel.Channel)
-			if err != nil {
-				failed++
-				slog.Error("failed to create stream session for EPG", "channel", channel.Channel, "err", err)
-				continue
-			}
-			slog.Debug("starting EPG collection", "type", channel.Type, "channel", channel.Channel)
-			if err := collectSessionEPG(ctx, pm, session); err != nil {
-				failed++
-				slog.Error("failed to collect EPG", "channel", channel.Channel, "err", err)
-				continue
-			}
-			collected++
-			slog.Debug("finished EPG collection", "type", channel.Type, "channel", channel.Channel)
+		services := sm.GetServices()
+		byChannel := make(map[string][]uint16)
+		for _, item := range services {
+			key := item.ChannelType + "\x00" + item.ChannelId
+			byChannel[key] = append(byChannel[key], item.NetworkId)
 		}
-
-		slog.Info("EPG gatherer completed", "collected", collected, "piggybacked", piggybacked, "skipped", skipped, "failed", failed)
+		groups := make(map[uint16][]epgCandidate)
+		seen := make(map[uint16]map[string]bool)
+		for _, configured := range channels {
+			if configured.IsDisabled != nil && *configured.IsDisabled {
+				continue
+			}
+			key := configured.Type + "\x00" + configured.Channel
+			for _, nid := range byChannel[key] {
+				if seen[nid] == nil {
+					seen[nid] = make(map[string]bool)
+				}
+				if seen[nid][key] {
+					continue
+				}
+				seen[nid][key] = true
+				groups[nid] = append(groups[nid], epgCandidate{configured.Type, configured.Channel})
+			}
+		}
+		queued := 0
+		for nid, candidates := range groups {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			networkID := nid
+			networkCandidates := append([]epgCandidate(nil), candidates...)
+			definition := JobDefinition{
+				Key: fmt.Sprintf("epg-gather:nid:%d", networkID), Name: fmt.Sprintf("EPG Gather NID %d", networkID), IsRerunnable: true,
+				Handler: func(childCtx context.Context) error {
+					return gatherNetworkEPG(childCtx, pm, stm, networkID, networkCandidates)
+				},
+			}
+			if _, err := mgr.EnqueueDefinition(definition); err != nil {
+				if errors.Is(err, ErrJobAlreadyRunning) {
+					continue
+				}
+				return err
+			}
+			queued++
+		}
+		slog.Info("EPG gatherer dispatched", "networks", len(groups), "queued", queued)
 		return nil
 	}
+}
+
+func gatherNetworkEPG(ctx context.Context, pm *program.ProgramManager, stm *stream.StreamManager, networkID uint16, candidates []epgCandidate) error {
+	ordered := make([]epgCandidate, 0, len(candidates))
+	active := make(map[epgCandidate]bool, len(candidates))
+	for _, candidate := range candidates {
+		if stm.HasSession(candidate.typ, candidate.channel) {
+			active[candidate] = true
+			ordered = append(ordered, candidate)
+		}
+	}
+	for _, candidate := range candidates {
+		if !active[candidate] {
+			ordered = append(ordered, candidate)
+		}
+	}
+	var result error
+	for _, candidate := range ordered {
+		session, err := stm.GetOrCreateWait(ctx, candidate.typ, candidate.channel)
+		if err == nil {
+			err = collectSessionEPG(ctx, pm, session)
+		}
+		if err == nil {
+			slog.Debug("finished network EPG collection", "networkId", networkID, "type", candidate.typ, "channel", candidate.channel)
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		result = errors.Join(result, fmt.Errorf("%s/%s: %w", candidate.typ, candidate.channel, err))
+	}
+	if result == nil {
+		return fmt.Errorf("network %d has no channel candidates", networkID)
+	}
+	return result
 }
 
 func collectSessionEPG(ctx context.Context, pm *program.ProgramManager, session *stream.ChannelSession) error {

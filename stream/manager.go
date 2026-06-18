@@ -6,6 +6,7 @@ import (
 	"io"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/config"
 	"github.com/21S1298001/Mahiron5/filter"
@@ -72,6 +73,14 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 }
 
 func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel string) (*ChannelSession, error) {
+	return m.getOrCreate(ctx, channelType, channel, false)
+}
+
+func (m *StreamManager) GetOrCreateWait(ctx context.Context, channelType, channel string) (*ChannelSession, error) {
+	return m.getOrCreate(ctx, channelType, channel, true)
+}
+
+func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel string, wait bool) (*ChannelSession, error) {
 	key := sessionKey{typ: channelType, channel: channel}
 
 	m.mu.Lock()
@@ -89,16 +98,19 @@ func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel st
 		return nil, ErrChannelNotFound
 	}
 
-	route, routeChannelConfig, device, err := m.newRouteDevice(channelConfig)
+	route, routeChannelConfig, device, decoderCommand, err := m.newRouteDevice(ctx, channelConfig, wait)
 	if err != nil {
 		return nil, err
 	}
 
 	var descrambler Descrambler
-	if provider, ok := m.tunerManager.(DecoderCommandProvider); ok {
-		if command := provider.DecoderCommandByType(route.Type); command != "" {
-			descrambler = m.descramblerFactory(command)
+	if decoderCommand == "" {
+		if provider, ok := m.tunerManager.(DecoderCommandProvider); ok {
+			decoderCommand = provider.DecoderCommandByType(route.Type)
 		}
+	}
+	if decoderCommand != "" {
+		descrambler = m.descramblerFactory(decoderCommand)
 	}
 
 	session := NewChannelSession(ChannelSessionConfig{
@@ -169,21 +181,41 @@ func (m *StreamManager) findChannel(channelType, channel string) *config.Channel
 	return nil
 }
 
-func (m *StreamManager) newRouteDevice(channel *config.ChannelConfig) (config.ChannelRouteConfig, *config.ChannelConfig, TunerDevice, error) {
+func (m *StreamManager) newRouteDevice(ctx context.Context, channel *config.ChannelConfig, wait bool) (config.ChannelRouteConfig, *config.ChannelConfig, TunerDevice, string, error) {
 	routes := enabledRoutes(channel.RoutesOrDefault())
-	var lastErr error
-	for _, route := range routes {
-		routeChannel := channel.RouteChannelConfig(route)
-		device, err := m.tunerManager.NewDeviceByType(route.Type, &routeChannel)
-		if err == nil {
-			return route, &routeChannel, device, nil
+	for {
+		var lastErr error
+		unavailable := false
+		for _, route := range routes {
+			routeChannel := channel.RouteChannelConfig(route)
+			var device TunerDevice
+			var decoder string
+			var err error
+			if allocator, ok := m.tunerManager.(TunerAllocator); ok {
+				device, decoder, err = allocator.AcquireDevice(ctx, route.Type, &routeChannel, false)
+			} else {
+				device, err = m.tunerManager.NewDeviceByType(route.Type, &routeChannel)
+			}
+			if err == nil {
+				return route, &routeChannel, device, decoder, nil
+			}
+			if errors.Is(err, tuner.ErrTunerUnavailable) {
+				unavailable = true
+			}
+			lastErr = err
 		}
-		lastErr = err
+		if !wait || !unavailable {
+			if lastErr != nil {
+				return config.ChannelRouteConfig{}, nil, nil, "", lastErr
+			}
+			return config.ChannelRouteConfig{}, nil, nil, "", ErrChannelNotFound
+		}
+		select {
+		case <-ctx.Done():
+			return config.ChannelRouteConfig{}, nil, nil, "", ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
-	if lastErr != nil {
-		return config.ChannelRouteConfig{}, nil, nil, lastErr
-	}
-	return config.ChannelRouteConfig{}, nil, nil, ErrChannelNotFound
 }
 
 func enabledRoutes(routes []config.ChannelRouteConfig) []config.ChannelRouteConfig {
@@ -218,10 +250,15 @@ var (
 	ErrChannelNotFound  = errors.New("channel not found")
 	ErrTunerNotFound    = tuner.ErrTunerNotFound
 	ErrUnsupportedTuner = tuner.ErrUnsupportedTuner
+	ErrTunerUnavailable = tuner.ErrTunerUnavailable
 )
 
 type TunerManager interface {
 	NewDeviceByType(string, *config.ChannelConfig) (TunerDevice, error)
+}
+
+type TunerAllocator interface {
+	AcquireDevice(context.Context, string, *config.ChannelConfig, bool) (TunerDevice, string, error)
 }
 
 type DecoderCommandProvider interface {
