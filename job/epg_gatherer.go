@@ -57,65 +57,21 @@ func epgGathererHandler(mgr *JobManager, pm *program.ProgramManager, sm *service
 		if len(services) == 0 {
 			return errors.New("EPG gathering requires scanned services")
 		}
-		byChannel := make(map[string][]uint16)
-		for _, item := range services {
-			key := item.ChannelType + "\x00" + item.ChannelId
-			byChannel[key] = append(byChannel[key], item.NetworkId)
-		}
-		groups := make(map[uint16]*epgNetwork)
-		seen := make(map[uint16]map[string]bool)
-		for _, configured := range channels {
-			if configured.IsDisabled != nil && *configured.IsDisabled {
-				continue
-			}
-			key := configured.Type + "\x00" + configured.Channel
-			for _, nid := range byChannel[key] {
-				if groups[nid] == nil {
-					groups[nid] = &epgNetwork{}
-				}
-				if seen[nid] == nil {
-					seen[nid] = make(map[string]bool)
-				}
-				if seen[nid][key] {
-					continue
-				}
-				seen[nid][key] = true
-				groups[nid].candidates = append(groups[nid].candidates, epgCandidate{configured.Type, configured.Channel})
-			}
-		}
-		serviceSeen := make(map[program.ServiceKey]bool)
-		for _, svc := range services {
-			key := program.ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId}
-			if groups[svc.NetworkId] != nil && !serviceSeen[key] {
-				groups[svc.NetworkId].services = append(groups[svc.NetworkId].services, key)
-				serviceSeen[key] = true
-			}
-		}
+		grouped := groupServicesByNetwork(services, channels)
 		queued := 0
-		for nid, group := range groups {
+		for nid, group := range grouped {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			networkID := nid
-			networkCandidates := append([]epgCandidate(nil), group.candidates...)
-			networkServices := append([]program.ServiceKey(nil), group.services...)
-			definition := JobDefinition{
-				Key: fmt.Sprintf("epg-gather:nid:%d", networkID), Name: fmt.Sprintf("EPG Gather NID %d", networkID), IsRerunnable: true,
-				Handler: func(childCtx context.Context) error {
-					return gatherNetworkEPG(childCtx, pm, sm, stm, networkID, networkCandidates, networkServices, retrievalTime)
-				},
-				RetryDelays: []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
-				RetryIf:     retryableEPGError,
-			}
-			if _, err := mgr.EnqueueDefinition(definition); err != nil {
-				if errors.Is(err, ErrJobAlreadyRunning) {
-					continue
-				}
+			enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, pm, sm, stm, channels, retrievalTime, nid, group.candidates, group.services)
+			if err != nil {
 				return err
 			}
-			queued++
+			if enqueued {
+				queued++
+			}
 		}
-		slog.Info("EPG gatherer dispatched", "networks", len(groups), "queued", queued)
+		slog.Info("EPG gatherer dispatched", "networks", len(grouped), "queued", queued)
 
 		if epgRetentionDays > 0 {
 			cutoff := time.Now().Add(-time.Duration(epgRetentionDays) * 24 * time.Hour).UnixMilli()
@@ -126,6 +82,127 @@ func epgGathererHandler(mgr *JobManager, pm *program.ProgramManager, sm *service
 
 		return nil
 	}
+}
+
+func groupServicesByNetwork(services []*service.Service, channels config.ChannelsConfig) map[uint16]*epgNetwork {
+	byChannel := make(map[string][]uint16)
+	for _, item := range services {
+		key := item.ChannelType + "\x00" + item.ChannelId
+		byChannel[key] = append(byChannel[key], item.NetworkId)
+	}
+	groups := make(map[uint16]*epgNetwork)
+	seen := make(map[uint16]map[string]bool)
+	for _, configured := range channels {
+		if configured.IsDisabled != nil && *configured.IsDisabled {
+			continue
+		}
+		key := configured.Type + "\x00" + configured.Channel
+		for _, nid := range byChannel[key] {
+			if groups[nid] == nil {
+				groups[nid] = &epgNetwork{}
+			}
+			if seen[nid] == nil {
+				seen[nid] = make(map[string]bool)
+			}
+			if seen[nid][key] {
+				continue
+			}
+			seen[nid][key] = true
+			groups[nid].candidates = append(groups[nid].candidates, epgCandidate{configured.Type, configured.Channel})
+		}
+	}
+	serviceSeen := make(map[program.ServiceKey]bool)
+	for _, svc := range services {
+		key := program.ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId}
+		if groups[svc.NetworkId] != nil && !serviceSeen[key] {
+			groups[svc.NetworkId].services = append(groups[svc.NetworkId].services, key)
+			serviceSeen[key] = true
+		}
+	}
+	return groups
+}
+
+// buildNetworkEPGInputs looks up the channel candidates and services belonging
+// to networkID from the currently stored services. Returns the inputs needed
+// to enqueue or invoke an EPG gather for that network.
+func buildNetworkEPGInputs(ctx context.Context, sm *service.ServiceManager, channels config.ChannelsConfig, networkID uint16) ([]epgCandidate, []program.ServiceKey, error) {
+	services, err := sm.GetServices(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get services: %w", err)
+	}
+	byChannel := make(map[string]bool)
+	for _, item := range services {
+		if item.NetworkId != networkID {
+			continue
+		}
+		key := item.ChannelType + "\x00" + item.ChannelId
+		byChannel[key] = true
+	}
+	var candidates []epgCandidate
+	for _, configured := range channels {
+		if configured.IsDisabled != nil && *configured.IsDisabled {
+			continue
+		}
+		key := configured.Type + "\x00" + configured.Channel
+		if byChannel[key] {
+			candidates = append(candidates, epgCandidate{configured.Type, configured.Channel})
+		}
+	}
+	serviceSeen := make(map[program.ServiceKey]bool)
+	var networkServices []program.ServiceKey
+	for _, svc := range services {
+		if svc.NetworkId != networkID {
+			continue
+		}
+		key := program.ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId}
+		if !serviceSeen[key] {
+			serviceSeen[key] = true
+			networkServices = append(networkServices, key)
+		}
+	}
+	return candidates, networkServices, nil
+}
+
+// enqueueEPGGatherForNetwork enqueues the per-network EPG gather job for the
+// given network ID, ignoring ErrJobAlreadyRunning. It is used by both the
+// EPGGatherer cron handler and by callers (e.g. the service updater) that
+// want to trigger gathering for a freshly discovered network without waiting
+// for the next cron tick. Returns true when a job was actually enqueued (not
+// already running and not skipped for having no services).
+func enqueueEPGGatherForNetwork(ctx context.Context, mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig, retrievalTime time.Duration, networkID uint16, presetCandidates []epgCandidate, presetServices []program.ServiceKey) (bool, error) {
+	var candidates []epgCandidate
+	var services []program.ServiceKey
+	if len(presetCandidates) > 0 || len(presetServices) > 0 {
+		candidates = presetCandidates
+		services = presetServices
+	} else {
+		var err error
+		candidates, services, err = buildNetworkEPGInputs(ctx, sm, channels, networkID)
+		if err != nil {
+			return false, err
+		}
+	}
+	if len(services) == 0 {
+		return false, nil
+	}
+	nid := networkID
+	networkCandidates := append([]epgCandidate(nil), candidates...)
+	networkServices := append([]program.ServiceKey(nil), services...)
+	definition := JobDefinition{
+		Key: fmt.Sprintf("epg-gather:nid:%d", nid), Name: fmt.Sprintf("EPG Gather NID %d", nid), IsRerunnable: true,
+		Handler: func(childCtx context.Context) error {
+			return gatherNetworkEPG(childCtx, pm, sm, stm, nid, networkCandidates, networkServices, retrievalTime)
+		},
+		RetryDelays: []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute},
+		RetryIf:     retryableEPGError,
+	}
+	if _, err := mgr.EnqueueDefinition(definition); err != nil {
+		if errors.Is(err, ErrJobAlreadyRunning) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func gatherNetworkEPG(ctx context.Context, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, networkID uint16, candidates []epgCandidate, services []program.ServiceKey, retrievalTime time.Duration) error {

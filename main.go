@@ -80,7 +80,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	job.RegisterServiceUpdater(jm, sm, stm, cfg.Channels)
+	job.RegisterServiceUpdater(jm, pm, sm, stm, cfg.Channels, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 	job.RegisterEPGGatherer(jm, pm, sm, stm, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	schedules := cfg.System.Jobs
@@ -217,10 +217,11 @@ func runStartupTasks(ctx context.Context, sm *service.ServiceManager, pm *progra
 		return fmt.Errorf("read EPG status: %w", err)
 	}
 	// EPG gathering requires a non-empty service list. If we don't have one
-	// yet, the service updater above is responsible for populating it; the
-	// gatherer's cron schedule (default `20,50 * * * *`) will pick up the
-	// work on the next tick. Avoids a redundant gatherer run that would
-	// fail with "EPG gathering requires scanned services".
+	// yet, the service updater above is responsible for populating it; each
+	// scan that discovers a new network will immediately enqueue an EPG
+	// gather, so we don't need to enqueue the gatherer here. For the stale
+	// case (services exist but EPG is outdated), enqueue the gatherer to
+	// refresh all networks.
 	if count > 0 && stale > 0 {
 		slog.Info("EPG is stale, enqueuing gatherer", "staleServices", stale)
 		if _, err := jm.Enqueue(job.EPGGathererKey); err != nil && !errors.Is(err, job.ErrJobAlreadyRunning) {

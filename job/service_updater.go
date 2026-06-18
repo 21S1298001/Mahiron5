@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/config"
+	"github.com/21S1298001/Mahiron5/program"
 	"github.com/21S1298001/Mahiron5/service"
 	"github.com/21S1298001/Mahiron5/stream"
 )
@@ -17,7 +19,7 @@ const (
 	ServiceUpdaterDefaultSchedule = "5 6 * * *"
 )
 
-func RegisterServiceUpdater(mgr *JobManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig) {
+func RegisterServiceUpdater(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig, retrievalTime time.Duration) {
 	mgr.Register(JobDefinition{
 		Key: ServiceUpdaterKey, Name: ServiceUpdaterName, IsRerunnable: true,
 		Handler: func(ctx context.Context) error {
@@ -35,7 +37,22 @@ func RegisterServiceUpdater(mgr *JobManager, sm *service.ServiceManager, stm *st
 					Name:         fmt.Sprintf("Service Scan %s/%s", channel.Type, channel.Channel),
 					IsRerunnable: true,
 					Handler: func(childCtx context.Context) error {
-						return sm.ScanServicesWait(childCtx, stm, channel.Type, channel.Channel)
+						newNIDs, err := sm.ScanServicesWait(childCtx, stm, channel.Type, channel.Channel)
+						if err != nil {
+							return err
+						}
+						for _, nid := range newNIDs {
+							if err := childCtx.Err(); err != nil {
+								return err
+							}
+							if _, err := enqueueEPGGatherForNetwork(childCtx, mgr, pm, sm, stm, channels, retrievalTime, nid, nil, nil); err != nil {
+								slog.Warn("failed to enqueue EPG gather for newly scanned network", "networkId", nid, "channel", fmt.Sprintf("%s/%s", channel.Type, channel.Channel), "err", err)
+							}
+						}
+						if len(newNIDs) > 0 {
+							slog.Info("service scan discovered new networks, EPG gather enqueued", "channel", fmt.Sprintf("%s/%s", channel.Type, channel.Channel), "networks", newNIDs)
+						}
+						return nil
 					},
 				}
 				if _, err := mgr.EnqueueDefinition(definition); err != nil {

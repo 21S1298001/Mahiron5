@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/config"
@@ -257,4 +258,48 @@ func TestServiceManagerEPGSummary(t *testing.T) {
 	if stale != 2 {
 		t.Errorf("stale = %d, want 2 with larger window", stale)
 	}
+}
+
+func TestNewNetworkIDsFromDiff(t *testing.T) {
+	svc := func(nid, sid uint16) *Service {
+		return &Service{Id: idFor(nid, sid), NetworkId: nid, ServiceId: sid}
+	}
+	before := map[string]struct{}{
+		idFor(1, 101): {}, // already known NID 1, SID 101
+		idFor(2, 201): {}, // already known NID 2, SID 201
+	}
+	scanned := []*Service{
+		svc(1, 101), // already known
+		svc(1, 102), // new service on existing NID 1
+		svc(2, 201), // already known
+		svc(3, 301), // brand new NID
+		svc(3, 302), // same new NID 3 (dedupe)
+	}
+	got := newNetworkIDsFromDiff(before, scanned)
+	want := map[uint16]bool{1: true, 3: true}
+	if len(got) != len(want) {
+		t.Fatalf("newNetworkIDsFromDiff = %v, want NIDs %v", got, want)
+	}
+	for _, nid := range got {
+		if !want[nid] {
+			t.Errorf("unexpected NID %d in result %v", nid, got)
+		}
+	}
+}
+
+func TestNewNetworkIDsFromDiffEmptyInputs(t *testing.T) {
+	if got := newNetworkIDsFromDiff(nil, nil); got != nil {
+		t.Errorf("nil scanned = %v, want nil", got)
+	}
+	before := map[string]struct{}{idFor(1, 101): {}}
+	allKnown := []*Service{
+		{Id: idFor(1, 101), NetworkId: 1, ServiceId: 101},
+	}
+	if got := newNetworkIDsFromDiff(before, allKnown); got != nil {
+		t.Errorf("all-known scanned = %v, want nil", got)
+	}
+}
+
+func idFor(nid, sid uint16) string {
+	return fmt.Sprintf("%05d%05d", nid, sid)
 }

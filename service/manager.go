@@ -151,15 +151,24 @@ type scanService struct {
 	RemoteControlKeyId uint8  `json:"remoteControlKeyId"`
 }
 
-func (s *ServiceManager) ScanServices(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string) error {
+func (s *ServiceManager) ScanServices(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string) ([]uint16, error) {
 	return s.scanServices(ctx, streamManager, channelType, channelId, false)
 }
 
-func (s *ServiceManager) ScanServicesWait(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string) error {
+func (s *ServiceManager) ScanServicesWait(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string) ([]uint16, error) {
 	return s.scanServices(ctx, streamManager, channelType, channelId, true)
 }
 
-func (s *ServiceManager) scanServices(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string, wait bool) error {
+func (s *ServiceManager) scanServices(ctx context.Context, streamManager *stream.StreamManager, channelType string, channelId string, wait bool) ([]uint16, error) {
+	existing, err := s.store.GetByChannel(ctx, channelType, channelId)
+	if err != nil {
+		return nil, fmt.Errorf("list existing services: %w", err)
+	}
+	before := make(map[string]struct{}, len(existing))
+	for _, svc := range existing {
+		before[svc.Id] = struct{}{}
+	}
+
 	out := bytes.Buffer{}
 	yes := true
 	ctx = tuner.WithUser(ctx, tuner.User{
@@ -171,22 +180,21 @@ func (s *ServiceManager) scanServices(ctx context.Context, streamManager *stream
 	})
 
 	var session *stream.ChannelSession
-	var err error
 	if wait {
 		session, err = streamManager.GetOrCreateWait(ctx, channelType, channelId)
 	} else {
 		session, err = streamManager.GetOrCreate(ctx, channelType, channelId)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := session.ScanServices(ctx, &out); err != nil {
-		return err
+		return nil, err
 	}
 
 	var services []*scanService
 	if err := json.Unmarshal(out.Bytes(), &services); err != nil {
-		return err
+		return nil, err
 	}
 
 	scanned := make([]*Service, len(services))
@@ -204,7 +212,34 @@ func (s *ServiceManager) scanServices(ctx context.Context, streamManager *stream
 		}
 	}
 
-	return s.store.ReplaceChannelServices(ctx, channelType, channelId, scanned)
+	if err := s.store.ReplaceChannelServices(ctx, channelType, channelId, scanned); err != nil {
+		return nil, err
+	}
+
+	return newNetworkIDsFromDiff(before, scanned), nil
+}
+
+// newNetworkIDsFromDiff returns the deduplicated network IDs of services in
+// scanned whose service ID was not present in before. Used to detect networks
+// that newly appear on a channel after a service scan, so the EPG gatherer can
+// be triggered without waiting for its cron schedule.
+func newNetworkIDsFromDiff(before map[string]struct{}, scanned []*Service) []uint16 {
+	if len(scanned) == 0 {
+		return nil
+	}
+	seen := make(map[uint16]struct{})
+	var nids []uint16
+	for _, svc := range scanned {
+		if _, ok := before[svc.Id]; ok {
+			continue
+		}
+		if _, ok := seen[svc.NetworkId]; ok {
+			continue
+		}
+		seen[svc.NetworkId] = struct{}{}
+		nids = append(nids, svc.NetworkId)
+	}
+	return nids
 }
 
 func isDisabled(channel config.ChannelConfig) bool {
