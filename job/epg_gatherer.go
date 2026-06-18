@@ -430,6 +430,10 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 				result = errors.Join(result, err)
 			}
 		} else {
+			slog.Warn("EITS snapshot incomplete",
+				"networkId", key.NetworkID,
+				"serviceId", key.ServiceID,
+				"report", snapshot.CompletionReport(key))
 			err := fmt.Errorf("service %d EITS incomplete", key.ServiceID)
 			_ = sm.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
 			result = errors.Join(result, err)

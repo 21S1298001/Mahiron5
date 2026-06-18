@@ -2,6 +2,7 @@ package program
 
 import (
 	"log/slog"
+	"sort"
 	"time"
 )
 
@@ -33,6 +34,24 @@ type snapshotTable struct {
 	// section. When a section is purged (version change, lastSection shrink)
 	// its programs are removed from the service-level map.
 	sectionPrograms map[uint8][]int64
+}
+
+// EITSnapshotReport describes why a service snapshot is not complete.  It is
+// intentionally safe to pass directly to slog as a structured value.
+type EITSnapshotReport struct {
+	ObservedTables  int                      `json:"observedTables"`
+	MissingTableIDs []int                    `json:"missingTableIds,omitempty"`
+	Tables          []EITSnapshotTableReport `json:"tables,omitempty"`
+}
+
+type EITSnapshotTableReport struct {
+	TableID            int   `json:"tableId"`
+	Version            int   `json:"version"`
+	LastSection        int   `json:"lastSection"`
+	ObservedSections   int   `json:"observedSections"`
+	MissingSections    []int `json:"missingSections,omitempty"`
+	MissingSegmentInfo []int `json:"missingSegmentInfo,omitempty"`
+	Complete           bool  `json:"complete"`
 }
 
 func NewEITSnapshot() *EITSnapshot {
@@ -152,6 +171,83 @@ func (s *EITSnapshot) ServiceComplete(key ServiceKey) bool {
 		}
 	}
 	return true
+}
+
+// CompletionReport returns the table and section gaps used by
+// ServiceComplete.  MissingSegmentInfo contains segment indexes for which no
+// segment_last_section_number has been observed yet.
+func (s *EITSnapshot) CompletionReport(key ServiceKey) EITSnapshotReport {
+	service := s.services[key]
+	if service == nil {
+		return EITSnapshotReport{}
+	}
+
+	tableIDs := make([]int, 0, len(service.tables))
+	for tableID := range service.tables {
+		tableIDs = append(tableIDs, int(tableID))
+	}
+	sort.Ints(tableIDs)
+
+	report := EITSnapshotReport{ObservedTables: len(tableIDs)}
+	groups := make(map[uint8]map[uint8]struct{})
+	for _, id := range tableIDs {
+		tableID := uint8(id)
+		table := service.tables[tableID]
+		base := tableID & 0xf8
+		if groups[base] == nil {
+			groups[base] = make(map[uint8]struct{})
+		}
+		groups[base][tableID] = struct{}{}
+
+		tableReport := EITSnapshotTableReport{
+			TableID:          id,
+			Version:          int(table.version),
+			LastSection:      int(table.lastSection),
+			ObservedSections: len(table.sections),
+			Complete:         snapshotTableComplete(table),
+		}
+		lastSegment := table.lastSection / 8
+		for segment := uint8(0); segment <= lastSegment; segment++ {
+			segmentLast, ok := table.segmentLast[segment]
+			if !ok {
+				tableReport.MissingSegmentInfo = append(tableReport.MissingSegmentInfo, int(segment))
+			} else {
+				first := segment * 8
+				last := segmentLast
+				if last > table.lastSection {
+					last = table.lastSection
+				}
+				for section := first; section <= last && last >= first; section++ {
+					if _, ok := table.sections[section]; !ok {
+						tableReport.MissingSections = append(tableReport.MissingSections, int(section))
+					}
+					if section == 255 {
+						break
+					}
+				}
+			}
+			if segment == 31 {
+				break
+			}
+		}
+		report.Tables = append(report.Tables, tableReport)
+	}
+
+	for base, tables := range groups {
+		maxTable := base
+		for tableID := range tables {
+			if tableID > maxTable {
+				maxTable = tableID
+			}
+		}
+		for tableID := base; tableID <= maxTable; tableID++ {
+			if _, ok := tables[tableID]; !ok {
+				report.MissingTableIDs = append(report.MissingTableIDs, int(tableID))
+			}
+		}
+	}
+	sort.Ints(report.MissingTableIDs)
+	return report
 }
 
 func snapshotTableComplete(table *snapshotTable) bool {

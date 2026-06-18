@@ -54,6 +54,42 @@ func TestEITSnapshotServiceCompleteFalseOnMissingSegment(t *testing.T) {
 	}
 }
 
+func TestEITSnapshotCompletionReport(t *testing.T) {
+	snap := NewEITSnapshot()
+	now := time.Unix(0, 0)
+	section := makeSection(1, 100, 2, 0x51, 0, 9, 3, ev(1, 1000, 1000))
+	section.SegmentLastSectionNumber = 1
+	snap.Observe(section, now)
+
+	report := snap.CompletionReport(ServiceKey{1, 100})
+	if report.ObservedTables != 1 {
+		t.Fatalf("ObservedTables = %d, want 1", report.ObservedTables)
+	}
+	if len(report.MissingTableIDs) != 1 || report.MissingTableIDs[0] != 0x50 {
+		t.Fatalf("MissingTableIDs = %v, want [80]", report.MissingTableIDs)
+	}
+	if len(report.Tables) != 1 {
+		t.Fatalf("Tables = %d, want 1", len(report.Tables))
+	}
+	table := report.Tables[0]
+	if table.TableID != 0x51 || table.Version != 3 || table.LastSection != 9 || table.ObservedSections != 1 {
+		t.Fatalf("table report = %+v", table)
+	}
+	if len(table.MissingSections) != 1 || table.MissingSections[0] != 1 {
+		t.Errorf("MissingSections = %v, want [1]", table.MissingSections)
+	}
+	if len(table.MissingSegmentInfo) != 1 || table.MissingSegmentInfo[0] != 1 {
+		t.Errorf("MissingSegmentInfo = %v, want [1]", table.MissingSegmentInfo)
+	}
+}
+
+func TestEITSnapshotCompletionReportForUnobservedService(t *testing.T) {
+	report := NewEITSnapshot().CompletionReport(ServiceKey{1, 100})
+	if report.ObservedTables != 0 || len(report.Tables) != 0 {
+		t.Fatalf("report = %+v, want empty", report)
+	}
+}
+
 func TestEITSnapshotServiceCompleteFalseOnUnknownTable(t *testing.T) {
 	snap := NewEITSnapshot()
 	now := time.Unix(0, 0)
