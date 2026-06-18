@@ -2309,6 +2309,12 @@ func (s *JobItem) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.NextRunAt.Set {
+			e.FieldStart("nextRunAt")
+			s.NextRunAt.Encode(e)
+		}
+	}
+	{
 		if s.Duration.Set {
 			e.FieldStart("duration")
 			s.Duration.Encode(e)
@@ -2316,7 +2322,7 @@ func (s *JobItem) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfJobItem = [20]string{
+var jsonFieldsNameOfJobItem = [21]string{
 	0:  "key",
 	1:  "name",
 	2:  "id",
@@ -2336,7 +2342,8 @@ var jsonFieldsNameOfJobItem = [20]string{
 	16: "updatedAt",
 	17: "startedAt",
 	18: "finishedAt",
-	19: "duration",
+	19: "nextRunAt",
+	20: "duration",
 }
 
 // Decode decodes JobItem from json.
@@ -2547,6 +2554,16 @@ func (s *JobItem) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"finishedAt\"")
+			}
+		case "nextRunAt":
+			if err := func() error {
+				s.NextRunAt.Reset()
+				if err := s.NextRunAt.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"nextRunAt\"")
 			}
 		case "duration":
 			if err := func() error {
@@ -3141,6 +3158,40 @@ func (s OptProgramEpisodeNumber) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *OptProgramEpisodeNumber) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ProgramExtended as json.
+func (o OptProgramExtended) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes ProgramExtended from json.
+func (o *OptProgramExtended) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptProgramExtended to nil")
+	}
+	o.Set = true
+	o.Value = make(ProgramExtended)
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptProgramExtended) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptProgramExtended) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -3917,7 +3968,7 @@ func (s *Program) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
-		if s.Extended != nil {
+		if s.Extended.Set {
 			e.FieldStart("extended")
 			s.Extended.Encode(e)
 		}
@@ -4107,12 +4158,10 @@ func (s *Program) Decode(d *jx.Decoder) error {
 			}
 		case "extended":
 			if err := func() error {
-				s.Extended = nil
-				var elem ProgramExtended
-				if err := elem.Decode(d); err != nil {
+				s.Extended.Reset()
+				if err := s.Extended.Decode(d); err != nil {
 					return err
 				}
-				s.Extended = &elem
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"extended\"")
@@ -4472,29 +4521,41 @@ func (s *ProgramEpisodeNumber) UnmarshalJSON(data []byte) error {
 }
 
 // Encode implements json.Marshaler.
-func (s *ProgramExtended) Encode(e *jx.Encoder) {
+func (s ProgramExtended) Encode(e *jx.Encoder) {
 	e.ObjStart()
 	s.encodeFields(e)
 	e.ObjEnd()
 }
 
-// encodeFields encodes fields.
-func (s *ProgramExtended) encodeFields(e *jx.Encoder) {
-}
+// encodeFields implements json.Marshaler.
+func (s ProgramExtended) encodeFields(e *jx.Encoder) {
+	for k, elem := range s {
+		e.FieldStart(k)
 
-var jsonFieldsNameOfProgramExtended = [0]string{}
+		e.Str(elem)
+	}
+}
 
 // Decode decodes ProgramExtended from json.
 func (s *ProgramExtended) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ProgramExtended to nil")
 	}
-
+	m := s.init()
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
-		switch string(k) {
-		default:
-			return d.Skip()
+		var elem string
+		if err := func() error {
+			v, err := d.Str()
+			elem = string(v)
+			if err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return errors.Wrapf(err, "decode field %q", k)
 		}
+		m[string(k)] = elem
+		return nil
 	}); err != nil {
 		return errors.Wrap(err, "decode ProgramExtended")
 	}
@@ -4503,7 +4564,7 @@ func (s *ProgramExtended) Decode(d *jx.Decoder) error {
 }
 
 // MarshalJSON implements stdjson.Marshaler.
-func (s *ProgramExtended) MarshalJSON() ([]byte, error) {
+func (s ProgramExtended) MarshalJSON() ([]byte, error) {
 	e := jx.Encoder{}
 	s.Encode(&e)
 	return e.Bytes(), nil
@@ -5304,6 +5365,18 @@ func (s *Service) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.EpgLastAttemptAt.Set {
+			e.FieldStart("epgLastAttemptAt")
+			s.EpgLastAttemptAt.Encode(e)
+		}
+	}
+	{
+		if s.EpgLastError.Set {
+			e.FieldStart("epgLastError")
+			s.EpgLastError.Encode(e)
+		}
+	}
+	{
 		if s.Channel.Set {
 			e.FieldStart("channel")
 			s.Channel.Encode(e)
@@ -5317,7 +5390,7 @@ func (s *Service) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfService = [13]string{
+var jsonFieldsNameOfService = [15]string{
 	0:  "id",
 	1:  "serviceId",
 	2:  "networkId",
@@ -5329,8 +5402,10 @@ var jsonFieldsNameOfService = [13]string{
 	8:  "remoteControlKeyId",
 	9:  "epgReady",
 	10: "epgUpdatedAt",
-	11: "channel",
-	12: "logoData",
+	11: "epgLastAttemptAt",
+	12: "epgLastError",
+	13: "channel",
+	14: "logoData",
 }
 
 // Decode decodes Service from json.
@@ -5455,6 +5530,26 @@ func (s *Service) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"epgUpdatedAt\"")
+			}
+		case "epgLastAttemptAt":
+			if err := func() error {
+				s.EpgLastAttemptAt.Reset()
+				if err := s.EpgLastAttemptAt.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"epgLastAttemptAt\"")
+			}
+		case "epgLastError":
+			if err := func() error {
+				s.EpgLastError.Reset()
+				if err := s.EpgLastError.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"epgLastError\"")
 			}
 		case "channel":
 			if err := func() error {
@@ -5820,11 +5915,32 @@ func (s *StatusEpg) encodeFields(e *jx.Encoder) {
 			s.StoredEvents.Encode(e)
 		}
 	}
+	{
+		if s.StaleServices.Set {
+			e.FieldStart("staleServices")
+			s.StaleServices.Encode(e)
+		}
+	}
+	{
+		if s.FailedServices.Set {
+			e.FieldStart("failedServices")
+			s.FailedServices.Encode(e)
+		}
+	}
+	{
+		if s.LastUpdatedAt.Set {
+			e.FieldStart("lastUpdatedAt")
+			s.LastUpdatedAt.Encode(e)
+		}
+	}
 }
 
-var jsonFieldsNameOfStatusEpg = [2]string{
+var jsonFieldsNameOfStatusEpg = [5]string{
 	0: "gatheringNetworks",
 	1: "storedEvents",
+	2: "staleServices",
+	3: "failedServices",
+	4: "lastUpdatedAt",
 }
 
 // Decode decodes StatusEpg from json.
@@ -5861,6 +5977,36 @@ func (s *StatusEpg) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"storedEvents\"")
+			}
+		case "staleServices":
+			if err := func() error {
+				s.StaleServices.Reset()
+				if err := s.StaleServices.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"staleServices\"")
+			}
+		case "failedServices":
+			if err := func() error {
+				s.FailedServices.Reset()
+				if err := s.FailedServices.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"failedServices\"")
+			}
+		case "lastUpdatedAt":
+			if err := func() error {
+				s.LastUpdatedAt.Reset()
+				if err := s.LastUpdatedAt.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"lastUpdatedAt\"")
 			}
 		default:
 			return d.Skip()

@@ -9,11 +9,14 @@ type Program struct {
 	Duration  int
 	IsFree    bool
 
-	Name        string
-	Description string
-	Genres      []Genre
-	Video       *Video
-	Audios      []Audio
+	Name         string
+	Description  string
+	Genres       []Genre
+	Video        *Video
+	Audios       []Audio
+	Extended     map[string]string
+	RelatedItems []RelatedItem
+	Series       *Series
 }
 
 type Genre struct {
@@ -34,6 +37,32 @@ type Audio struct {
 	IsMain        *bool
 	SamplingRate  *int
 	Langs         []string
+}
+
+type RelatedItem struct {
+	Type              RelatedItemType
+	NetworkID         *uint16
+	TransportStreamID *uint16
+	ServiceID         uint16
+	EventID           uint16
+}
+
+type RelatedItemType string
+
+const (
+	RelatedItemTypeShared   RelatedItemType = "shared"
+	RelatedItemTypeRelay    RelatedItemType = "relay"
+	RelatedItemTypeMovement RelatedItemType = "movement"
+)
+
+type Series struct {
+	ID          int
+	Repeat      int
+	Pattern     int
+	ExpiresAt   *int64
+	Episode     int
+	LastEpisode int
+	Name        string
 }
 
 type Query struct {

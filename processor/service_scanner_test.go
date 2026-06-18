@@ -15,10 +15,13 @@ func TestServiceScannerReportsMissingMirakcArib(t *testing.T) {
 	})
 
 	err := NewServiceScanner().ScanServices(context.Background(), strings.NewReader(""), io.Discard)
+	if !errors.Is(err, ErrMirakcAribRequired) {
+		t.Fatalf("ScanServices error = %v, want ErrMirakcAribRequired", err)
+	}
 	if !errors.Is(err, exec.ErrNotFound) {
 		t.Fatalf("ScanServices error = %v, want exec.ErrNotFound", err)
 	}
-	if !strings.Contains(err.Error(), "mirakc-arib is required for service scanning") {
+	if !strings.Contains(err.Error(), "service scanning") {
 		t.Fatalf("ScanServices error = %q, want scanning context", err.Error())
 	}
 }

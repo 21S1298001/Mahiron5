@@ -23,7 +23,7 @@ func NewServiceScanner() *ServiceScanner {
 
 func (s *ServiceScanner) ScanServices(ctx context.Context, src io.Reader, dst io.Writer) error {
 	if _, err := lookPath("mirakc-arib"); err != nil {
-		return fmt.Errorf("mirakc-arib is required for service scanning: %w", err)
+		return fmt.Errorf("%w for service scanning: %w", ErrMirakcAribRequired, err)
 	}
 
 	process := newProcess("mirakc-arib scan-services")

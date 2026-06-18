@@ -206,12 +206,31 @@ func apiService(h *Handler, service *service.Service, includeChannel bool) *apig
 			int(service.RemoteControlKeyId),
 		),
 	}
+	applyEPGStatus(result, &service.EPG)
 	if includeChannel {
 		if channel := h.serviceManager.GetChannel(service.ChannelType, service.ChannelId); channel != nil {
 			result.Channel = apigen.NewOptChannel(*apiChannelWithoutServices(h, *channel))
 		}
 	}
 	return result
+}
+
+func applyEPGStatus(result *apigen.Service, status *service.EPGStatus) {
+	if status == nil {
+		return
+	}
+	if status.LastSuccessAt != nil {
+		result.EpgReady = apigen.NewOptBool(true)
+		result.EpgUpdatedAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*status.LastSuccessAt))
+	} else {
+		result.EpgReady = apigen.NewOptBool(false)
+	}
+	if status.LastAttemptAt != nil {
+		result.EpgLastAttemptAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*status.LastAttemptAt))
+	}
+	if status.LastError != "" {
+		result.EpgLastError = apigen.NewOptString(status.LastError)
+	}
 }
 
 func notFound(reason string) *apigen.ErrorStatusCode {

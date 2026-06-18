@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ type JobStatus string
 
 const (
 	StatusQueued   JobStatus = "queued"
+	StatusStandby  JobStatus = "standby"
 	StatusRunning  JobStatus = "running"
 	StatusFinished JobStatus = "finished"
 )
@@ -33,6 +35,7 @@ type Job struct {
 	UpdatedAt  time.Time
 	StartedAt  *time.Time
 	FinishedAt *time.Time
+	NextRunAt  *time.Time
 	definition *JobDefinition
 }
 
@@ -41,6 +44,8 @@ type JobDefinition struct {
 	Name         string
 	Handler      func(ctx context.Context) error
 	IsRerunnable bool
+	RetryDelays  []time.Duration
+	RetryIf      func(error) bool
 }
 
 type JobManager struct {
@@ -128,6 +133,12 @@ func (m *JobManager) Shutdown(ctx context.Context) error {
 		item.IsAborting = true
 		m.finishLocked(item, context.Canceled, true)
 	}
+	for _, item := range m.history {
+		if item.Status == StatusStandby {
+			item.IsAborting = true
+			m.finishLocked(item, context.Canceled, true)
+		}
+	}
 	for _, cancel := range m.active {
 		cancel()
 	}
@@ -214,9 +225,52 @@ func (m *JobManager) run(ctx context.Context, item *Job) {
 	m.mu.Lock()
 	delete(m.active, item.ID)
 	m.running--
-	m.finishLocked(item, err, item.HasAborted)
+	if !item.HasAborted && m.shouldRetryLocked(item, err) {
+		m.standbyLocked(item, err)
+	} else {
+		m.finishLocked(item, err, item.HasAborted)
+	}
 	m.dispatchLocked()
 	m.mu.Unlock()
+}
+
+func (m *JobManager) shouldRetryLocked(item *Job, err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || item.RetryCount >= len(item.definition.RetryDelays) || m.shutdownCtx.Err() != nil {
+		return false
+	}
+	return item.definition.RetryIf == nil || item.definition.RetryIf(err)
+}
+
+func (m *JobManager) standbyLocked(item *Job, err error) {
+	delay := item.definition.RetryDelays[item.RetryCount]
+	next := time.Now().Add(delay)
+	item.RetryCount++
+	item.Status = StatusStandby
+	item.UpdatedAt = time.Now()
+	item.NextRunAt = &next
+	item.Error = err.Error()
+	slog.Warn("job retry scheduled", "key", item.Key, "id", item.ID, "retry", item.RetryCount, "nextRunAt", next, "err", err)
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		timer := time.NewTimer(time.Until(next))
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-m.shutdownCtx.Done():
+			return
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if item.Status != StatusStandby || item.HasAborted || m.shutdownCtx.Err() != nil {
+			return
+		}
+		item.Status = StatusQueued
+		item.UpdatedAt = time.Now()
+		item.NextRunAt = nil
+		m.queue = append(m.queue, item)
+		m.dispatchLocked()
+	}()
 }
 
 func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
@@ -224,6 +278,7 @@ func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
 	item.Status = StatusFinished
 	item.UpdatedAt = now
 	item.FinishedAt = &now
+	item.NextRunAt = nil
 	item.HasAborted = item.HasAborted || aborted
 	if err != nil && !item.HasAborted && !errors.Is(err, context.Canceled) {
 		item.HasFailed = true
@@ -259,6 +314,12 @@ func (m *JobManager) Abort(id string) error {
 			m.finishLocked(item, context.Canceled, true)
 			return nil
 		}
+	}
+	if item := m.findJob(id); item != nil && item.Status == StatusStandby {
+		item.IsAborting = true
+		item.HasAborted = true
+		m.finishLocked(item, context.Canceled, true)
+		return nil
 	}
 	return ErrJobNotRunning
 }
@@ -302,6 +363,27 @@ func (m *JobManager) GetJobs() []*Job {
 		copy := *item
 		copy.definition = nil
 		result[i] = &copy
+	}
+	return result
+}
+
+func (m *JobManager) GetActiveJobKeysByPrefix(prefix string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen := make(map[string]struct{})
+	result := make([]string, 0)
+	for _, item := range m.history {
+		if item.Status == StatusFinished {
+			continue
+		}
+		if !strings.HasPrefix(item.Key, prefix) {
+			continue
+		}
+		if _, ok := seen[item.Key]; ok {
+			continue
+		}
+		seen[item.Key] = struct{}{}
+		result = append(result, item.Key)
 	}
 	return result
 }

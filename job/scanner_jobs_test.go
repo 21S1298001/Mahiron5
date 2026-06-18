@@ -81,7 +81,7 @@ func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 	defer programDatabase.Close()
 	mgr := newTestManager(t)
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	RegisterEPGGatherer(mgr, program.NewProgramManager(program.NewSQLiteStore(programDatabase)), sm, stm, channels, 3)
+	RegisterEPGGatherer(mgr, program.NewProgramManager(program.NewSQLiteStore(programDatabase)), sm, stm, channels, 3, 10*time.Minute)
 	if _, err := mgr.Enqueue(EPGGathererKey); err != nil {
 		t.Fatal(err)
 	}

@@ -166,3 +166,95 @@ func TestServiceManagerReconcileChannelsPrunesRemovedAndDisabled(t *testing.T) {
 		t.Fatalf("services = %#v, want only GR/27", services)
 	}
 }
+
+func TestServiceManagerEPGStatus(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
+		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK", ChannelType: "GR", ChannelId: "27"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.SetEPGAttempt(ctx, 1, 101, 1000, "boom"); err != nil {
+		t.Fatal(err)
+	}
+	services, err := manager.GetServices(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if services[0].EPG.LastError != "boom" {
+		t.Fatalf("LastError = %q, want boom", services[0].EPG.LastError)
+	}
+	if services[0].EPG.LastAttemptAt == nil || *services[0].EPG.LastAttemptAt != 1000 {
+		t.Fatalf("LastAttemptAt = %v, want 1000", services[0].EPG.LastAttemptAt)
+	}
+	if services[0].EPG.LastSuccessAt != nil {
+		t.Fatalf("LastSuccessAt = %v, want nil", services[0].EPG.LastSuccessAt)
+	}
+	if err := manager.SetEPGSuccess(ctx, 1, 101, 2000); err != nil {
+		t.Fatal(err)
+	}
+	services, err = manager.GetServices(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if services[0].EPG.LastError != "" {
+		t.Fatalf("LastError = %q, want empty", services[0].EPG.LastError)
+	}
+	if services[0].EPG.LastSuccessAt == nil || *services[0].EPG.LastSuccessAt != 2000 {
+		t.Fatalf("LastSuccessAt = %v, want 2000", services[0].EPG.LastSuccessAt)
+	}
+}
+
+func TestServiceManagerEPGSummary(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
+		{Id: "0000100101", ServiceId: 101, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100102", ServiceId: 102, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100103", ServiceId: 103, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.SetEPGSuccess(ctx, 1, 101, 1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.SetEPGAttempt(ctx, 1, 102, 2000, "boom"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.SetEPGAttempt(ctx, 1, 103, 3000, ""); err != nil {
+		t.Fatal(err)
+	}
+	stale, failed, lastSuccess, err := manager.EPGSummary(ctx, 500, 4000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stale != 3 {
+		t.Errorf("stale = %d, want 3 (everything older than 500ms)", stale)
+	}
+	if failed != 1 {
+		t.Errorf("failed = %d, want 1", failed)
+	}
+	if lastSuccess == nil || *lastSuccess != 1000 {
+		t.Errorf("lastSuccess = %v, want 1000", lastSuccess)
+	}
+	stale, _, _, err = manager.EPGSummary(ctx, 5000, 4000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stale != 2 {
+		t.Errorf("stale = %d, want 2 with larger window", stale)
+	}
+}

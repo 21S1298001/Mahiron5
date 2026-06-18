@@ -17,6 +17,7 @@ type Handler struct {
 	streamManager  *stream.StreamManager
 	tunerManager   *tuner.TunerManager
 	jobManager     *job.JobManager
+	epgStaleAfter  int64
 }
 
 var _ apigen.Handler = (*Handler)(nil)
@@ -27,6 +28,7 @@ type HandlerConfig struct {
 	StreamManager  *stream.StreamManager
 	TunerManager   *tuner.TunerManager
 	JobManager     *job.JobManager
+	EpgStaleAfter  int64
 }
 
 func NewHandler(config HandlerConfig) *Handler {
@@ -36,6 +38,7 @@ func NewHandler(config HandlerConfig) *Handler {
 		streamManager:  config.StreamManager,
 		tunerManager:   config.TunerManager,
 		jobManager:     config.JobManager,
+		epgStaleAfter:  config.EpgStaleAfter,
 	}
 }
 
@@ -144,7 +147,7 @@ func (h *Handler) GetServicesByChannel(ctx context.Context, params apigen.GetSer
 }
 
 func (h *Handler) GetStatus(ctx context.Context) (apigen.GetStatusRes, error) {
-	panic("implement me")
+	return GetStatus(ctx, h)
 }
 
 func (h *Handler) GetTuner(ctx context.Context, params apigen.GetTunerParams) (apigen.GetTunerRes, error) {

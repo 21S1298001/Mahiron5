@@ -29,6 +29,9 @@ func (s *sqliteStore) List(ctx context.Context) ([]*Service, error) {
 	for i := range svcs {
 		result[i] = fromStoregenService(svcs[i])
 	}
+	if err := s.attachEPGStatuses(ctx, result); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -40,7 +43,11 @@ func (s *sqliteStore) GetByID(ctx context.Context, id string) (*Service, error) 
 	if err != nil {
 		return nil, err
 	}
-	return fromStoregenService(svc), nil
+	result := fromStoregenService(svc)
+	if err := s.attachEPGStatuses(ctx, []*Service{result}); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (s *sqliteStore) GetByChannel(ctx context.Context, channelType, channelId string) ([]*Service, error) {
@@ -55,7 +62,62 @@ func (s *sqliteStore) GetByChannel(ctx context.Context, channelType, channelId s
 	for i := range svcs {
 		result[i] = fromStoregenService(svcs[i])
 	}
+	if err := s.attachEPGStatuses(ctx, result); err != nil {
+		return nil, err
+	}
 	return result, nil
+}
+
+func (s *sqliteStore) SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_error)
+		VALUES (?, ?, ?, ?) ON CONFLICT(network_id, service_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at, last_error=excluded.last_error`,
+		networkID, serviceID, attemptedAt, nullableString(lastError))
+	return err
+}
+
+func (s *sqliteStore) SetEPGSuccess(ctx context.Context, networkID, serviceID uint16, succeededAt int64) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_success_at, last_error)
+		VALUES (?, ?, ?, ?, NULL) ON CONFLICT(network_id, service_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at, last_success_at=excluded.last_success_at, last_error=NULL`,
+		networkID, serviceID, succeededAt, succeededAt)
+	return err
+}
+
+func (s *sqliteStore) attachEPGStatuses(ctx context.Context, services []*Service) error {
+	if len(services) == 0 {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT network_id, service_id, last_attempt_at, last_success_at, last_error FROM epg_service_status`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type key struct{ networkID, serviceID uint16 }
+	byKey := make(map[key]*Service, len(services))
+	for _, svc := range services {
+		byKey[key{svc.NetworkId, svc.ServiceId}] = svc
+	}
+	for rows.Next() {
+		var nid, sid int64
+		var attempted, succeeded *int64
+		var lastError *string
+		if err := rows.Scan(&nid, &sid, &attempted, &succeeded, &lastError); err != nil {
+			return err
+		}
+		if svc := byKey[key{uint16(nid), uint16(sid)}]; svc != nil {
+			svc.EPG.LastAttemptAt, svc.EPG.LastSuccessAt = attempted, succeeded
+			if lastError != nil {
+				svc.EPG.LastError = *lastError
+			}
+		}
+	}
+	return rows.Err()
+}
+
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, channelId string, services []*Service) error {

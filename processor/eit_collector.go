@@ -14,7 +14,7 @@ func NewEITCollector() *EITCollector {
 }
 
 func (c *EITCollector) CollectEITS(ctx context.Context, src io.Reader, dst io.Writer) error {
-	return c.collect(ctx, "mirakc-arib collect-eits", "EITS", src, dst)
+	return c.collect(ctx, "mirakc-arib collect-eits --streaming", "EITS", src, dst)
 }
 
 func (c *EITCollector) CollectEITPF(ctx context.Context, src io.Reader, dst io.Writer) error {
@@ -23,7 +23,7 @@ func (c *EITCollector) CollectEITPF(ctx context.Context, src io.Reader, dst io.W
 
 func (c *EITCollector) collect(ctx context.Context, command, name string, src io.Reader, dst io.Writer) error {
 	if _, err := lookPath("mirakc-arib"); err != nil {
-		return fmt.Errorf("mirakc-arib is required for %s collection: %w", name, err)
+		return fmt.Errorf("%w for %s collection: %w", ErrMirakcAribRequired, name, err)
 	}
 
 	process := newProcess(command)

@@ -1357,6 +1357,10 @@ components:
           type: boolean
         epgUpdatedAt:
           $ref: "#/components/schemas/UnixtimeMS"
+        epgLastAttemptAt:
+          $ref: "#/components/schemas/UnixtimeMS"
+        epgLastError:
+          type: string
         channel:
           $ref: "#/components/schemas/Channel"
         logoData:
@@ -1435,7 +1439,8 @@ components:
                     - etc
         extended:
           type: object
-          properties: {}
+          additionalProperties:
+            type: string
         relatedItems:
           type: array
           items:
@@ -1699,6 +1704,8 @@ components:
           $ref: "#/components/schemas/UnixtimeMS"
         finishedAt:
           $ref: "#/components/schemas/UnixtimeMS"
+        nextRunAt:
+          $ref: "#/components/schemas/UnixtimeMS"
         duration:
           type: integer
     Event:
@@ -1828,6 +1835,12 @@ components:
                 $ref: "#/components/schemas/NetworkId"
             storedEvents:
               type: integer
+            staleServices:
+              type: integer
+            failedServices:
+              type: integer
+            lastUpdatedAt:
+              $ref: "#/components/schemas/UnixtimeMS"
         rpcCount:
           type: integer
         streamCount:

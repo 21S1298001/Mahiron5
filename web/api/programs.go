@@ -85,7 +85,7 @@ func apiProgram(p *program.Program) *apigen.Program {
 		IsFree:       p.IsFree,
 		Genres:       apiProgramGenres(p.Genres),
 		Audios:       apiProgramAudios(p.Audios),
-		RelatedItems: []apigen.RelatedItem{},
+		RelatedItems: apiRelatedItems(p.RelatedItems),
 	}
 	if p.Name != "" {
 		result.Name = apigen.NewOptString(p.Name)
@@ -99,7 +99,57 @@ func apiProgram(p *program.Program) *apigen.Program {
 			ComponentType: apigen.NewOptInt(p.Video.ComponentType),
 		})
 	}
+	if len(p.Extended) > 0 {
+		result.Extended = apigen.NewOptProgramExtended(apigen.ProgramExtended(p.Extended))
+	}
+	if p.Series != nil {
+		result.Series = apigen.NewOptProgramSeries(apiProgramSeries(p.Series))
+	}
 	return result
+}
+
+func apiRelatedItems(items []program.RelatedItem) []apigen.RelatedItem {
+	if len(items) == 0 {
+		return []apigen.RelatedItem{}
+	}
+	result := make([]apigen.RelatedItem, len(items))
+	for i, item := range items {
+		result[i] = apiRelatedItem(item)
+	}
+	return result
+}
+
+func apiRelatedItem(item program.RelatedItem) apigen.RelatedItem {
+	out := apigen.RelatedItem{}
+	if item.Type != "" {
+		t := apigen.RelatedItemType(item.Type)
+		out.Type = apigen.NewOptRelatedItemType(t)
+	}
+	if item.NetworkID != nil {
+		out.NetworkId = apigen.NewOptInt(int(*item.NetworkID))
+	}
+	out.ServiceId = apigen.NewOptInt(int(item.ServiceID))
+	out.EventId = apigen.NewOptInt(int(item.EventID))
+	return out
+}
+
+func apiProgramSeries(s *program.Series) apigen.ProgramSeries {
+	out := apigen.ProgramSeries{
+		ID:          apigen.NewOptInt(s.ID),
+		Repeat:      apigen.NewOptInt(s.Repeat),
+		Episode:     apigen.NewOptProgramEpisodeNumber(apigen.ProgramEpisodeNumber(s.Episode)),
+		LastEpisode: apigen.NewOptProgramEpisodeNumber(apigen.ProgramEpisodeNumber(s.LastEpisode)),
+	}
+	if s.Pattern >= 0 {
+		out.Pattern = apigen.NewOptProgramPattern(apigen.ProgramPattern(s.Pattern))
+	}
+	if s.ExpiresAt != nil {
+		out.ExpiresAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(*s.ExpiresAt))
+	}
+	if s.Name != "" {
+		out.Name = apigen.NewOptString(s.Name)
+	}
+	return out
 }
 
 func apiProgramGenres(genres []program.Genre) []apigen.ProgramGenre {

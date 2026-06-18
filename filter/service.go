@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/21S1298001/Mahiron5/processor"
 	"github.com/21S1298001/Mahiron5/util"
 )
 
@@ -23,7 +24,7 @@ func NewServiceFilter() *ServiceFilter {
 
 func (f *ServiceFilter) FilterService(ctx context.Context, serviceID uint16, src io.Reader, dst io.Writer) error {
 	if _, err := lookPath("mirakc-arib"); err != nil {
-		return fmt.Errorf("mirakc-arib is required for service filtering: %w", err)
+		return fmt.Errorf("%w for service filtering: %w", processor.ErrMirakcAribRequired, err)
 	}
 
 	process := newProcess(fmt.Sprintf("mirakc-arib filter-service --sid %d", serviceID))

@@ -28,7 +28,15 @@ func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) error 
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO programs (id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err := upsertPrograms(ctx, tx, programs); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func upsertPrograms(ctx context.Context, tx *sql.Tx, programs []*Program) error {
+	stmt, err := tx.PrepareContext(ctx, `INSERT OR REPLACE INTO programs (id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios, extended, related_items, series) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return fmt.Errorf("prepare upsert: %w", err)
 	}
@@ -43,31 +51,29 @@ func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) error 
 			desc = &p.Description
 		}
 
-		genresJSON, err := json.Marshal(p.Genres)
+		genresStr, err := encodeProgramJSON(p.ID, "genres", p.Genres)
 		if err != nil {
-			return fmt.Errorf("marshal program %d genres: %w", p.ID, err)
+			return err
 		}
-		videoJSON, err := json.Marshal(p.Video)
+		videoStr, err := encodeProgramJSON(p.ID, "video", p.Video)
 		if err != nil {
-			return fmt.Errorf("marshal program %d video: %w", p.ID, err)
+			return err
 		}
-		audiosJSON, err := json.Marshal(p.Audios)
+		audiosStr, err := encodeProgramJSON(p.ID, "audios", p.Audios)
 		if err != nil {
-			return fmt.Errorf("marshal program %d audios: %w", p.ID, err)
+			return err
 		}
-
-		var genresStr, videoStr, audiosStr *string
-		if len(genresJSON) > 0 && string(genresJSON) != "null" {
-			v := string(genresJSON)
-			genresStr = &v
+		extendedStr, err := encodeProgramJSON(p.ID, "extended", p.Extended)
+		if err != nil {
+			return err
 		}
-		if len(videoJSON) > 0 && string(videoJSON) != "null" {
-			v := string(videoJSON)
-			videoStr = &v
+		relatedStr, err := encodeProgramJSON(p.ID, "related_items", p.RelatedItems)
+		if err != nil {
+			return err
 		}
-		if len(audiosJSON) > 0 && string(audiosJSON) != "null" {
-			v := string(audiosJSON)
-			audiosStr = &v
+		seriesStr, err := encodeProgramJSON(p.ID, "series", p.Series)
+		if err != nil {
+			return err
 		}
 
 		isFree := int64(0)
@@ -75,31 +81,28 @@ func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) error 
 			isFree = 1
 		}
 
-		if _, err := stmt.ExecContext(ctx, p.ID, int64(p.EventID), int64(p.ServiceID), int64(p.NetworkID), p.StartAt, int64(p.Duration), isFree, name, desc, genresStr, videoStr, audiosStr); err != nil {
+		if _, err := stmt.ExecContext(ctx, p.ID, int64(p.EventID), int64(p.ServiceID), int64(p.NetworkID), p.StartAt, int64(p.Duration), isFree, name, desc, genresStr, videoStr, audiosStr, extendedStr, relatedStr, seriesStr); err != nil {
 			return fmt.Errorf("upsert program %d: %w", p.ID, err)
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 func (s *sqliteStore) Get(ctx context.Context, id int64) (*Program, bool, error) {
-	p, err := s.q.GetProgram(ctx, id)
+	row := s.db.QueryRowContext(ctx, programSelect+" WHERE id = ?", id)
+	p, err := scanProgram(row)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, err
 	}
-	prog, err := fromStoregenProgram(p)
-	if err != nil {
-		return nil, false, err
-	}
-	return prog, true, nil
+	return p, true, nil
 }
 
 func (s *sqliteStore) List(ctx context.Context, query Query) ([]*Program, error) {
-	q := "SELECT id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios FROM programs WHERE 1=1"
+	q := programSelect + " WHERE 1=1"
 	args := make([]any, 0)
 
 	if query.ID != nil {
@@ -146,13 +149,36 @@ func (s *sqliteStore) DeleteEndedBefore(ctx context.Context, cutoff int64) error
 	return s.q.DeleteEndedAtBefore(ctx, cutoff)
 }
 
+func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM programs WHERE network_id = ? AND service_id = ? AND start_at + duration >= ?`, networkID, serviceID, from); err != nil {
+		return fmt.Errorf("delete service snapshot: %w", err)
+	}
+	if err := upsertPrograms(ctx, tx, programs); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *sqliteStore) Count(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM programs").Scan(&count)
+	return count, err
+}
+
+const programSelect = `SELECT id, event_id, service_id, network_id, start_at, duration, is_free, name, description, genres, video, audios, extended, related_items, series FROM programs`
+
 func scanProgram(row interface{ Scan(dest ...any) error }) (*Program, error) {
 	var p Program
 	var eventID, serviceID, networkID, duration int64
 	var isFree int64
-	var name, desc, genresStr, videoStr, audiosStr *string
+	var name, desc, genresStr, videoStr, audiosStr, extendedStr, relatedStr, seriesStr *string
 
-	if err := row.Scan(&p.ID, &eventID, &serviceID, &networkID, &p.StartAt, &duration, &isFree, &name, &desc, &genresStr, &videoStr, &audiosStr); err != nil {
+	if err := row.Scan(&p.ID, &eventID, &serviceID, &networkID, &p.StartAt, &duration, &isFree, &name, &desc, &genresStr, &videoStr, &audiosStr, &extendedStr, &relatedStr, &seriesStr); err != nil {
 		return nil, err
 	}
 
@@ -182,8 +208,35 @@ func scanProgram(row interface{ Scan(dest ...any) error }) (*Program, error) {
 			return nil, err
 		}
 	}
+	if extendedStr != nil {
+		if err := decodeProgramJSON(p.ID, "extended", extendedStr, &p.Extended); err != nil {
+			return nil, err
+		}
+	}
+	if relatedStr != nil {
+		if err := decodeProgramJSON(p.ID, "related_items", relatedStr, &p.RelatedItems); err != nil {
+			return nil, err
+		}
+	}
+	if seriesStr != nil {
+		if err := decodeProgramJSON(p.ID, "series", seriesStr, &p.Series); err != nil {
+			return nil, err
+		}
+	}
 
 	return &p, nil
+}
+
+func encodeProgramJSON(id int64, field string, value any) (*string, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("marshal program %d %s: %w", id, field, err)
+	}
+	if string(data) == "null" || string(data) == "[]" || string(data) == "{}" {
+		return nil, nil
+	}
+	v := string(data)
+	return &v, nil
 }
 
 func fromStoregenProgram(p gen.Program) (*Program, error) {

@@ -29,9 +29,21 @@ CREATE TABLE IF NOT EXISTS programs (
     description TEXT,
     genres TEXT,
     video TEXT,
-    audios TEXT
+    audios TEXT,
+    extended TEXT,
+    related_items TEXT,
+    series TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_programs_service ON programs(network_id, service_id);
 CREATE INDEX IF NOT EXISTS idx_programs_start_at ON programs(start_at);
 CREATE INDEX IF NOT EXISTS idx_programs_ended_at ON programs(start_at + duration);
+
+CREATE TABLE IF NOT EXISTS epg_service_status (
+    network_id INTEGER NOT NULL,
+    service_id INTEGER NOT NULL,
+    last_attempt_at INTEGER,
+    last_success_at INTEGER,
+    last_error TEXT,
+    PRIMARY KEY (network_id, service_id)
+);

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func newTestManager(t *testing.T) *JobManager {
@@ -460,5 +461,29 @@ func TestAbortQueuedJob(t *testing.T) {
 		if item.ID == id && (!item.HasAborted || item.Status != StatusFinished) {
 			t.Fatalf("queued abort state = %#v", item)
 		}
+	}
+}
+
+func TestGetActiveJobKeysByPrefix(t *testing.T) {
+	mgr := newTestManager(t)
+	mgr.Register(JobDefinition{Key: "epg-gather:nid:1", Handler: func(context.Context) error { return nil }})
+	mgr.Register(JobDefinition{Key: "epg-gather:nid:2", Handler: func(context.Context) error { return nil }})
+	mgr.Register(JobDefinition{Key: "service-scan:GR:27", Handler: func(context.Context) error { return nil }})
+	for _, key := range []string{"epg-gather:nid:1", "epg-gather:nid:2", "service-scan:GR:27"} {
+		if _, err := mgr.Enqueue(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		keys := mgr.GetActiveJobKeysByPrefix("epg-gather:")
+		if len(keys) == 2 {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	keys := mgr.GetActiveJobKeysByPrefix("epg-gather:")
+	if diff := cmp.Diff([]string{"epg-gather:nid:1", "epg-gather:nid:2"}, keys, cmpopts.SortSlices(func(a, b string) bool { return a < b })); diff != "" {
+		t.Errorf("GetActiveJobKeysByPrefix mismatch (-want +got):\n%s\nall jobs: %#v", diff, mgr.GetJobs())
 	}
 }

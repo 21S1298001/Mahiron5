@@ -62,3 +62,9 @@ func (m *ProgramManager) List(ctx context.Context, query Query) ([]*Program, err
 func (m *ProgramManager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
 	return m.store.DeleteEndedBefore(ctx, cutoff)
 }
+
+func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
+	return m.store.ReplaceServicePrograms(ctx, networkID, serviceID, from, programs)
+}
+
+func (m *ProgramManager) Count(ctx context.Context) (int, error) { return m.store.Count(ctx) }

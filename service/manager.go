@@ -37,6 +37,34 @@ func (s *ServiceManager) GetServices(ctx context.Context) ([]*Service, error) {
 	return s.store.List(ctx)
 }
 
+func (s *ServiceManager) SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
+	return s.store.SetEPGAttempt(ctx, networkID, serviceID, attemptedAt, lastError)
+}
+
+func (s *ServiceManager) SetEPGSuccess(ctx context.Context, networkID, serviceID uint16, succeededAt int64) error {
+	return s.store.SetEPGSuccess(ctx, networkID, serviceID, succeededAt)
+}
+
+func (s *ServiceManager) EPGSummary(ctx context.Context, staleAfter int64, now int64) (stale, failed int, lastSuccess *int64, err error) {
+	services, err := s.store.List(ctx)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	for _, svc := range services {
+		if svc.EPG.LastSuccessAt == nil || now-*svc.EPG.LastSuccessAt > staleAfter {
+			stale++
+		}
+		if svc.EPG.LastError != "" {
+			failed++
+		}
+		if svc.EPG.LastSuccessAt != nil && (lastSuccess == nil || *svc.EPG.LastSuccessAt > *lastSuccess) {
+			v := *svc.EPG.LastSuccessAt
+			lastSuccess = &v
+		}
+	}
+	return
+}
+
 func (s *ServiceManager) ReconcileChannels(ctx context.Context) error {
 	active := make([]ChannelKey, 0, len(s.channels))
 	for _, channel := range s.channels {

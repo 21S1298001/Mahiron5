@@ -10,6 +10,13 @@ type Service struct {
 	RemoteControlKeyId uint8
 	ChannelType        string
 	ChannelId          string
+	EPG                EPGStatus
+}
+
+type EPGStatus struct {
+	LastAttemptAt *int64
+	LastSuccessAt *int64
+	LastError     string
 }
 
 func (s *Service) ItemId() int64 {

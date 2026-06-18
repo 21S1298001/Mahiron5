@@ -1320,6 +1320,7 @@ type JobItem struct {
 	UpdatedAt    UnixtimeMS    `json:"updatedAt"`
 	StartedAt    OptUnixtimeMS `json:"startedAt"`
 	FinishedAt   OptUnixtimeMS `json:"finishedAt"`
+	NextRunAt    OptUnixtimeMS `json:"nextRunAt"`
 	Duration     OptInt        `json:"duration"`
 }
 
@@ -1416,6 +1417,11 @@ func (s *JobItem) GetStartedAt() OptUnixtimeMS {
 // GetFinishedAt returns the value of FinishedAt.
 func (s *JobItem) GetFinishedAt() OptUnixtimeMS {
 	return s.FinishedAt
+}
+
+// GetNextRunAt returns the value of NextRunAt.
+func (s *JobItem) GetNextRunAt() OptUnixtimeMS {
+	return s.NextRunAt
 }
 
 // GetDuration returns the value of Duration.
@@ -1516,6 +1522,11 @@ func (s *JobItem) SetStartedAt(val OptUnixtimeMS) {
 // SetFinishedAt sets the value of FinishedAt.
 func (s *JobItem) SetFinishedAt(val OptUnixtimeMS) {
 	s.FinishedAt = val
+}
+
+// SetNextRunAt sets the value of NextRunAt.
+func (s *JobItem) SetNextRunAt(val OptUnixtimeMS) {
+	s.NextRunAt = val
 }
 
 // SetDuration sets the value of Duration.
@@ -2009,6 +2020,52 @@ func (o OptProgramEpisodeNumber) Get() (v ProgramEpisodeNumber, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptProgramEpisodeNumber) Or(d ProgramEpisodeNumber) ProgramEpisodeNumber {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptProgramExtended returns new OptProgramExtended with value set to v.
+func NewOptProgramExtended(v ProgramExtended) OptProgramExtended {
+	return OptProgramExtended{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptProgramExtended is optional ProgramExtended.
+type OptProgramExtended struct {
+	Value ProgramExtended
+	Set   bool
+}
+
+// IsSet returns true if OptProgramExtended was set.
+func (o OptProgramExtended) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptProgramExtended) Reset() {
+	var v ProgramExtended
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptProgramExtended) SetTo(v ProgramExtended) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptProgramExtended) Get() (v ProgramExtended, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptProgramExtended) Or(d ProgramExtended) ProgramExtended {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -2995,7 +3052,7 @@ type Program struct {
 	Genres       []ProgramGenre      `json:"genres"`
 	Video        OptProgramVideo     `json:"video"`
 	Audios       []ProgramAudiosItem `json:"audios"`
-	Extended     *ProgramExtended    `json:"extended"`
+	Extended     OptProgramExtended  `json:"extended"`
 	RelatedItems []RelatedItem       `json:"relatedItems"`
 	Series       OptProgramSeries    `json:"series"`
 }
@@ -3061,7 +3118,7 @@ func (s *Program) GetAudios() []ProgramAudiosItem {
 }
 
 // GetExtended returns the value of Extended.
-func (s *Program) GetExtended() *ProgramExtended {
+func (s *Program) GetExtended() OptProgramExtended {
 	return s.Extended
 }
 
@@ -3136,7 +3193,7 @@ func (s *Program) SetAudios(val []ProgramAudiosItem) {
 }
 
 // SetExtended sets the value of Extended.
-func (s *Program) SetExtended(val *ProgramExtended) {
+func (s *Program) SetExtended(val OptProgramExtended) {
 	s.Extended = val
 }
 
@@ -3333,7 +3390,16 @@ func (s *ProgramAudiosItemLangsItem) UnmarshalText(data []byte) error {
 
 type ProgramEpisodeNumber int
 
-type ProgramExtended struct{}
+type ProgramExtended map[string]string
+
+func (s *ProgramExtended) init() ProgramExtended {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
+}
 
 // Ref: #/components/schemas/ProgramGenre
 type ProgramGenre struct {
@@ -3810,6 +3876,8 @@ type Service struct {
 	RemoteControlKeyId OptInt               `json:"remoteControlKeyId"`
 	EpgReady           OptBool              `json:"epgReady"`
 	EpgUpdatedAt       OptUnixtimeMS        `json:"epgUpdatedAt"`
+	EpgLastAttemptAt   OptUnixtimeMS        `json:"epgLastAttemptAt"`
+	EpgLastError       OptString            `json:"epgLastError"`
 	Channel            OptChannel           `json:"channel"`
 	LogoData           OptString            `json:"logoData"`
 }
@@ -3867,6 +3935,16 @@ func (s *Service) GetEpgReady() OptBool {
 // GetEpgUpdatedAt returns the value of EpgUpdatedAt.
 func (s *Service) GetEpgUpdatedAt() OptUnixtimeMS {
 	return s.EpgUpdatedAt
+}
+
+// GetEpgLastAttemptAt returns the value of EpgLastAttemptAt.
+func (s *Service) GetEpgLastAttemptAt() OptUnixtimeMS {
+	return s.EpgLastAttemptAt
+}
+
+// GetEpgLastError returns the value of EpgLastError.
+func (s *Service) GetEpgLastError() OptString {
+	return s.EpgLastError
 }
 
 // GetChannel returns the value of Channel.
@@ -3932,6 +4010,16 @@ func (s *Service) SetEpgReady(val OptBool) {
 // SetEpgUpdatedAt sets the value of EpgUpdatedAt.
 func (s *Service) SetEpgUpdatedAt(val OptUnixtimeMS) {
 	s.EpgUpdatedAt = val
+}
+
+// SetEpgLastAttemptAt sets the value of EpgLastAttemptAt.
+func (s *Service) SetEpgLastAttemptAt(val OptUnixtimeMS) {
+	s.EpgLastAttemptAt = val
+}
+
+// SetEpgLastError sets the value of EpgLastError.
+func (s *Service) SetEpgLastError(val OptString) {
+	s.EpgLastError = val
 }
 
 // SetChannel sets the value of Channel.
@@ -4089,8 +4177,11 @@ func (s *Status) SetTimerAccuracy(val OptStatusTimerAccuracy) {
 func (*Status) getStatusRes() {}
 
 type StatusEpg struct {
-	GatheringNetworks []NetworkId `json:"gatheringNetworks"`
-	StoredEvents      OptInt      `json:"storedEvents"`
+	GatheringNetworks []NetworkId   `json:"gatheringNetworks"`
+	StoredEvents      OptInt        `json:"storedEvents"`
+	StaleServices     OptInt        `json:"staleServices"`
+	FailedServices    OptInt        `json:"failedServices"`
+	LastUpdatedAt     OptUnixtimeMS `json:"lastUpdatedAt"`
 }
 
 // GetGatheringNetworks returns the value of GatheringNetworks.
@@ -4103,6 +4194,21 @@ func (s *StatusEpg) GetStoredEvents() OptInt {
 	return s.StoredEvents
 }
 
+// GetStaleServices returns the value of StaleServices.
+func (s *StatusEpg) GetStaleServices() OptInt {
+	return s.StaleServices
+}
+
+// GetFailedServices returns the value of FailedServices.
+func (s *StatusEpg) GetFailedServices() OptInt {
+	return s.FailedServices
+}
+
+// GetLastUpdatedAt returns the value of LastUpdatedAt.
+func (s *StatusEpg) GetLastUpdatedAt() OptUnixtimeMS {
+	return s.LastUpdatedAt
+}
+
 // SetGatheringNetworks sets the value of GatheringNetworks.
 func (s *StatusEpg) SetGatheringNetworks(val []NetworkId) {
 	s.GatheringNetworks = val
@@ -4111,6 +4217,21 @@ func (s *StatusEpg) SetGatheringNetworks(val []NetworkId) {
 // SetStoredEvents sets the value of StoredEvents.
 func (s *StatusEpg) SetStoredEvents(val OptInt) {
 	s.StoredEvents = val
+}
+
+// SetStaleServices sets the value of StaleServices.
+func (s *StatusEpg) SetStaleServices(val OptInt) {
+	s.StaleServices = val
+}
+
+// SetFailedServices sets the value of FailedServices.
+func (s *StatusEpg) SetFailedServices(val OptInt) {
+	s.FailedServices = val
+}
+
+// SetLastUpdatedAt sets the value of LastUpdatedAt.
+func (s *StatusEpg) SetLastUpdatedAt(val OptUnixtimeMS) {
+	s.LastUpdatedAt = val
 }
 
 type StatusErrorCount struct {

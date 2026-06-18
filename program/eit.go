@@ -23,18 +23,35 @@ type EITEvent struct {
 }
 
 type EITDescriptor struct {
-	Type          string          `json:"$type"`
-	EventName     string          `json:"eventName"`
-	Text          string          `json:"text"`
-	StreamContent *int            `json:"streamContent"`
-	ComponentType *int            `json:"componentType"`
-	ComponentTag  *int            `json:"componentTag"`
-	MainComponent *bool           `json:"mainComponent"`
-	SamplingRate  *int            `json:"samplingRate"`
-	Lang          string          `json:"lang"`
-	Lang2         string          `json:"lang2"`
-	Nibbles       [][]int         `json:"nibbles"`
-	Raw           json.RawMessage `json:"-"`
+	Type              string          `json:"$type"`
+	EventName         string          `json:"eventName"`
+	Text              string          `json:"text"`
+	StreamContent     *int            `json:"streamContent"`
+	ComponentType     *int            `json:"componentType"`
+	ComponentTag      *int            `json:"componentTag"`
+	MainComponent     *bool           `json:"mainComponent"`
+	SamplingRate      *int            `json:"samplingRate"`
+	Lang              string          `json:"lang"`
+	Lang2             string          `json:"lang2"`
+	Nibbles           [][]int         `json:"nibbles"`
+	Items             [][]string      `json:"items"`
+	GroupType         *int            `json:"groupType"`
+	Events            []RelatedEvent  `json:"events"`
+	SeriesID          *int            `json:"seriesId"`
+	RepeatLabel       *int            `json:"repeatLabel"`
+	ProgramPattern    *int            `json:"programPattern"`
+	ExpireDate        *int64          `json:"expireDate"`
+	EpisodeNumber     *int            `json:"episodeNumber"`
+	LastEpisodeNumber *int            `json:"lastEpisodeNumber"`
+	SeriesName        string          `json:"seriesName"`
+	Raw               json.RawMessage `json:"-"`
+}
+
+type RelatedEvent struct {
+	OriginalNetworkID *uint16 `json:"originalNetworkId"`
+	TransportStreamID *uint16 `json:"transportStreamId"`
+	ServiceID         uint16  `json:"serviceId"`
+	EventID           uint16  `json:"eventId"`
 }
 
 func (d *EITDescriptor) UnmarshalJSON(data []byte) error {
@@ -44,6 +61,23 @@ func (d *EITDescriptor) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*d = EITDescriptor(decoded)
+	var aliases struct {
+		LanguageCode      string `json:"languageCode"`
+		LanguageCode2     string `json:"languageCode2"`
+		MainComponentFlag *bool  `json:"mainComponentFlag"`
+	}
+	if err := json.Unmarshal(data, &aliases); err != nil {
+		return err
+	}
+	if d.Lang == "" {
+		d.Lang = aliases.LanguageCode
+	}
+	if d.Lang2 == "" {
+		d.Lang2 = aliases.LanguageCode2
+	}
+	if d.MainComponent == nil {
+		d.MainComponent = aliases.MainComponentFlag
+	}
 	d.Raw = append(d.Raw[:0], data...)
 	return nil
 }
@@ -113,6 +147,58 @@ func applyDescriptor(program *Program, descriptor EITDescriptor) {
 		}
 		audio.Langs = descriptorLangs(descriptor)
 		program.Audios = append(program.Audios, audio)
+	case "ExtendedEvent":
+		if program.Extended == nil {
+			program.Extended = make(map[string]string)
+		}
+		for _, item := range descriptor.Items {
+			if len(item) >= 2 {
+				program.Extended[item[0]] = item[1]
+			}
+		}
+	case "EventGroup":
+		var groupType RelatedItemType
+		if descriptor.GroupType != nil {
+			switch *descriptor.GroupType {
+			case 0x01:
+				groupType = RelatedItemTypeShared
+			case 0x02:
+				groupType = RelatedItemTypeRelay
+			case 0x04:
+				groupType = RelatedItemTypeMovement
+			}
+		}
+		for _, event := range descriptor.Events {
+			program.RelatedItems = append(program.RelatedItems, RelatedItem{
+				Type:              groupType,
+				NetworkID:         event.OriginalNetworkID,
+				TransportStreamID: event.TransportStreamID,
+				ServiceID:         event.ServiceID,
+				EventID:           event.EventID,
+			})
+		}
+	case "Series":
+		series := &Series{Name: descriptor.SeriesName}
+		if descriptor.SeriesID != nil {
+			series.ID = *descriptor.SeriesID
+		}
+		if descriptor.RepeatLabel != nil {
+			series.Repeat = *descriptor.RepeatLabel
+		}
+		if descriptor.ProgramPattern != nil {
+			series.Pattern = *descriptor.ProgramPattern
+		}
+		if descriptor.ExpireDate != nil {
+			v := *descriptor.ExpireDate
+			series.ExpiresAt = &v
+		}
+		if descriptor.EpisodeNumber != nil {
+			series.Episode = *descriptor.EpisodeNumber
+		}
+		if descriptor.LastEpisodeNumber != nil {
+			series.LastEpisode = *descriptor.LastEpisodeNumber
+		}
+		program.Series = series
 	}
 }
 

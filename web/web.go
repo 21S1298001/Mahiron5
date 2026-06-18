@@ -18,6 +18,7 @@ type WebConfig struct {
 	StreamManager  *stream.StreamManager
 	TunerManager   *tuner.TunerManager
 	JobManager     *job.JobManager
+	EpgStaleAfter  int64
 }
 
 func NewWeb(config WebConfig) (http.Handler, error) {
@@ -28,6 +29,7 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 		StreamManager:  config.StreamManager,
 		TunerManager:   config.TunerManager,
 		JobManager:     config.JobManager,
+		EpgStaleAfter:  config.EpgStaleAfter,
 	}))
 	if err != nil {
 		return nil, err
