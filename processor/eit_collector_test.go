@@ -9,6 +9,15 @@ import (
 	"testing"
 )
 
+func TestEITCollectorCommands(t *testing.T) {
+	if eitsCollectorCommand != "mirakc-arib collect-eits" {
+		t.Fatalf("EITS command = %q", eitsCollectorCommand)
+	}
+	if eitpfCollectorCommand != "mirakc-arib collect-eitpf --streaming" {
+		t.Fatalf("EITPF command = %q", eitpfCollectorCommand)
+	}
+}
+
 func TestEITCollectorReportsMissingMirakcAribForEITS(t *testing.T) {
 	replaceVar(t, &lookPath, func(file string) (string, error) {
 		return "", exec.ErrNotFound

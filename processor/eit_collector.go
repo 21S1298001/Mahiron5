@@ -9,16 +9,21 @@ import (
 
 type EITCollector struct{}
 
+const (
+	eitsCollectorCommand  = "mirakc-arib collect-eits"
+	eitpfCollectorCommand = "mirakc-arib collect-eitpf --streaming"
+)
+
 func NewEITCollector() *EITCollector {
 	return &EITCollector{}
 }
 
 func (c *EITCollector) CollectEITS(ctx context.Context, src io.Reader, dst io.Writer) error {
-	return c.collect(ctx, "mirakc-arib collect-eits --streaming", "EITS", src, dst)
+	return c.collect(ctx, eitsCollectorCommand, "EITS", src, dst)
 }
 
 func (c *EITCollector) CollectEITPF(ctx context.Context, src io.Reader, dst io.Writer) error {
-	return c.collect(ctx, "mirakc-arib collect-eitpf --streaming", "EITPF", src, dst)
+	return c.collect(ctx, eitpfCollectorCommand, "EITPF", src, dst)
 }
 
 func (c *EITCollector) collect(ctx context.Context, command, name string, src io.Reader, dst io.Writer) error {

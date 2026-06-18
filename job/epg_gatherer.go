@@ -25,11 +25,6 @@ const (
 	EPGGathererName = "EPG Gatherer"
 
 	EPGGathererDefaultSchedule = "20,50 * * * *"
-	// epgStableDuration is the quiet window after the last EITS update before we
-	// declare a snapshot complete. ARIB broadcasts may roll the EIT table over the
-	// course of a few minutes, so we wait this long to confirm no further updates
-	// are in flight.
-	epgStableDuration = 30 * time.Second
 )
 
 func RegisterEPGGatherer(mgr *JobManager, pm *program.ProgramManager, sm *service.ServiceManager, stm *stream.StreamManager, channels config.ChannelsConfig, epgRetentionDays int, retrievalTime time.Duration) {
@@ -237,7 +232,7 @@ func gatherNetworkEPG(ctx context.Context, pm *program.ProgramManager, sm *servi
 		// streams or recording sessions.
 		session, err := stm.GetOrCreate(userCtx, candidate.typ, candidate.channel)
 		if err == nil {
-			err = collectServiceSnapshots(userCtx, pm, sm, session, services, retrievalTime, epgStableDuration)
+			err = collectServiceSnapshots(userCtx, pm, sm, session, services, retrievalTime)
 		}
 		if err == nil {
 			slog.Debug("finished network EPG collection", "networkId", networkID, "type", candidate.typ, "channel", candidate.channel)
@@ -258,7 +253,7 @@ func retryableEPGError(err error) bool {
 	return err != nil && !errors.Is(err, processor.ErrMirakcAribRequired)
 }
 
-func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm *service.ServiceManager, session *stream.ChannelSession, expected []program.ServiceKey, retrievalTime, stableDuration time.Duration) error {
+func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm *service.ServiceManager, session *stream.ChannelSession, expected []program.ServiceKey, retrievalTime time.Duration) error {
 	if len(expected) == 0 {
 		return errors.New("collectServiceSnapshots: expected is empty")
 	}
@@ -358,8 +353,6 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 	}()
 
 	snapshot := program.NewEITSnapshot()
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
 	finished := false
 	for !finished {
 		select {
@@ -387,10 +380,6 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 			}
 			slog.Debug("observed EIT section", "source", "eits", "networkId", result.section.OriginalNetworkID, "serviceId", result.section.ServiceID, "tableId", result.section.TableID, "sectionNumber", result.section.SectionNumber, "lastSectionNumber", result.section.LastSectionNumber, "version", result.section.VersionNumber, "events", len(result.section.Events))
 			snapshot.Observe(result.section, time.Now())
-		case now := <-ticker.C:
-			if snapshot.AllComplete(expected) && snapshot.StableFor(now, stableDuration) {
-				finished = true
-			}
 		case <-collectCtx.Done():
 			finished = true
 		}
@@ -418,12 +407,18 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 	now := time.Now().UnixMilli()
 	var result error
 	for _, key := range expected {
-		if snapshot.ServiceComplete(key) {
+		if snapshot.Observed(key) {
 			programs := snapshot.Programs(key)
-			slog.Info("publishing EPG snapshot", "networkId", key.NetworkID, "serviceId", key.ServiceID, "programs", len(programs))
-			if err := pm.ReplaceServicePrograms(ctx, key.NetworkID, key.ServiceID, now, programs); err != nil {
+			if !snapshot.ServiceComplete(key) {
+				slog.Warn("flushing incomplete EITS collection",
+					"networkId", key.NetworkID,
+					"serviceId", key.ServiceID,
+					"report", snapshot.CompletionReport(key))
+			}
+			slog.Info("merging EPG collection", "networkId", key.NetworkID, "serviceId", key.ServiceID, "programs", len(programs))
+			if err := pm.UpsertPrograms(ctx, programs); err != nil {
 				_ = sm.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
-				result = errors.Join(result, fmt.Errorf("service %d: publish: %w", key.ServiceID, err))
+				result = errors.Join(result, fmt.Errorf("service %d: merge: %w", key.ServiceID, err))
 				continue
 			}
 			if err := sm.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, now); err != nil {

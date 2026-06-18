@@ -26,14 +26,14 @@ type snapshotTable struct {
 	hasVersion  bool
 	lastSection uint8
 	segmentLast map[uint8]uint8
-	// sections records which section numbers we have already observed at the
-	// current version. Used both to drive snapshotTableComplete and to purge
-	// stale programs on version / shrink events.
+	// sections records which section numbers have been observed during this
+	// collection and drives the diagnostic completeness report.
 	sections map[uint8]struct{}
-	// sectionPrograms records the set of program IDs contributed by each
-	// section. When a section is purged (version change, lastSection shrink)
-	// its programs are removed from the service-level map.
-	sectionPrograms map[uint8][]int64
+	// sectionPrograms keeps the latest payload observed for each section. EIT
+	// versions can coexist while a broadcaster rolls an update out, so a new
+	// version replaces only the section it arrived in, not the whole table.
+	sectionPrograms map[uint8][]*Program
+	sectionVersions map[uint8]uint8
 }
 
 // EITSnapshotReport describes why a service snapshot is not complete.  It is
@@ -83,35 +83,19 @@ func (s *EITSnapshot) Observe(section *EITSection, now time.Time) bool {
 		table = &snapshotTable{
 			segmentLast:     make(map[uint8]uint8),
 			sections:        make(map[uint8]struct{}),
-			sectionPrograms: make(map[uint8][]int64),
+			sectionPrograms: make(map[uint8][]*Program),
+			sectionVersions: make(map[uint8]uint8),
 		}
 		service.tables[section.TableID] = table
 	}
 
-	// Detect a sub-table version roll. ARIB version_number is per-sub-table
-	// (per tableID), so we must drop every program and section that came from
-	// the previous version before absorbing the new section.
-	versionChanged := !table.hasVersion || table.version != section.VersionNumber
-	// A shrink in lastSectionNumber also invalidates any program carried by
-	// sections above the new last section.
-	shrunk := section.LastSectionNumber < table.lastSection
-	if versionChanged || shrunk {
-		s.purgeTable(service, table)
-	}
-
-	// Observe this section.
-	changed := false
-	if _, ok := table.sections[section.SectionNumber]; !ok {
-		changed = true
-	}
+	previousVersion, existed := table.sectionVersions[section.SectionNumber]
+	changed := !existed || previousVersion != section.VersionNumber
 	table.sections[section.SectionNumber] = struct{}{}
 	progs := section.Programs()
-	ids := make([]int64, 0, len(progs))
-	for _, item := range progs {
-		service.programs[item.ID] = item
-		ids = append(ids, item.ID)
-	}
-	table.sectionPrograms[section.SectionNumber] = ids
+	table.sectionPrograms[section.SectionNumber] = progs
+	table.sectionVersions[section.SectionNumber] = section.VersionNumber
+	rebuildServicePrograms(service)
 
 	table.version = section.VersionNumber
 	table.hasVersion = true
@@ -124,17 +108,15 @@ func (s *EITSnapshot) Observe(section *EITSection, now time.Time) bool {
 	return changed
 }
 
-func (s *EITSnapshot) purgeTable(service *snapshotService, table *snapshotTable) {
-	for section, ids := range table.sectionPrograms {
-		for _, id := range ids {
-			delete(service.programs, id)
+func rebuildServicePrograms(service *snapshotService) {
+	service.programs = make(map[int64]*Program)
+	for _, table := range service.tables {
+		for _, programs := range table.sectionPrograms {
+			for _, item := range programs {
+				service.programs[item.ID] = item
+			}
 		}
-		delete(table.sections, section)
 	}
-	table.sectionPrograms = make(map[uint8][]int64)
-	// Reset segmentLast so completion logic re-evaluates against the new
-	// lastSectionNumber.
-	table.segmentLast = make(map[uint8]uint8)
 }
 
 func (s *EITSnapshot) ServiceComplete(key ServiceKey) bool {
@@ -306,4 +288,9 @@ func (s *EITSnapshot) Programs(key ServiceKey) []*Program {
 		result = append(result, item)
 	}
 	return result
+}
+
+func (s *EITSnapshot) Observed(key ServiceKey) bool {
+	service := s.services[key]
+	return service != nil && len(service.tables) > 0
 }

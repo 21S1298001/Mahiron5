@@ -102,21 +102,39 @@ func TestEITSnapshotServiceCompleteFalseOnUnknownTable(t *testing.T) {
 	}
 }
 
-func TestEITSnapshotVersionChangeReplacesPrograms(t *testing.T) {
+func TestEITSnapshotVersionChangeReplacesOnlyItsSection(t *testing.T) {
 	snap := NewEITSnapshot()
 	now := time.Unix(0, 0)
-	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 0, 1, ev(1, 1000, 1000)), now)
+	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(1, 1000, 1000)), now)
+	snap.Observe(makeSection(1, 100, 2, 0x50, 1, 1, 1, ev(2, 2000, 1000)), now)
 	progs := snap.Programs(ServiceKey{1, 100})
-	if len(progs) != 1 {
-		t.Fatalf("first version programs = %d, want 1", len(progs))
+	if len(progs) != 2 {
+		t.Fatalf("first version programs = %d, want 2", len(progs))
 	}
-	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 0, 2, ev(99, 9999, 1000)), now)
+	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 2, ev(99, 9999, 1000)), now)
 	progs = snap.Programs(ServiceKey{1, 100})
-	if len(progs) != 1 {
-		t.Fatalf("after version change programs = %d, want 1", len(progs))
+	if len(progs) != 2 {
+		t.Fatalf("after version change programs = %d, want 2", len(progs))
 	}
-	if progs[0].ID != ProgramID(1, 100, 99) {
-		t.Fatalf("after version change program id = %d, want %d", progs[0].ID, ProgramID(1, 100, 99))
+	got := map[uint16]bool{}
+	for _, p := range progs {
+		got[p.EventID] = true
+	}
+	if got[1] || !got[2] || !got[99] {
+		t.Fatalf("after version change event IDs = %v, want 2 and 99", got)
+	}
+}
+
+func TestEITSnapshotEmptySectionReplacementRemovesOnlyThatSection(t *testing.T) {
+	snap := NewEITSnapshot()
+	now := time.Unix(0, 0)
+	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(1, 1000, 1000)), now)
+	snap.Observe(makeSection(1, 100, 2, 0x50, 1, 1, 1, ev(2, 2000, 1000)), now)
+	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 2), now)
+
+	programs := snap.Programs(ServiceKey{1, 100})
+	if len(programs) != 1 || programs[0].EventID != 2 {
+		t.Fatalf("programs after empty replacement = %#v, want only event 2", programs)
 	}
 }
 
@@ -163,12 +181,7 @@ func TestEITSSnapshotStableFor(t *testing.T) {
 	}
 }
 
-// TestEITSnapshotVersionChangeWithShrinkingLastSectionPurgesOldPrograms is a
-// regression test for the per-sub-table version model. ARIB may roll the
-// version_number of a sub-table while also shrinking the lastSectionNumber;
-// programs that lived in the dropped sections must not survive into the new
-// snapshot.
-func TestEITSnapshotVersionChangeWithShrinkingLastSectionPurgesOldPrograms(t *testing.T) {
+func TestEITSnapshotMixedVersionsDoNotResetTable(t *testing.T) {
 	snap := NewEITSnapshot()
 	now := time.Unix(0, 0)
 	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 1, ev(10, 1000, 1000)), now)
@@ -180,16 +193,14 @@ func TestEITSnapshotVersionChangeWithShrinkingLastSectionPurgesOldPrograms(t *te
 	if len(progs) != 2 {
 		t.Fatalf("setup: programs = %d, want 2", len(progs))
 	}
-	// Roll the version while shrinking lastSectionNumber from 1 to 0.
-	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 0, 2, ev(20, 5000, 1000)), now)
+	// A version roll can arrive one section at a time. Updating section 0 must
+	// retain section 1 until its replacement arrives.
+	snap.Observe(makeSection(1, 100, 2, 0x50, 0, 1, 2, ev(20, 5000, 1000)), now)
 	progs = snap.Programs(ServiceKey{1, 100})
-	if len(progs) != 1 {
-		t.Fatalf("after shrink programs = %d, want 1 (stale section 1 should be purged)", len(progs))
-	}
-	if progs[0].EventID != 20 {
-		t.Errorf("surviving program eventId = %d, want 20", progs[0].EventID)
+	if len(progs) != 2 {
+		t.Fatalf("during version roll programs = %d, want 2", len(progs))
 	}
 	if !snap.ServiceComplete(ServiceKey{1, 100}) {
-		t.Fatal("after shrink ServiceComplete should be true: new lastSection=0, section 0 observed")
+		t.Fatal("mixed-version table should retain its section coverage")
 	}
 }

@@ -20,6 +20,10 @@ func (m *ProgramManager) UpsertEITSection(ctx context.Context, section *EITSecti
 	return m.store.UpsertAll(ctx, section.Programs())
 }
 
+func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program) error {
+	return m.store.UpsertAll(ctx, programs)
+}
+
 func (m *ProgramManager) UpsertEITSectionJSON(ctx context.Context, data []byte) error {
 	var section EITSection
 	if err := json.Unmarshal(data, &section); err != nil {
