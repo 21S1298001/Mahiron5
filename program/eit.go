@@ -62,24 +62,46 @@ func (d *EITDescriptor) UnmarshalJSON(data []byte) error {
 	}
 	*d = EITDescriptor(decoded)
 	var aliases struct {
-		LanguageCode      string `json:"languageCode"`
-		LanguageCode2     string `json:"languageCode2"`
-		MainComponentFlag *bool  `json:"mainComponentFlag"`
+		LanguageCode      json.RawMessage `json:"languageCode"`
+		LanguageCode2     json.RawMessage `json:"languageCode2"`
+		MainComponentFlag *bool           `json:"mainComponentFlag"`
 	}
 	if err := json.Unmarshal(data, &aliases); err != nil {
 		return err
 	}
 	if d.Lang == "" {
-		d.Lang = aliases.LanguageCode
+		if lang, ok := decodeLanguageCode(aliases.LanguageCode); ok {
+			d.Lang = lang
+		}
 	}
 	if d.Lang2 == "" {
-		d.Lang2 = aliases.LanguageCode2
+		if lang, ok := decodeLanguageCode(aliases.LanguageCode2); ok {
+			d.Lang2 = lang
+		}
 	}
 	if d.MainComponent == nil {
 		d.MainComponent = aliases.MainComponentFlag
 	}
 	d.Raw = append(d.Raw[:0], data...)
 	return nil
+}
+
+func decodeLanguageCode(raw json.RawMessage) (string, bool) {
+	if len(raw) == 0 {
+		return "", false
+	}
+	if raw[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return "", false
+		}
+		return s, true
+	}
+	var n uint32
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return "", false
+	}
+	return string([]byte{byte(n >> 16), byte(n >> 8), byte(n)}), true
 }
 
 func (s *EITSection) Programs() []*Program {

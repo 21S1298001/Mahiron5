@@ -284,21 +284,32 @@ func TestApplyDescriptorHandlesExtendedAndSeriesAndEventGroup(t *testing.T) {
 }
 
 func TestEITDescriptorUnmarshalAcceptsLegacyAliases(t *testing.T) {
-	cases := []string{
-		`{"$type":"AudioComponent","languageCode":"jpn","mainComponentFlag":true}`,
-		`{"$type":"AudioComponent","lang":"jpn","mainComponent":true}`,
+	// mirakc-arib serializes the ARIB 24-bit language code as a JSON number
+	// (e.g. "jpn" -> 0x6A706E = 6975598 in decimal).
+	cases := []struct {
+		name      string
+		body      string
+		wantLang  string
+		wantLang2 string
+	}{
+		{"legacy-string-aliases", `{"$type":"AudioComponent","languageCode":"jpn","mainComponentFlag":true}`, "jpn", ""},
+		{"modern-fields", `{"$type":"AudioComponent","lang":"jpn","mainComponent":true}`, "jpn", ""},
+		{"numeric-languageCode", `{"$type":"AudioComponent","languageCode":6975598,"mainComponent":true}`, "jpn", ""},
+		{"numeric-languageCode2", `{"$type":"AudioComponent","lang":"jpn","languageCode2":6975598}`, "jpn", "jpn"},
 	}
 	for _, c := range cases {
-		var d EITDescriptor
-		if err := jsonUnmarshal([]byte(c), &d); err != nil {
-			t.Fatalf("unmarshal: %v", err)
-		}
-		if d.Lang != "jpn" {
-			t.Fatalf("Lang = %q, want jpn", d.Lang)
-		}
-		if d.MainComponent == nil || !*d.MainComponent {
-			t.Fatalf("MainComponent = %#v", d.MainComponent)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			var d EITDescriptor
+			if err := jsonUnmarshal([]byte(c.body), &d); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if d.Lang != c.wantLang {
+				t.Fatalf("Lang = %q, want %q", d.Lang, c.wantLang)
+			}
+			if d.Lang2 != c.wantLang2 {
+				t.Fatalf("Lang2 = %q, want %q", d.Lang2, c.wantLang2)
+			}
+		})
 	}
 }
 
