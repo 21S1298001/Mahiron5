@@ -346,6 +346,7 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 			if !matchesExpected(&section) {
 				continue
 			}
+			slog.Debug("upserting EIT section", "source", "eitpf", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
 			if err := pm.UpsertEITSection(collectCtx, &section); err != nil {
 				pfErrCh <- err
 				return
@@ -384,6 +385,7 @@ func collectServiceSnapshots(ctx context.Context, pm *program.ProgramManager, sm
 			if !matchesExpected(result.section) {
 				continue
 			}
+			slog.Debug("observed EIT section", "source", "eits", "networkId", result.section.OriginalNetworkID, "serviceId", result.section.ServiceID, "tableId", result.section.TableID, "sectionNumber", result.section.SectionNumber, "lastSectionNumber", result.section.LastSectionNumber, "version", result.section.VersionNumber, "events", len(result.section.Events))
 			snapshot.Observe(result.section, time.Now())
 		case now := <-ticker.C:
 			if snapshot.AllComplete(expected) && snapshot.StableFor(now, stableDuration) {
