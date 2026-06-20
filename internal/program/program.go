@@ -1,50 +1,50 @@
 package program
 
 type Program struct {
-	ID        int64
-	EventID   uint16
-	ServiceID uint16
-	NetworkID uint16
-	StartAt   int64
-	Duration  int
-	IsFree    bool
+	ID        int64  `json:"id"`
+	EventID   uint16 `json:"eventId"`
+	ServiceID uint16 `json:"serviceId"`
+	NetworkID uint16 `json:"networkId"`
+	StartAt   int64  `json:"startAt"`
+	Duration  int    `json:"duration"`
+	IsFree    bool   `json:"isFree"`
 
-	Name         string
-	Description  string
-	Genres       []Genre
-	Video        *Video
-	Audios       []Audio
-	Extended     map[string]string
-	RelatedItems []RelatedItem
-	Series       *Series
+	Name         string            `json:"name,omitempty"`
+	Description  string            `json:"description,omitempty"`
+	Genres       []Genre           `json:"genres,omitempty"`
+	Video        *Video            `json:"video,omitempty"`
+	Audios       []Audio           `json:"audios,omitempty"`
+	Extended     map[string]string `json:"extended,omitempty"`
+	RelatedItems []RelatedItem     `json:"relatedItems,omitempty"`
+	Series       *Series           `json:"series,omitempty"`
 }
 
 type Genre struct {
-	Lv1 int
-	Lv2 int
-	Un1 int
-	Un2 int
+	Lv1 int `json:"lv1"`
+	Lv2 int `json:"lv2"`
+	Un1 int `json:"un1"`
+	Un2 int `json:"un2"`
 }
 
 type Video struct {
-	StreamContent int
-	ComponentType int
+	StreamContent int `json:"streamContent"`
+	ComponentType int `json:"componentType"`
 }
 
 type Audio struct {
-	ComponentType int
-	ComponentTag  *int
-	IsMain        *bool
-	SamplingRate  *int
-	Langs         []string
+	ComponentType int      `json:"componentType"`
+	ComponentTag  *int     `json:"componentTag,omitempty"`
+	IsMain        *bool    `json:"isMain,omitempty"`
+	SamplingRate  *int     `json:"samplingRate,omitempty"`
+	Langs         []string `json:"langs,omitempty"`
 }
 
 type RelatedItem struct {
-	Type              RelatedItemType
-	NetworkID         *uint16
-	TransportStreamID *uint16
-	ServiceID         uint16
-	EventID           uint16
+	Type              RelatedItemType `json:"type,omitempty"`
+	NetworkID         *uint16         `json:"networkId,omitempty"`
+	TransportStreamID *uint16         `json:"transportStreamId,omitempty"`
+	ServiceID         uint16          `json:"serviceId,omitempty"`
+	EventID           uint16          `json:"eventId,omitempty"`
 }
 
 type RelatedItemType string
@@ -56,13 +56,13 @@ const (
 )
 
 type Series struct {
-	ID          int
-	Repeat      int
-	Pattern     int
-	ExpiresAt   *int64
-	Episode     int
-	LastEpisode int
-	Name        string
+	ID          int    `json:"id"`
+	Repeat      int    `json:"repeat"`
+	Pattern     int    `json:"pattern"`
+	ExpiresAt   *int64 `json:"expiresAt,omitempty"`
+	Episode     int    `json:"episode"`
+	LastEpisode int    `json:"lastEpisode"`
+	Name        string `json:"name,omitempty"`
 }
 
 type Query struct {

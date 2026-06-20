@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/eventhub"
 )
 
 type User struct {
@@ -104,7 +105,18 @@ func (tm *TunerManager) Status(index int) (Status, bool) {
 
 func (tm *TunerManager) statusLocked(index int) Status {
 	item := tm.tuners[index]
+	return tm.statusLockedByTuner(item)
+}
+
+func (tm *TunerManager) statusLockedByTuner(item *Tuner) Status {
 	runtime := tm.runtime[item]
+	index := -1
+	for i, candidate := range tm.tuners {
+		if candidate == item {
+			index = i
+			break
+		}
+	}
 	available := !item.IsDisabled() && item.Usable() && !runtime.fault && !runtime.stopped
 	status := Status{
 		Index: index, Name: item.Name(), Types: append([]string(nil), item.Groups()...),
@@ -140,32 +152,147 @@ func (tm *TunerManager) addUser(item *Tuner, user User) {
 	if user.ID == "" {
 		return
 	}
+	var status Status
 	tm.mu.Lock()
-	defer tm.mu.Unlock()
 	runtime := tm.runtime[item]
 	if tracked := runtime.users[user.ID]; tracked != nil {
 		tracked.refs++
 		tracked.user = user
 		slog.Debug("tuner user reference added", "name", item.Name(), "userId", user.ID, "refs", tracked.refs)
+		status = tm.statusLockedByTuner(item)
+		tm.mu.Unlock()
+		tm.publishStatus(eventhub.TypeUpdate, status)
 		return
 	}
 	runtime.users[user.ID] = &trackedUser{user: user, refs: 1}
 	slog.Debug("tuner user added", "name", item.Name(), "userId", user.ID, "agent", user.Agent, "url", user.URL, "priority", user.Priority, "disableDecoder", user.DisableDecoder)
+	status = tm.statusLockedByTuner(item)
+	tm.mu.Unlock()
+	tm.publishStatus(eventhub.TypeUpdate, status)
 }
 
 func (tm *TunerManager) removeUser(item *Tuner, id string) {
+	var status Status
+	publish := false
 	tm.mu.Lock()
-	defer tm.mu.Unlock()
 	runtime := tm.runtime[item]
 	tracked := runtime.users[id]
 	if tracked == nil {
+		tm.mu.Unlock()
 		return
 	}
 	tracked.refs--
 	if tracked.refs == 0 {
 		delete(runtime.users, id)
 		slog.Debug("tuner user removed", "name", item.Name(), "userId", id)
+		status = tm.statusLockedByTuner(item)
+		publish = true
+		tm.mu.Unlock()
+		if publish {
+			tm.publishStatus(eventhub.TypeUpdate, status)
+		}
 		return
 	}
 	slog.Debug("tuner user reference removed", "name", item.Name(), "userId", id, "refs", tracked.refs)
+	status = tm.statusLockedByTuner(item)
+	publish = true
+	tm.mu.Unlock()
+	if publish {
+		tm.publishStatus(eventhub.TypeUpdate, status)
+	}
+}
+
+func (tm *TunerManager) SeedEventLog() {
+	if tm.events == nil {
+		return
+	}
+	for _, status := range tm.Statuses() {
+		tm.publishStatus(eventhub.TypeCreate, status)
+	}
+}
+
+func (tm *TunerManager) publishStatus(typ string, status Status) {
+	if tm.events == nil {
+		return
+	}
+	tm.events.PublishEvent(eventhub.ResourceTuner, typ, tunerEventData(status))
+}
+
+func tunerEventData(status Status) map[string]any {
+	data := map[string]any{
+		"index":       status.Index,
+		"name":        status.Name,
+		"types":       status.Types,
+		"command":     status.Command,
+		"pid":         status.PID,
+		"users":       tunerUserEventData(status.Users),
+		"isAvailable": status.IsAvailable,
+		"isFree":      status.IsFree,
+		"isUsing":     status.IsUsing,
+		"isFault":     status.IsFault,
+	}
+	if status.CurrentChannelType != "" {
+		data["currentChannelType"] = status.CurrentChannelType
+		data["currentChannel"] = status.CurrentChannel
+	}
+	if status.TunedChannelType != "" {
+		data["tunedChannelType"] = status.TunedChannelType
+		data["tunedChannel"] = status.TunedChannel
+	}
+	return data
+}
+
+func tunerUserEventData(users []User) []map[string]any {
+	result := make([]map[string]any, len(users))
+	for i, user := range users {
+		data := map[string]any{
+			"id":             user.ID,
+			"priority":       user.Priority,
+			"disableDecoder": user.DisableDecoder,
+		}
+		if user.Agent != "" {
+			data["agent"] = user.Agent
+		}
+		if user.URL != "" {
+			data["url"] = user.URL
+		}
+		if setting := streamSettingEventData(user.StreamSetting); len(setting) > 0 {
+			data["streamSetting"] = setting
+		}
+		result[i] = data
+	}
+	return result
+}
+
+func streamSettingEventData(setting StreamSetting) map[string]any {
+	data := map[string]any{}
+	if setting.Channel != nil {
+		data["channel"] = map[string]any{
+			"name":    setting.Channel.Name,
+			"type":    setting.Channel.Type,
+			"channel": setting.Channel.Channel,
+		}
+	}
+	if setting.NetworkID != nil {
+		data["networkId"] = *setting.NetworkID
+	}
+	if setting.ServiceID != nil {
+		data["serviceId"] = *setting.ServiceID
+	}
+	if setting.EventID != nil {
+		data["eventId"] = *setting.EventID
+	}
+	if setting.NoProvide != nil {
+		data["noProvide"] = *setting.NoProvide
+	}
+	if setting.ParseNIT != nil {
+		data["parseNIT"] = *setting.ParseNIT
+	}
+	if setting.ParseSDT != nil {
+		data["parseSDT"] = *setting.ParseSDT
+	}
+	if setting.ParseEIT != nil {
+		data["parseEIT"] = *setting.ParseEIT
+	}
+	return data
 }

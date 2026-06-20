@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/eventhub"
 )
 
 type TunerManager struct {
@@ -18,9 +19,13 @@ type TunerManager struct {
 	runtime    map[*Tuner]*tunerRuntime
 	nextByType map[string]int
 	changed    chan struct{}
+	events     eventhub.Publisher
 }
 
-type TunerManagerConfig struct{ TunersConfig config.TunersConfig }
+type TunerManagerConfig struct {
+	TunersConfig config.TunersConfig
+	EventHub     eventhub.Publisher
+}
 
 func NewTunerManager(cfg *TunerManagerConfig) *TunerManager {
 	tuners := make([]*Tuner, len(cfg.TunersConfig))
@@ -35,6 +40,7 @@ func NewTunerManager(cfg *TunerManagerConfig) *TunerManager {
 		runtime:    runtime,
 		nextByType: make(map[string]int),
 		changed:    make(chan struct{}),
+		events:     cfg.EventHub,
 	}
 }
 
@@ -73,6 +79,7 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 		tm.mu.Unlock()
 
 		if attempt.device != nil {
+			tm.publishStatus(eventhub.TypeUpdate, attempt.status)
 			return attempt.device, attempt.decoder, nil
 		}
 		if !attempt.found {
@@ -122,6 +129,7 @@ type acquireAttempt struct {
 	usable  bool
 	grab    grabCandidate
 	changed <-chan struct{}
+	status  Status
 }
 
 type grabCandidate struct {
@@ -166,6 +174,7 @@ func (tm *TunerManager) tryAcquireLocked(channelType string, requestPriority int
 		tm.nextByType[channelType] = (index + 1) % len(tm.tuners)
 		result.device = managed
 		result.decoder = decoder
+		result.status = tm.statusLocked(index)
 		slog.Info("tuner acquired",
 			"name", item.Name(),
 			"type", channelType,
@@ -232,6 +241,8 @@ func (tm *TunerManager) KillProcess(ctx context.Context, index int) error {
 }
 
 func (tm *TunerManager) release(item *Tuner) {
+	var status Status
+	publish := false
 	tm.mu.Lock()
 	if tm.inUse[item] {
 		delete(tm.inUse, item)
@@ -246,9 +257,14 @@ func (tm *TunerManager) release(item *Tuner) {
 		runtime.users = make(map[string]*trackedUser)
 		close(tm.changed)
 		tm.changed = make(chan struct{})
+		status = tm.statusLockedByTuner(item)
+		publish = true
 		slog.Info("tuner released", "name", item.Name())
 	}
 	tm.mu.Unlock()
+	if publish {
+		tm.publishStatus(eventhub.TypeUpdate, status)
+	}
 }
 
 func (tm *TunerManager) DecoderCommandByType(channelType string) string {
@@ -340,23 +356,34 @@ func (d *managedDevice) RemoveUser(id string) { d.manager.removeUser(d.tuner, id
 func (d *managedDevice) releaseOnce() { d.once.Do(func() { d.manager.release(d.tuner) }) }
 
 func (tm *TunerManager) markRunning(item *Tuner) {
+	var status Status
 	tm.mu.Lock()
 	tm.runtime[item].running = true
 	tm.runtime[item].stopped = false
+	status = tm.statusLockedByTuner(item)
 	tm.mu.Unlock()
+	tm.publishStatus(eventhub.TypeUpdate, status)
 }
 
 func (tm *TunerManager) markStopped(item *Tuner) {
+	var status Status
+	publish := false
 	tm.mu.Lock()
 	runtime := tm.runtime[item]
 	if runtime.inUse {
 		runtime.running = false
 		runtime.stopped = true
+		status = tm.statusLockedByTuner(item)
+		publish = true
 	}
 	tm.mu.Unlock()
+	if publish {
+		tm.publishStatus(eventhub.TypeUpdate, status)
+	}
 }
 
 func (tm *TunerManager) markFault(item *Tuner) {
+	var status Status
 	tm.mu.Lock()
 	runtime := tm.runtime[item]
 	marked := false
@@ -364,10 +391,12 @@ func (tm *TunerManager) markFault(item *Tuner) {
 		runtime.running = false
 		runtime.fault = true
 		marked = true
+		status = tm.statusLockedByTuner(item)
 	}
 	tm.mu.Unlock()
 	if marked {
 		slog.Warn("tuner marked fault", "name", item.Name())
+		tm.publishStatus(eventhub.TypeUpdate, status)
 	}
 }
 

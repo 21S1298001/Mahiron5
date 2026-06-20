@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 
+	"github.com/21S1298001/Mahiron5/internal/eventhub"
 	"github.com/21S1298001/Mahiron5/internal/web/api"
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
 )
@@ -14,6 +15,7 @@ type WebConfig struct {
 	TunerManager   api.TunerManager
 	JobManager     api.JobManager
 	LogStore       api.LogStore
+	EventHub       *eventhub.Hub
 	EpgStaleAfter  int64
 }
 
@@ -26,6 +28,7 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 		TunerManager:   config.TunerManager,
 		JobManager:     config.JobManager,
 		LogStore:       config.LogStore,
+		EventHub:       config.EventHub,
 		EpgStaleAfter:  config.EpgStaleAfter,
 	}))
 	if err != nil {

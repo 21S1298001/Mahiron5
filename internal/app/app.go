@@ -17,6 +17,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
 	"github.com/21S1298001/Mahiron5/internal/epg"
+	"github.com/21S1298001/Mahiron5/internal/eventhub"
 	"github.com/21S1298001/Mahiron5/internal/filter"
 	"github.com/21S1298001/Mahiron5/internal/job"
 	"github.com/21S1298001/Mahiron5/internal/observability"
@@ -62,14 +63,16 @@ func Run(ctx context.Context) int {
 
 	serviceStore := service.NewSQLiteStore(database)
 	programStore := program.NewSQLiteStore(database)
+	events := eventhub.New()
 
 	tuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{
 		TunersConfig: cfg.Tuners,
+		EventHub:     events,
 	})
 
-	services := service.NewServiceManager(serviceStore, cfg.Channels)
+	services := service.NewServiceManager(serviceStore, cfg.Channels, events)
 
-	programs := program.NewProgramManager(programStore)
+	programs := program.NewProgramManager(programStore, events)
 	epgUpdater := epg.NewUpdater(programs)
 
 	streams := stream.NewStreamManager(stream.StreamManagerConfig{
@@ -85,7 +88,7 @@ func Run(ctx context.Context) int {
 	serviceScanner := stream.NewServiceScannerAdapter(streams)
 	epgStreams := stream.NewEPGCollectorAdapter(streams)
 	apiStreams := stream.NewAPIStreamAdapter(streams)
-	scanService := servicescan.NewService(serviceStore, serviceScanner, cfg.Channels)
+	scanService := servicescan.NewService(services, serviceScanner, cfg.Channels)
 	epgService := epg.NewService(programs, services, epgStreams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxRunning: cfg.System.JobMaxRunning})
@@ -119,6 +122,7 @@ func Run(ctx context.Context) int {
 		TunerManager:   tuners,
 		JobManager:     jobs,
 		LogStore:       obs.LogStore,
+		EventHub:       events,
 		EpgStaleAfter:  int64(cfg.System.EpgStaleAfter),
 	})
 	if err != nil {
@@ -143,6 +147,10 @@ func Run(ctx context.Context) int {
 	if err := runStartupTasks(signalCtx, services, programs, jobs, database, cfg); err != nil {
 		slog.Error("startup tasks failed", "err", err)
 	}
+	if err := services.SeedEventLog(signalCtx); err != nil {
+		slog.Warn("failed to seed service events", "err", err)
+	}
+	tuners.SeedEventLog()
 
 	slog.Info("starting servers")
 	s.ListenAndServe()

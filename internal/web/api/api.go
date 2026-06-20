@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/eventhub"
 	"github.com/21S1298001/Mahiron5/internal/job"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
@@ -21,6 +22,7 @@ type Handler struct {
 	tunerManager   TunerManager
 	jobManager     JobManager
 	logStore       LogStore
+	eventHub       EventHub
 	epgStaleAfter  int64
 }
 
@@ -33,6 +35,7 @@ type HandlerConfig struct {
 	TunerManager   TunerManager
 	JobManager     JobManager
 	LogStore       LogStore
+	EventHub       EventHub
 	EpgStaleAfter  int64
 }
 
@@ -81,6 +84,11 @@ type LogStore interface {
 	Subscribe() (io.ReadCloser, func())
 }
 
+type EventHub interface {
+	Log() []eventhub.Event
+	Subscribe() (<-chan eventhub.Event, func())
+}
+
 func NewHandler(config HandlerConfig) *Handler {
 	return &Handler{
 		serviceManager: config.ServiceManager,
@@ -89,6 +97,7 @@ func NewHandler(config HandlerConfig) *Handler {
 		tunerManager:   config.TunerManager,
 		jobManager:     config.JobManager,
 		logStore:       config.LogStore,
+		eventHub:       config.EventHub,
 		epgStaleAfter:  config.EpgStaleAfter,
 	}
 }
