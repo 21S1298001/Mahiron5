@@ -22,11 +22,6 @@ type EPGServiceStore interface {
 	SetEPGSuccess(context.Context, uint16, uint16, int64) error
 }
 
-type ServiceScanner interface {
-	EPGServiceStore
-	ScanServicesWait(context.Context, service.StreamScanner, string, string) ([]uint16, error)
-}
-
 type EPGProgramStore interface {
 	UpsertPrograms(context.Context, []*program.Program) error
 	DeleteEndedBefore(context.Context, int64) error

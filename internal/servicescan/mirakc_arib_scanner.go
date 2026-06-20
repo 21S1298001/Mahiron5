@@ -1,7 +1,8 @@
-package processor
+package servicescan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -10,23 +11,26 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/util"
 )
 
-var (
-	lookPath   = exec.LookPath
-	newProcess = util.NewProcess
-)
+// ErrMirakcAribRequired is returned by service scan adapters that still depend
+// on the external `mirakc-arib` CLI.
+var ErrMirakcAribRequired = errors.New("mirakc-arib is required")
 
-type ServiceScanner struct{}
+const serviceScannerCommand = "mirakc-arib scan-services"
 
-func NewServiceScanner() *ServiceScanner {
-	return &ServiceScanner{}
+var lookPath = exec.LookPath
+
+type MirakcAribScanner struct{}
+
+func NewMirakcAribScanner() *MirakcAribScanner {
+	return &MirakcAribScanner{}
 }
 
-func (s *ServiceScanner) ScanServices(ctx context.Context, src io.Reader, dst io.Writer) error {
+func (s *MirakcAribScanner) ScanServices(ctx context.Context, src io.Reader, dst io.Writer) error {
 	if _, err := lookPath("mirakc-arib"); err != nil {
 		return fmt.Errorf("%w for service scanning: %w", ErrMirakcAribRequired, err)
 	}
 
-	process := newProcess("mirakc-arib scan-services")
+	process := util.NewProcess(serviceScannerCommand)
 	process.Stdin(src)
 	process.Stdout(dst)
 	if err := process.Start(); err != nil {

@@ -1,4 +1,4 @@
-package processor
+package servicescan
 
 import (
 	"context"
@@ -9,12 +9,18 @@ import (
 	"testing"
 )
 
-func TestServiceScannerReportsMissingMirakcArib(t *testing.T) {
+func TestMirakcAribScannerCommand(t *testing.T) {
+	if serviceScannerCommand != "mirakc-arib scan-services" {
+		t.Fatalf("service scan command = %q", serviceScannerCommand)
+	}
+}
+
+func TestMirakcAribScannerReportsMissingMirakcArib(t *testing.T) {
 	replaceVar(t, &lookPath, func(file string) (string, error) {
 		return "", exec.ErrNotFound
 	})
 
-	err := NewServiceScanner().ScanServices(context.Background(), strings.NewReader(""), io.Discard)
+	err := NewMirakcAribScanner().ScanServices(context.Background(), strings.NewReader(""), io.Discard)
 	if !errors.Is(err, ErrMirakcAribRequired) {
 		t.Fatalf("ScanServices error = %v, want ErrMirakcAribRequired", err)
 	}

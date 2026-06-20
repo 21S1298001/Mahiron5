@@ -20,6 +20,10 @@ const (
 
 func RegisterEPGGatherer(registry Registry, programStore EPGProgramStore, serviceStore EPGServiceStore, epgStreams EPGStreamManager, channels config.ChannelsConfig, epgRetentionDays int, retrievalTime time.Duration) {
 	service := epg.NewService(programStore, serviceStore, epgStreams, channels, epgRetentionDays, retrievalTime)
+	RegisterEPGGathererService(registry, service)
+}
+
+func RegisterEPGGathererService(registry Registry, service *epg.Service) {
 	registry.Register(JobDefinition{
 		Key:          EPGGathererKey,
 		Name:         EPGGathererName,

@@ -13,6 +13,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
+	"github.com/21S1298001/Mahiron5/internal/servicescan"
 	"github.com/21S1298001/Mahiron5/internal/stream"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 )
@@ -34,9 +35,13 @@ func TestServiceUpdaterDispatchesPerChannel(t *testing.T) {
 	}
 	defer database.Close()
 	mgr := newTestManager(t)
-	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
+	serviceStore := service.NewSQLiteStore(database)
+	sm := service.NewServiceManager(serviceStore, channels)
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	RegisterServiceUpdater(mgr, program.NewProgramManager(program.NewSQLiteStore(database)), sm, stream.NewServiceScannerAdapter(stm), stream.NewEPGCollectorAdapter(stm), channels, 10*time.Minute)
+	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	scanService := servicescan.NewService(serviceStore, stream.NewServiceScannerAdapter(stm), channels)
+	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
+	RegisterServiceUpdater(mgr, scanService, epgService)
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +187,9 @@ func TestServiceUpdaterTriggersEPGGatherForNewNetworks(t *testing.T) {
 	})
 	mgr := newTestManager(t)
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	RegisterServiceUpdater(mgr, pm, sm, stream.NewServiceScannerAdapter(stm), stream.NewEPGCollectorAdapter(stm), channels, 10*time.Minute)
+	scanService := servicescan.NewService(serviceStore, stream.NewServiceScannerAdapter(stm), channels)
+	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
+	RegisterServiceUpdater(mgr, scanService, epgService)
 
 	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
 		t.Fatal(err)

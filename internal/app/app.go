@@ -19,10 +19,10 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/filter"
 	"github.com/21S1298001/Mahiron5/internal/job"
-	"github.com/21S1298001/Mahiron5/internal/processor"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/server"
 	"github.com/21S1298001/Mahiron5/internal/service"
+	"github.com/21S1298001/Mahiron5/internal/servicescan"
 	"github.com/21S1298001/Mahiron5/internal/stream"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 	"github.com/21S1298001/Mahiron5/internal/web"
@@ -77,12 +77,14 @@ func Run(ctx context.Context) int {
 		EITCollector: epg.NewMirakcAribCollector(),
 		EITUpdater:   epgUpdater,
 		Filter:       filter.NewServiceFilter(),
-		Scanner:      processor.NewServiceScanner(),
+		Scanner:      servicescan.NewMirakcAribScanner(),
 		TunerManager: tuners,
 	})
 	serviceScanner := stream.NewServiceScannerAdapter(streams)
 	epgStreams := stream.NewEPGCollectorAdapter(streams)
 	apiStreams := stream.NewAPIStreamAdapter(streams)
+	scanService := servicescan.NewService(serviceStore, serviceScanner, cfg.Channels)
+	epgService := epg.NewService(programs, services, epgStreams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxRunning: cfg.System.JobMaxRunning})
 	if err != nil {
@@ -90,8 +92,8 @@ func Run(ctx context.Context) int {
 		return 1
 	}
 
-	job.RegisterServiceUpdater(jobs, programs, services, serviceScanner, epgStreams, cfg.Channels, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
-	job.RegisterEPGGatherer(jobs, programs, services, epgStreams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
+	job.RegisterServiceUpdater(jobs, scanService, epgService)
+	job.RegisterEPGGathererService(jobs, epgService)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {
