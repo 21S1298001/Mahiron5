@@ -16,6 +16,7 @@ import (
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
+	"github.com/21S1298001/Mahiron5/internal/db/gen"
 	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/event"
 	"github.com/21S1298001/Mahiron5/internal/filter"
@@ -281,8 +282,7 @@ func hashChannelConfig(channels config.ChannelsConfig) string {
 }
 
 func readMetadata(ctx context.Context, db *sql.DB, key string) (string, error) {
-	var value string
-	err := db.QueryRowContext(ctx, "SELECT value FROM metadata WHERE key = ?", key).Scan(&value)
+	value, err := gen.New(db).GetMetadataValue(ctx, key)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}
@@ -290,6 +290,8 @@ func readMetadata(ctx context.Context, db *sql.DB, key string) (string, error) {
 }
 
 func writeMetadata(ctx context.Context, db *sql.DB, key, value string) error {
-	_, err := db.ExecContext(ctx, "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", key, value)
-	return err
+	return gen.New(db).UpsertMetadata(ctx, gen.UpsertMetadataParams{
+		Key:   key,
+		Value: value,
+	})
 }
