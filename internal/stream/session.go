@@ -5,8 +5,10 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/program"
 )
 
 type ChannelSession struct {
@@ -74,6 +76,20 @@ func (s *ChannelSession) ServiceStream(ctx context.Context, serviceID uint16, de
 	return s.attachPipeline(ctx, key, dst)
 }
 
+func (s *ChannelSession) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
+	key := PipelineKey{
+		ChannelType:  s.typ,
+		ChannelID:    s.channel,
+		Kind:         PipelineProgramStream,
+		NetworkID:    p.NetworkID,
+		ServiceID:    p.ServiceID,
+		EventID:      p.EventID,
+		EventTimeout: programEventTimeout(p.StartAt, p.Duration),
+		Decode:       decode,
+	}
+	return s.attachPipeline(ctx, key, dst)
+}
+
 func (s *ChannelSession) ScanServices(ctx context.Context, dst io.Writer) error {
 	if s.scanner == nil {
 		return ErrServiceScannerNotConfigured
@@ -135,7 +151,7 @@ func (s *ChannelSession) pipelineProcessors(key PipelineKey) []Processor {
 	if key.Decode && s.descrambler != nil {
 		processors = append(processors, descramblerProcessor{descrambler: s.descrambler})
 	}
-	if key.Kind == PipelineServiceStream {
+	if key.Kind == PipelineServiceStream || key.Kind == PipelineProgramStream {
 		if s.filter == nil {
 			processors = append(processors, errorProcessor{err: ErrServiceFilterNotConfigured})
 			return processors
@@ -145,5 +161,25 @@ func (s *ChannelSession) pipelineProcessors(key PipelineKey) []Processor {
 			serviceID: key.ServiceID,
 		})
 	}
+	if key.Kind == PipelineProgramStream {
+		processors = append(processors, programEventGateProcessor{
+			collector:      s.eitCollector,
+			eventID:        key.EventID,
+			initialTimeout: key.EventTimeout,
+			networkID:      key.NetworkID,
+			serviceID:      key.ServiceID,
+		})
+	}
 	return processors
+}
+
+func programEventTimeout(startAt int64, duration int) time.Duration {
+	timeout := time.Until(time.UnixMilli(startAt + int64(duration)))
+	if duration == 1 {
+		timeout += programEventMissingFallback
+	}
+	if timeout < 0 {
+		return programEventMissingFallback
+	}
+	return timeout
 }

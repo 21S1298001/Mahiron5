@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/util"
 )
@@ -15,15 +16,19 @@ type PipelineKind string
 
 const (
 	PipelineChannelStream PipelineKind = "channel_stream"
+	PipelineProgramStream PipelineKind = "program_stream"
 	PipelineServiceStream PipelineKind = "service_stream"
 )
 
 type PipelineKey struct {
-	ChannelType string
-	ChannelID   string
-	Kind        PipelineKind
-	ServiceID   uint16
-	Decode      bool
+	ChannelType  string
+	ChannelID    string
+	Kind         PipelineKind
+	ServiceID    uint16
+	NetworkID    uint16
+	EventID      uint16
+	EventTimeout time.Duration
+	Decode       bool
 }
 
 type sourceSubscriber func(context.Context, io.Writer) error

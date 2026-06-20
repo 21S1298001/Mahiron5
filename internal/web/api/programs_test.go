@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
@@ -9,6 +11,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
+	"github.com/21S1298001/Mahiron5/internal/stream"
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
 )
 
@@ -112,6 +115,116 @@ func TestGetServicePrograms(t *testing.T) {
 	}
 }
 
+func TestGetProgramStreamReturnsStreamAndTunerUserID(t *testing.T) {
+	handler := testProgramHandler(t)
+	handler.streamManager = fakeProgramStreamManager{session: fakeProgramStreamSession{data: "program-ts"}}
+
+	res, err := handler.GetProgramStream(context.Background(), apigen.GetProgramStreamParams{
+		ID: program.ProgramID(1, 101, 9),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok, isOK := res.(*apigen.GetProgramStreamOKHeaders)
+	if !isOK {
+		t.Fatalf("response type = %T, want *GetProgramStreamOKHeaders", res)
+	}
+	userID, set := ok.XMirakurunTunerUserID.Get()
+	if !set || userID == "" {
+		t.Fatal("X-Mirakurun-Tuner-User-ID should be set")
+	}
+	body, err := io.ReadAll(ok.Response.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "program-ts" {
+		t.Fatalf("stream body = %q, want program-ts", body)
+	}
+}
+
+func TestGetProgramStreamMissingProgramAndService(t *testing.T) {
+	handler := testProgramHandler(t)
+	handler.streamManager = fakeProgramStreamManager{session: fakeProgramStreamSession{}}
+
+	res, err := handler.GetProgramStream(context.Background(), apigen.GetProgramStreamParams{ID: 999})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := res.(*apigen.GetProgramStreamNotFound); !ok {
+		t.Fatalf("response type = %T, want *GetProgramStreamNotFound", res)
+	}
+
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
+		{ID: program.ProgramID(1, 101, 9), NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	missingServiceHandler := NewHandler(HandlerConfig{
+		ProgramManager: pm,
+		ServiceManager: service.NewServiceManager(service.NewSQLiteStore(database), config.ChannelsConfig{}),
+		StreamManager:  fakeProgramStreamManager{session: fakeProgramStreamSession{}},
+	})
+	res, err = missingServiceHandler.GetProgramStream(context.Background(), apigen.GetProgramStreamParams{ID: program.ProgramID(1, 101, 9)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := res.(*apigen.GetProgramStreamNotFound); !ok {
+		t.Fatalf("response type = %T, want *GetProgramStreamNotFound", res)
+	}
+}
+
+func TestGetProgramStreamTunerUnavailable(t *testing.T) {
+	handler := testProgramHandler(t)
+	handler.streamManager = fakeProgramStreamManager{err: stream.ErrTunerUnavailable}
+
+	res, err := handler.GetProgramStream(context.Background(), apigen.GetProgramStreamParams{ID: program.ProgramID(1, 101, 9)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := res.(*apigen.GetProgramStreamServiceUnavailable); !ok {
+		t.Fatalf("response type = %T, want *GetProgramStreamServiceUnavailable", res)
+	}
+}
+
+func TestProgramsIDStreamHeadOnlyRequiresProgram(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	id := program.ProgramID(1, 101, 9)
+	if err := pm.ReplaceServicePrograms(ctx, 1, 101, 0, []*program.Program{
+		{ID: id, NetworkID: 1, ServiceID: 101, EventID: 9, StartAt: 1000, Duration: 1000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(HandlerConfig{
+		ProgramManager: pm,
+		ServiceManager: service.NewServiceManager(service.NewSQLiteStore(database), config.ChannelsConfig{}),
+	})
+	res, err := handler.ProgramsIDStreamHead(context.Background(), apigen.ProgramsIDStreamHeadParams{ID: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok, isOK := res.(*apigen.ProgramsIDStreamHeadOK)
+	if !isOK {
+		t.Fatalf("response type = %T, want *ProgramsIDStreamHeadOK", res)
+	}
+	userID, set := ok.XMirakurunTunerUserID.Get()
+	if !set || userID == "" {
+		t.Fatal("X-Mirakurun-Tuner-User-ID should be set")
+	}
+}
+
 func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
@@ -166,6 +279,43 @@ func TestApiProgramExposesExtendedRelatedAndSeries(t *testing.T) {
 	if p.Series.Value.ID.Value != 5 {
 		t.Errorf("Series.ID = %d, want 5", p.Series.Value.ID.Value)
 	}
+}
+
+type fakeProgramStreamManager struct {
+	err     error
+	session fakeProgramStreamSession
+}
+
+func (m fakeProgramStreamManager) GetOrCreate(context.Context, string, string) (interface {
+	ChannelStream(context.Context, bool, io.Writer) error
+	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
+	ServiceStream(context.Context, uint16, bool, io.Writer) error
+}, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.session, nil
+}
+
+type fakeProgramStreamSession struct {
+	data string
+	err  error
+}
+
+func (s fakeProgramStreamSession) ChannelStream(context.Context, bool, io.Writer) error {
+	return errors.New("unexpected ChannelStream call")
+}
+
+func (s fakeProgramStreamSession) ServiceStream(context.Context, uint16, bool, io.Writer) error {
+	return errors.New("unexpected ServiceStream call")
+}
+
+func (s fakeProgramStreamSession) ProgramStream(_ context.Context, _ *program.Program, _ bool, dst io.Writer) error {
+	if s.err != nil {
+		return s.err
+	}
+	_, err := io.WriteString(dst, s.data)
+	return err
 }
 
 func TestApiProgramRelatedItemsEmptyWhenNone(t *testing.T) {

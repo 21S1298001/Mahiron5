@@ -55,6 +55,7 @@ type ProgramManager interface {
 type StreamManager interface {
 	GetOrCreate(context.Context, string, string) (interface {
 		ChannelStream(context.Context, bool, io.Writer) error
+		ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 		ServiceStream(context.Context, uint16, bool, io.Writer) error
 	}, error)
 }
@@ -160,7 +161,7 @@ func (h *Handler) GetProgram(ctx context.Context, params apigen.GetProgramParams
 }
 
 func (h *Handler) GetProgramStream(ctx context.Context, params apigen.GetProgramStreamParams) (apigen.GetProgramStreamRes, error) {
-	return &apigen.GetProgramStreamDef{StatusCode: http.StatusNotImplemented}, nil
+	return GetProgramStream(ctx, h, params)
 }
 
 func (h *Handler) GetPrograms(ctx context.Context, params apigen.GetProgramsParams) (apigen.GetProgramsRes, error) {

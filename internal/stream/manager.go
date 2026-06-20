@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 )
 
@@ -41,6 +42,7 @@ type sessionKey struct {
 
 type Session interface {
 	ChannelStream(context.Context, bool, io.Writer) error
+	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
 	ScanServices(context.Context, io.Writer) error
 	CollectEITS(context.Context, io.Writer) error

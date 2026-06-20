@@ -77,6 +77,10 @@ func (c *RemoteClient) ServiceStream(ctx context.Context, channelType, channel s
 	return c.stream(ctx, decode, dst, "channels", channelType, channel, "services", fmt.Sprint(serviceID), "stream")
 }
 
+func (c *RemoteClient) ProgramStream(ctx context.Context, programID int64, decode bool, dst io.Writer) error {
+	return c.stream(ctx, decode, dst, "programs", fmt.Sprint(programID), "stream")
+}
+
 func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel string, dst io.Writer) error {
 	var services []remoteService
 	if err := c.getJSON(ctx, &services, "channels", channelType, channel, "services"); err != nil {
@@ -134,6 +138,12 @@ func (c *RemoteClient) stream(ctx context.Context, decode bool, dst io.Writer, e
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusNotFound {
+			return ErrChannelNotFound
+		}
+		if resp.StatusCode == http.StatusServiceUnavailable {
+			return ErrTunerUnavailable
+		}
 		return fmt.Errorf("remote stream status: %s", resp.Status)
 	}
 	_, err = io.Copy(dst, resp.Body)
@@ -363,6 +373,10 @@ func (s *RemoteSession) ChannelStream(ctx context.Context, decode bool, dst io.W
 
 func (s *RemoteSession) ServiceStream(ctx context.Context, serviceID uint16, decode bool, dst io.Writer) error {
 	return s.client.ServiceStream(ctx, s.routeChannel.Type, s.routeChannel.Channel, serviceID, decode, dst)
+}
+
+func (s *RemoteSession) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
+	return s.client.ProgramStream(ctx, p.ID, decode, dst)
 }
 
 func (s *RemoteSession) ScanServices(ctx context.Context, dst io.Writer) error {

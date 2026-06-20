@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/program"
 )
 
 func TestRemoteClientCheckAvailableAndBasicAuth(t *testing.T) {
@@ -93,6 +94,49 @@ func TestRemoteSessionStreamsChannelAndService(t *testing.T) {
 	}
 	if len(queries) != 2 || queries[0] != "" || queries[1] != "decode=1" {
 		t.Fatalf("queries = %#v", queries)
+	}
+}
+
+func TestRemoteSessionStreamsProgram(t *testing.T) {
+	var path string
+	var query string
+	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		path = r.URL.Path
+		query = r.URL.RawQuery
+		if r.URL.Path != "/api/programs/10100009/stream" {
+			return stringResponse(http.StatusNotFound, ""), nil
+		}
+		return stringResponse(http.StatusOK, "program-ts"), nil
+	})}
+	session := NewRemoteSession(RemoteSessionConfig{Client: client})
+
+	var out bytes.Buffer
+	if err := session.ProgramStream(context.Background(), &program.Program{ID: 10100009}, true, &out); err != nil {
+		t.Fatal(err)
+	}
+	if path != "/api/programs/10100009/stream" || query != "decode=1" {
+		t.Fatalf("request = %s?%s", path, query)
+	}
+	if out.String() != "program-ts" {
+		t.Fatalf("program stream = %q, want program-ts", out.String())
+	}
+}
+
+func TestRemoteProgramStreamMapsStatusErrors(t *testing.T) {
+	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return stringResponse(http.StatusNotFound, ""), nil
+	})}
+	if err := client.ProgramStream(context.Background(), 1, false, io.Discard); err != ErrChannelNotFound {
+		t.Fatalf("ProgramStream 404 error = %v, want ErrChannelNotFound", err)
+	}
+
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return stringResponse(http.StatusServiceUnavailable, ""), nil
+	})}
+	if err := client.ProgramStream(context.Background(), 1, false, io.Discard); err != ErrTunerUnavailable {
+		t.Fatalf("ProgramStream 503 error = %v, want ErrTunerUnavailable", err)
 	}
 }
 
