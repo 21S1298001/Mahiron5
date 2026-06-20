@@ -297,6 +297,10 @@ func (m fakeProgramStreamManager) GetOrCreate(context.Context, string, string) (
 	return m.session, nil
 }
 
+func (m fakeProgramStreamManager) ActiveSessionCount() int {
+	return 0
+}
+
 type fakeProgramStreamSession struct {
 	data string
 	err  error

@@ -22,3 +22,7 @@ func (a *APIStreamAdapter) GetOrCreate(ctx context.Context, channelType, channel
 }, error) {
 	return a.manager.GetOrCreate(ctx, channelType, channel)
 }
+
+func (a *APIStreamAdapter) ActiveSessionCount() int {
+	return a.manager.ActiveSessionCount()
+}

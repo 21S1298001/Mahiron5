@@ -58,6 +58,7 @@ type StreamManager interface {
 		ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 		ServiceStream(context.Context, uint16, bool, io.Writer) error
 	}, error)
+	ActiveSessionCount() int
 }
 
 type TunerManager interface {

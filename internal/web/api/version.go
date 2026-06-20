@@ -6,9 +6,11 @@ import (
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
 )
 
+const currentVersion = "5.0.0"
+
 func CheckVersion(ctx context.Context, h *Handler) (apigen.CheckVersionRes, error) {
 	return &apigen.Version{
-		Current: apigen.NewOptString("5.0.0"),
+		Current: apigen.NewOptString(currentVersion),
 		Latest:  apigen.NewOptString(""),
 		Server:  apigen.NewOptString("mahiron"),
 	}, nil

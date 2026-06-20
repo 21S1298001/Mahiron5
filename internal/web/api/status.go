@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -14,32 +16,54 @@ const epgGatherJobKeyPrefix = "epg-gather:nid:"
 func GetStatus(ctx context.Context, h *Handler) (apigen.GetStatusRes, error) {
 	now := time.Now()
 	result := &apigen.Status{
-		Time: apigen.NewOptInt(int(now.UnixMilli())),
+		Time:    apigen.NewOptInt(int(now.UnixMilli())),
+		Version: apigen.NewOptString(currentVersion),
+		Process: apigen.NewOptStatusProcess(apiStatusProcess()),
 	}
 
-	epg, err := buildStatusEpg(ctx, h, now)
-	if err != nil {
-		return nil, err
-	}
+	epg := buildStatusEpg(ctx, h, now)
 	result.Epg = apigen.NewOptStatusEpg(*epg)
+
+	if streamCount, ok := buildStatusStreamCount(h); ok {
+		result.StreamCount = apigen.NewOptStatusStreamCount(streamCount)
+	}
 
 	return result, nil
 }
 
-func buildStatusEpg(ctx context.Context, h *Handler, now time.Time) (*apigen.StatusEpg, error) {
+func apiStatusProcess() apigen.StatusProcess {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	return apigen.StatusProcess{
+		Arch:     apigen.NewOptString(runtime.GOARCH),
+		Platform: apigen.NewOptString(runtime.GOOS),
+		Pid:      apigen.NewOptInt(os.Getpid()),
+		MemoryUsage: apigen.NewOptStatusProcessMemoryUsage(apigen.StatusProcessMemoryUsage{
+			Rss:       apigen.NewOptInt(int(mem.Sys)),
+			HeapTotal: apigen.NewOptInt(int(mem.HeapSys)),
+			HeapUsed:  apigen.NewOptInt(int(mem.HeapAlloc)),
+		}),
+	}
+}
+
+func buildStatusEpg(ctx context.Context, h *Handler, now time.Time) *apigen.StatusEpg {
 	epg := &apigen.StatusEpg{}
 
-	for _, key := range h.jobManager.GetActiveJobKeysByPrefix(epgGatherJobKeyPrefix) {
-		nidStr := strings.TrimPrefix(key, epgGatherJobKeyPrefix)
-		nid, err := strconv.ParseUint(nidStr, 10, 16)
-		if err != nil {
-			continue
+	if h.jobManager != nil {
+		for _, key := range h.jobManager.GetActiveJobKeysByPrefix(epgGatherJobKeyPrefix) {
+			nidStr := strings.TrimPrefix(key, epgGatherJobKeyPrefix)
+			nid, err := strconv.ParseUint(nidStr, 10, 16)
+			if err != nil {
+				continue
+			}
+			epg.GatheringNetworks = append(epg.GatheringNetworks, apigen.NetworkId(nid))
 		}
-		epg.GatheringNetworks = append(epg.GatheringNetworks, apigen.NetworkId(nid))
 	}
 
-	if count, err := h.programManager.Count(ctx); err == nil {
-		epg.StoredEvents = apigen.NewOptInt(count)
+	if h.programManager != nil {
+		if count, err := h.programManager.Count(ctx); err == nil {
+			epg.StoredEvents = apigen.NewOptInt(count)
+		}
 	}
 
 	if h.serviceManager != nil {
@@ -53,5 +77,30 @@ func buildStatusEpg(ctx context.Context, h *Handler, now time.Time) (*apigen.Sta
 		}
 	}
 
-	return epg, nil
+	return epg
+}
+
+func buildStatusStreamCount(h *Handler) (apigen.StatusStreamCount, bool) {
+	var streamCount apigen.StatusStreamCount
+	hasValue := false
+
+	if h.tunerManager != nil {
+		using := 0
+		for _, status := range h.tunerManager.Statuses() {
+			if status.IsUsing {
+				using++
+			}
+		}
+		streamCount.TunerDevice = apigen.NewOptInt(using)
+		hasValue = true
+	}
+
+	if h.streamManager != nil {
+		count := h.streamManager.ActiveSessionCount()
+		streamCount.TsFilter = apigen.NewOptInt(count)
+		streamCount.Decoder = apigen.NewOptInt(count)
+		hasValue = true
+	}
+
+	return streamCount, hasValue
 }

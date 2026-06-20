@@ -3,6 +3,9 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"io"
+	"runtime"
 	"testing"
 	"time"
 
@@ -11,6 +14,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/job"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
+	"github.com/21S1298001/Mahiron5/internal/tuner"
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
 )
 
@@ -72,6 +76,32 @@ func TestGetStatusExposesEPGSnapshot(t *testing.T) {
 	if !ok {
 		t.Fatalf("response type = %T, want *Status", res)
 	}
+	if !status.Time.IsSet() || status.Time.Value <= 0 {
+		t.Fatalf("Time = %+v, want positive value", status.Time)
+	}
+	if status.Version.Value != currentVersion {
+		t.Errorf("Version = %q, want %q", status.Version.Value, currentVersion)
+	}
+	if !status.Process.IsSet() {
+		t.Fatal("status.Process is unset")
+	}
+	process := status.Process.Value
+	if process.Arch.Value != runtime.GOARCH {
+		t.Errorf("Process.Arch = %q, want %q", process.Arch.Value, runtime.GOARCH)
+	}
+	if process.Platform.Value != runtime.GOOS {
+		t.Errorf("Process.Platform = %q, want %q", process.Platform.Value, runtime.GOOS)
+	}
+	if process.Pid.Value <= 0 {
+		t.Errorf("Process.Pid = %d, want positive value", process.Pid.Value)
+	}
+	if !process.MemoryUsage.IsSet() {
+		t.Fatal("Process.MemoryUsage is unset")
+	}
+	memory := process.MemoryUsage.Value
+	if memory.Rss.Value <= 0 || memory.HeapTotal.Value <= 0 || memory.HeapUsed.Value <= 0 {
+		t.Errorf("MemoryUsage = %+v, want positive values", memory)
+	}
 	if !status.Epg.IsSet() {
 		t.Fatal("status.Epg is unset")
 	}
@@ -94,4 +124,156 @@ func TestGetStatusExposesEPGSnapshot(t *testing.T) {
 	if epg.LastUpdatedAt.Value != 1000 {
 		t.Errorf("LastUpdatedAt = %d, want 1000", epg.LastUpdatedAt.Value)
 	}
+}
+
+func TestGetStatusExposesStreamAndTunerCounts(t *testing.T) {
+	handler := NewHandler(HandlerConfig{
+		StreamManager: fakeStatusStreamManager{active: 3},
+		TunerManager: fakeStatusTunerManager{statuses: []tuner.Status{
+			{IsUsing: true},
+			{IsUsing: false},
+			{IsUsing: true},
+		}},
+	})
+
+	res, err := handler.GetStatus(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := res.(*apigen.Status)
+	if !status.StreamCount.IsSet() {
+		t.Fatal("StreamCount is unset")
+	}
+	streamCount := status.StreamCount.Value
+	if streamCount.TunerDevice.Value != 2 {
+		t.Errorf("TunerDevice = %d, want 2", streamCount.TunerDevice.Value)
+	}
+	if streamCount.TsFilter.Value != 3 {
+		t.Errorf("TsFilter = %d, want 3", streamCount.TsFilter.Value)
+	}
+	if streamCount.Decoder.Value != 3 {
+		t.Errorf("Decoder = %d, want 3", streamCount.Decoder.Value)
+	}
+}
+
+func TestGetStatusToleratesMissingManagers(t *testing.T) {
+	handler := NewHandler(HandlerConfig{})
+
+	res, err := handler.GetStatus(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := res.(*apigen.Status)
+	if !status.Process.IsSet() {
+		t.Fatal("Process is unset")
+	}
+	if !status.Epg.IsSet() {
+		t.Fatal("Epg is unset")
+	}
+	epg := status.Epg.Value
+	if epg.StoredEvents.IsSet() || epg.StaleServices.IsSet() || epg.FailedServices.IsSet() || epg.LastUpdatedAt.IsSet() {
+		t.Fatalf("Epg optional fields should be unset without managers: %+v", epg)
+	}
+	if status.StreamCount.IsSet() {
+		t.Fatalf("StreamCount should be unset without stream/tuner managers: %+v", status.StreamCount.Value)
+	}
+}
+
+func TestGetStatusToleratesPartialEPGFailures(t *testing.T) {
+	handler := NewHandler(HandlerConfig{
+		ProgramManager: failingStatusProgramManager{},
+		ServiceManager: failingStatusServiceManager{},
+	})
+
+	res, err := handler.GetStatus(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := res.(*apigen.Status)
+	if !status.Epg.IsSet() {
+		t.Fatal("Epg is unset")
+	}
+	epg := status.Epg.Value
+	if epg.StoredEvents.IsSet() {
+		t.Fatalf("StoredEvents = %+v, want unset after Count error", epg.StoredEvents)
+	}
+	if epg.StaleServices.IsSet() || epg.FailedServices.IsSet() || epg.LastUpdatedAt.IsSet() {
+		t.Fatalf("service EPG fields should be unset after EPGSummary error: %+v", epg)
+	}
+}
+
+type fakeStatusStreamManager struct {
+	active int
+}
+
+func (m fakeStatusStreamManager) GetOrCreate(context.Context, string, string) (interface {
+	ChannelStream(context.Context, bool, io.Writer) error
+	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
+	ServiceStream(context.Context, uint16, bool, io.Writer) error
+}, error) {
+	return nil, errors.New("unexpected GetOrCreate call")
+}
+
+func (m fakeStatusStreamManager) ActiveSessionCount() int {
+	return m.active
+}
+
+type fakeStatusTunerManager struct {
+	statuses []tuner.Status
+}
+
+func (m fakeStatusTunerManager) KillProcess(context.Context, int) error {
+	return errors.New("unexpected KillProcess call")
+}
+
+func (m fakeStatusTunerManager) Status(int) (tuner.Status, bool) {
+	return tuner.Status{}, false
+}
+
+func (m fakeStatusTunerManager) Statuses() []tuner.Status {
+	return append([]tuner.Status(nil), m.statuses...)
+}
+
+type failingStatusProgramManager struct{}
+
+func (m failingStatusProgramManager) Count(context.Context) (int, error) {
+	return 0, errors.New("count failed")
+}
+
+func (m failingStatusProgramManager) Get(context.Context, int64) (*program.Program, bool, error) {
+	return nil, false, errors.New("unexpected Get call")
+}
+
+func (m failingStatusProgramManager) List(context.Context, program.Query) ([]*program.Program, error) {
+	return nil, errors.New("unexpected List call")
+}
+
+type failingStatusServiceManager struct{}
+
+func (m failingStatusServiceManager) EPGSummary(context.Context, int64, int64) (int, int, *int64, error) {
+	return 0, 0, nil, errors.New("summary failed")
+}
+
+func (m failingStatusServiceManager) GetChannel(string, string) *config.ChannelConfig {
+	return nil
+}
+
+func (m failingStatusServiceManager) GetChannels() config.ChannelsConfig {
+	return nil
+}
+
+func (m failingStatusServiceManager) GetServiceByChannelAndId(context.Context, string, string, string) (*service.Service, error) {
+	return nil, errors.New("unexpected GetServiceByChannelAndId call")
+}
+
+func (m failingStatusServiceManager) GetServiceById(context.Context, string) (*service.Service, error) {
+	return nil, errors.New("unexpected GetServiceById call")
+}
+
+func (m failingStatusServiceManager) GetServices(context.Context) ([]*service.Service, error) {
+	return nil, errors.New("unexpected GetServices call")
+}
+
+func (m failingStatusServiceManager) GetServicesByChannel(context.Context, string, string) ([]*service.Service, error) {
+	return nil, errors.New("unexpected GetServicesByChannel call")
 }
