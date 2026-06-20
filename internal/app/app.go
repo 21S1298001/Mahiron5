@@ -73,13 +73,14 @@ func Run(ctx context.Context) int {
 	epgUpdater := epg.NewUpdater(programs)
 
 	streams := stream.NewStreamManager(stream.StreamManagerConfig{
-		Channels:     cfg.Channels,
-		Remotes:      cfg.Remotes,
-		EITCollector: epg.NewMirakcAribCollector(),
-		EITUpdater:   epgUpdater,
-		Filter:       filter.NewServiceFilter(),
-		Scanner:      servicescan.NewMirakcAribScanner(),
-		TunerManager: tuners,
+		Channels:       cfg.Channels,
+		Remotes:        cfg.Remotes,
+		EITCollector:   epg.NewMirakcAribCollector(),
+		EITUpdater:     epgUpdater,
+		Filter:         filter.NewServiceFilter(),
+		ProgramUpdater: programs,
+		Scanner:        servicescan.NewMirakcAribScanner(),
+		TunerManager:   tuners,
 	})
 	serviceScanner := stream.NewServiceScannerAdapter(streams)
 	epgStreams := stream.NewEPGCollectorAdapter(streams)

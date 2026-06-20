@@ -13,15 +13,16 @@ import (
 )
 
 type StreamManager struct {
-	mu           sync.Mutex
-	eitCollector EITCollector
-	eitUpdater   EITSectionUpdater
-	filter       ServiceFilter
-	remotes      map[string]*RemoteClient
-	scanner      ServiceScanner
-	sessions     map[sessionKey]Session
-	sessionTypes map[sessionKey]string
-	sources      *SourcePool
+	mu             sync.Mutex
+	eitCollector   EITCollector
+	eitUpdater     EITSectionUpdater
+	filter         ServiceFilter
+	programUpdater ProgramUpdater
+	remotes        map[string]*RemoteClient
+	scanner        ServiceScanner
+	sessions       map[sessionKey]Session
+	sessionTypes   map[sessionKey]string
+	sources        *SourcePool
 }
 
 type StreamManagerConfig struct {
@@ -31,6 +32,7 @@ type StreamManagerConfig struct {
 	EITCollector       EITCollector
 	EITUpdater         EITSectionUpdater
 	Remotes            config.RemotesConfig
+	ProgramUpdater     ProgramUpdater
 	Scanner            ServiceScanner
 	TunerManager       TunerManager
 }
@@ -60,14 +62,15 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		remotes[remote.Name] = newRemoteClient(remote)
 	}
 	return &StreamManager{
-		eitCollector: cfg.EITCollector,
-		eitUpdater:   cfg.EITUpdater,
-		filter:       cfg.Filter,
-		remotes:      remotes,
-		scanner:      cfg.Scanner,
-		sessions:     map[sessionKey]Session{},
-		sessionTypes: map[sessionKey]string{},
-		sources:      NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
+		eitCollector:   cfg.EITCollector,
+		eitUpdater:     cfg.EITUpdater,
+		filter:         cfg.Filter,
+		programUpdater: cfg.ProgramUpdater,
+		remotes:        remotes,
+		scanner:        cfg.Scanner,
+		sessions:       map[sessionKey]Session{},
+		sessionTypes:   map[sessionKey]string{},
+		sources:        NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
 	}
 }
 
@@ -101,6 +104,9 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		return nil, err
 	}
 	if lease.Session != nil {
+		if remoteSession, ok := lease.Session.(*RemoteSession); ok {
+			remoteSession.StartProgramEventSync(m.programUpdater)
+		}
 		m.sessions[key] = lease.Session
 		m.sessionTypes[key] = lease.RouteType
 		slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", lease.RouteType, "source", "remote")

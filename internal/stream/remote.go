@@ -1,8 +1,11 @@
 package stream
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,6 +13,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
@@ -22,6 +26,10 @@ type RemoteClient struct {
 	baseURL    string
 	basicAuth  *config.BasicAuthConfig
 	httpClient *http.Client
+}
+
+type ProgramUpdater interface {
+	UpsertPrograms(context.Context, []*program.Program) error
 }
 
 var newRemoteClient = NewRemoteClient
@@ -127,6 +135,26 @@ func (c *RemoteClient) ListServicePrograms(ctx context.Context, networkID, servi
 		programs[i] = remotePrograms[i].Program()
 	}
 	return programs, nil
+}
+
+func (c *RemoteClient) StreamProgramEvents(ctx context.Context, updater ProgramUpdater) error {
+	req, err := c.newRequest(ctx, http.MethodGet, "events", "stream")
+	if err != nil {
+		return err
+	}
+	query := req.URL.Query()
+	query.Set("resource", "program")
+	req.URL.RawQuery = query.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("remote events stream status: %s", resp.Status)
+	}
+	return readRemoteProgramEvents(ctx, resp.Body, updater)
 }
 
 func (c *RemoteClient) stream(ctx context.Context, decode bool, dst io.Writer, elems ...string) error {
@@ -254,6 +282,55 @@ type remoteProgram struct {
 	Series       *remoteSeries       `json:"series"`
 }
 
+type remoteEvent struct {
+	Resource string          `json:"resource"`
+	Type     string          `json:"type"`
+	Data     json.RawMessage `json:"data"`
+}
+
+func readRemoteProgramEvents(ctx context.Context, src io.Reader, updater ProgramUpdater) error {
+	scanner := bufio.NewScanner(src)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 || bytes.Equal(line, []byte("[")) || bytes.Equal(line, []byte(",")) || bytes.Equal(line, []byte("]")) {
+			continue
+		}
+		line = bytes.TrimSuffix(line, []byte(","))
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var event remoteEvent
+		if err := json.Unmarshal(line, &event); err != nil {
+			slog.Debug("failed to decode remote program event", "err", err)
+			continue
+		}
+		if event.Resource != "program" || event.Type != "update" && event.Type != "create" {
+			continue
+		}
+		var remote remoteProgram
+		if err := json.Unmarshal(event.Data, &remote); err != nil {
+			slog.Debug("failed to decode remote program event data", "err", err)
+			continue
+		}
+		if err := updater.UpsertPrograms(ctx, []*program.Program{remote.Program()}); err != nil {
+			return err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func (p remoteProgram) Program() *program.Program {
 	prog := &program.Program{
 		ID:           p.ID,
@@ -375,6 +452,8 @@ type RemoteSessionConfig struct {
 type RemoteSession struct {
 	channel      *config.ChannelConfig
 	client       *RemoteClient
+	eventCancel  context.CancelFunc
+	eventOnce    sync.Once
 	routeChannel *config.ChannelConfig
 }
 
@@ -406,6 +485,23 @@ func (s *RemoteSession) ListServicePrograms(ctx context.Context, networkID, serv
 	return s.client.ListServicePrograms(ctx, networkID, serviceID)
 }
 
+func (s *RemoteSession) StartProgramEventSync(updater ProgramUpdater) {
+	if updater == nil {
+		return
+	}
+	s.eventOnce.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.eventCancel = cancel
+		go func() {
+			slog.Debug("starting remote program event sync")
+			defer slog.Debug("finished remote program event sync")
+			if err := s.client.StreamProgramEvents(ctx, updater); err != nil && ctx.Err() == nil {
+				slog.Warn("remote program event sync stopped", "err", err)
+			}
+		}()
+	})
+}
+
 func (s *RemoteSession) CollectEITS(context.Context, io.Writer) error {
 	return ErrEITCollectorNotConfigured
 }
@@ -415,5 +511,8 @@ func (s *RemoteSession) CollectEITPF(context.Context, io.Writer) error {
 }
 
 func (s *RemoteSession) Stop(context.Context) error {
+	if s.eventCancel != nil {
+		s.eventCancel()
+	}
 	return nil
 }

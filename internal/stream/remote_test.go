@@ -335,6 +335,100 @@ func TestRemoteClientListServicePrograms(t *testing.T) {
 	}
 }
 
+func TestRemoteClientStreamProgramEventsUsesRemoteAPI(t *testing.T) {
+	var auth string
+	var path string
+	var query string
+	client := NewRemoteClient(config.RemoteConfig{
+		URL:       "http://remote.local/api",
+		BasicAuth: &config.BasicAuthConfig{Username: "user", Password: "pass"},
+	})
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		auth = r.Header.Get("Authorization")
+		path = r.URL.Path
+		query = r.URL.RawQuery
+		return stringResponse(http.StatusOK, "[\n"), nil
+	})}
+
+	if err := client.StreamProgramEvents(context.Background(), &recordingProgramUpdater{}); err != nil {
+		t.Fatal(err)
+	}
+	if path != "/api/events/stream" || query != "resource=program" {
+		t.Fatalf("request = %s?%s", path, query)
+	}
+	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:pass"))
+	if auth != wantAuth {
+		t.Fatalf("Authorization = %q, want %q", auth, wantAuth)
+	}
+}
+
+func TestReadRemoteProgramEventsUpsertsProgramUpdates(t *testing.T) {
+	src := strings.NewReader(`[
+{"resource":"program","type":"update","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4,"startAt":1000,"duration":1800000,"isFree":true,"name":"updated"}}
+,
+{"resource":"program","type":"create","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"startAt":2000,"duration":1800000,"isFree":false,"name":"next"}},
+`)
+	updater := &recordingProgramUpdater{}
+
+	if err := readRemoteProgramEvents(context.Background(), src, updater); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(updater.programs), 2; got != want {
+		t.Fatalf("upserted programs = %d, want %d", got, want)
+	}
+	if updater.programs[0].ID != 401010001 || updater.programs[0].Name != "updated" || updater.programs[1].EventID != 2 {
+		t.Fatalf("programs = %#v", updater.programs)
+	}
+}
+
+func TestReadRemoteProgramEventsIgnoresMalformedAndFilteredEvents(t *testing.T) {
+	src := strings.NewReader(`[
+not-json
+{"resource":"service","type":"update","data":{"id":1}}
+{"resource":"program","type":"remove","data":{"id":401010001,"eventId":1,"serviceId":101,"networkId":4}}
+{"resource":"program","type":"update","data":{"id":401010002,"eventId":2,"serviceId":101,"networkId":4,"name":"kept"}}
+{"resource":"program","type":"update","data":}
+`)
+	updater := &recordingProgramUpdater{}
+
+	if err := readRemoteProgramEvents(context.Background(), src, updater); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(updater.programs), 1; got != want {
+		t.Fatalf("upserted programs = %d, want %d", got, want)
+	}
+	if updater.programs[0].ID != 401010002 || updater.programs[0].Name != "kept" {
+		t.Fatalf("program = %#v", updater.programs[0])
+	}
+}
+
+func TestReadRemoteProgramEventsStopsCleanlyOnCanceledContextAndEOF(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	updater := &recordingProgramUpdater{}
+
+	err := readRemoteProgramEvents(ctx, strings.NewReader(`{"resource":"program","type":"update","data":{"id":1}}`), updater)
+	if err != nil {
+		t.Fatalf("canceled read error = %v, want nil", err)
+	}
+	if len(updater.programs) != 0 {
+		t.Fatalf("upserted after cancellation = %#v", updater.programs)
+	}
+
+	if err := readRemoteProgramEvents(context.Background(), strings.NewReader("[\n"), updater); err != nil {
+		t.Fatalf("EOF read error = %v, want nil", err)
+	}
+}
+
+type recordingProgramUpdater struct {
+	programs []*program.Program
+}
+
+func (u *recordingProgramUpdater) UpsertPrograms(_ context.Context, programs []*program.Program) error {
+	u.programs = append(u.programs, programs...)
+	return nil
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
