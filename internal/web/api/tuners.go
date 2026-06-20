@@ -25,6 +25,14 @@ func GetTuner(_ context.Context, h *Handler, params apigen.GetTunerParams) (apig
 	return apiTuner(status), nil
 }
 
+func GetTunerProcess(_ context.Context, h *Handler, params apigen.GetTunerProcessParams) (apigen.GetTunerProcessRes, error) {
+	status, ok := h.tunerManager.Status(params.Index)
+	if !ok {
+		return notFound("tuner not found"), nil
+	}
+	return &apigen.TunerProcess{Pid: status.PID}, nil
+}
+
 func apiTuner(status tuner.Status) *apigen.TunerDevice {
 	result := &apigen.TunerDevice{
 		Index: status.Index, Name: status.Name, Types: status.Types,

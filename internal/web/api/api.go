@@ -202,7 +202,7 @@ func (h *Handler) GetTuner(ctx context.Context, params apigen.GetTunerParams) (a
 }
 
 func (h *Handler) GetTunerProcess(ctx context.Context, params apigen.GetTunerProcessParams) (apigen.GetTunerProcessRes, error) {
-	return notImplemented("GET /tuners/{index}/process is not implemented"), nil
+	return GetTunerProcess(ctx, h, params)
 }
 
 func (h *Handler) GetTuners(ctx context.Context) (apigen.GetTunersRes, error) {
