@@ -7,9 +7,6 @@ import (
 )
 
 func TestLoadAndParseTunersConfig(t *testing.T) {
-	tr := true
-	fa := false
-
 	type args struct {
 		filePath string
 	}
@@ -26,51 +23,30 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 			},
 			want: TunersConfig{
 				{
-					Name:                   "Tuner1",
-					Types:                  []string{"GR"},
-					Command:                "echo \"Hello World\"",
-					DvbDevicePath:          "",
-					RemoteMirakurunHost:    "",
-					RemoteMirakurunPort:    0,
-					RemoteMirakurunDecoder: &tr,
-					Decoder:                "test",
-					IsDisabled:             false,
-					Remote:                 nil,
+					Name:          "Tuner1",
+					Types:         []string{"GR"},
+					Command:       "echo \"Hello World\"",
+					DvbDevicePath: "",
+					Decoder:       "test",
+					IsDisabled:    false,
+					Remote:        nil,
 				},
 				{
-					Name:                   "Tuner2",
-					Types:                  []string{"SKY"},
-					Command:                "echo \"Hello World\"",
-					DvbDevicePath:          "/dev/dvb/adapter0",
-					RemoteMirakurunHost:    "",
-					RemoteMirakurunPort:    0,
-					RemoteMirakurunDecoder: &tr,
-					Decoder:                "",
-					IsDisabled:             false,
-					Remote:                 nil,
+					Name:          "Tuner2",
+					Types:         []string{"SKY"},
+					Command:       "echo \"Hello World\"",
+					DvbDevicePath: "/dev/dvb/adapter0",
+					Decoder:       "",
+					IsDisabled:    false,
+					Remote:        nil,
 				},
 				{
-					Name:                   "Tuner3",
-					Types:                  []string{"BS"},
-					Command:                "",
-					DvbDevicePath:          "",
-					RemoteMirakurunHost:    "localhost",
-					RemoteMirakurunPort:    40772,
-					RemoteMirakurunDecoder: &fa,
-					Decoder:                "",
-					IsDisabled:             true,
-					Remote:                 nil,
-				},
-				{
-					Name:                   "Tuner4",
-					Types:                  []string{"CATV_BS", "BS"},
-					Command:                "",
-					DvbDevicePath:          "",
-					RemoteMirakurunHost:    "",
-					RemoteMirakurunPort:    0,
-					RemoteMirakurunDecoder: &tr,
-					Decoder:                "",
-					IsDisabled:             false,
+					Name:          "Tuner4",
+					Types:         []string{"CATV_BS", "BS"},
+					Command:       "",
+					DvbDevicePath: "",
+					Decoder:       "",
+					IsDisabled:    false,
 					Remote: &Remote{
 						Url:   "http://localhost:40772/api",
 						Types: map[string]string{"BS": "BS", "CATV_BS": "SKY"},
@@ -115,22 +91,6 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 			name: "Multiple tuner sources",
 			args: args{
 				filePath: "testdata/tuners-multiple-sources.yml",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "Only specified remoteMirakurunHost",
-			args: args{
-				filePath: "testdata/tuners-mirakurun-host.yml",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "Only specified remoteMirakurunPort",
-			args: args{
-				filePath: "testdata/tuners-mirakurun-port.yml",
 			},
 			want:    nil,
 			wantErr: true,

@@ -77,3 +77,20 @@ func TestTunerManagerSelectsTunersRoundRobin(t *testing.T) {
 		}
 	}
 }
+
+func TestTunerManagerReservesDVBCommandTuner(t *testing.T) {
+	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "dvb", Types: []string{"SKY"}, Command: "true", DvbDevicePath: "/dev/null", Decoder: "decode-dvb"},
+	}})
+	channel := &config.ChannelConfig{Type: "SKY", Channel: "JCSAT3A"}
+	device, decoder, err := mgr.AcquireDevice(context.Background(), "SKY", channel, channel, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoder != "decode-dvb" {
+		t.Fatalf("decoder = %q, want decode-dvb", decoder)
+	}
+	if err := device.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -95,7 +95,8 @@ func TestTunerStatusMarksUnexpectedProcessExitAsFault(t *testing.T) {
 func TestDisabledAndRemoteTunerStatus(t *testing.T) {
 	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "disabled", Types: []string{"GR"}, Command: "sleep 1", IsDisabled: true},
-		{Name: "remote", Types: []string{"BS"}, RemoteMirakurunHost: "localhost", RemoteMirakurunPort: 40772},
+		{Name: "remote", Types: []string{"BS"}, Remote: &config.Remote{Url: "http://localhost:40772/api"}},
+		{Name: "dvb", Types: []string{"SKY"}, Command: "sleep 1", DvbDevicePath: "/dev/null"},
 	}})
 	statuses := mgr.Statuses()
 	if statuses[0].IsAvailable || statuses[0].IsFree {
@@ -104,7 +105,38 @@ func TestDisabledAndRemoteTunerStatus(t *testing.T) {
 	if !statuses[1].IsRemote || statuses[1].IsAvailable {
 		t.Fatalf("unexpected remote tuner status: %+v", statuses[1])
 	}
-	if _, ok := mgr.Status(2); ok {
+	if !statuses[2].IsAvailable || !statuses[2].IsFree {
+		t.Fatalf("dvb tuner is not available: %+v", statuses[2])
+	}
+	if _, ok := mgr.Status(3); ok {
 		t.Fatal("out-of-range tuner status found")
 	}
 }
+
+func TestTunerStatusOmitsProcessFieldsForNonProcessDevice(t *testing.T) {
+	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "test", Types: []string{"GR"}, Command: "sleep 1"},
+	}})
+	item := mgr.tuners[0]
+	mgr.runtime[item].device = fakeStatusDevice{done: make(chan struct{})}
+
+	status, ok := mgr.Status(0)
+	if !ok {
+		t.Fatal("status not found")
+	}
+	if status.Command != "" || status.PID != 0 {
+		t.Fatalf("process fields = %q/%d, want empty/0", status.Command, status.PID)
+	}
+}
+
+type fakeStatusDevice struct {
+	done chan struct{}
+}
+
+func (d fakeStatusDevice) Start(context.Context, io.Writer) error { return nil }
+
+func (d fakeStatusDevice) Stop(context.Context) error { return nil }
+
+func (d fakeStatusDevice) Done() <-chan struct{} { return d.done }
+
+func (d fakeStatusDevice) Err() error { return nil }

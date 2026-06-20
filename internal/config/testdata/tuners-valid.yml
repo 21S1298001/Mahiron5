@@ -11,14 +11,6 @@
   dvbDevicePath: /dev/dvb/adapter0
   isDisabled: false
 
-- name: Tuner3
-  types:
-    - BS
-  remoteMirakurunHost: localhost
-  remoteMirakurunPort: 40772
-  remoteMirakurunDecoder: false
-  isDisabled: true
-
 - name: Tuner4
   types:
     - CATV_BS

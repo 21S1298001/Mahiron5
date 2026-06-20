@@ -77,12 +77,16 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 				continue
 			}
 			found = true
-			if item.Command() == "" {
+			if !item.Usable() {
 				continue
 			}
 			usable = true
 			runtime := tm.runtime[item]
 			if runtime.fault || tm.inUse[item] {
+				continue
+			}
+			base := item.NewDevice(tunedChannel)
+			if base == nil {
 				continue
 			}
 			tm.inUse[item] = true
@@ -92,7 +96,6 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 			runtime.requested = requestedChannel
 			runtime.tuned = tunedChannel
 			tm.nextByType[channelType] = (index + 1) % len(tm.tuners)
-			base := item.NewDevice(tunedChannel)
 			runtime.device = base
 			managed := &managedDevice{Device: base, manager: tm, tuner: item}
 			decoder := item.DecoderCommand()

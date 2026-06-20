@@ -2,7 +2,5 @@
   types:
     - GR
   command: invalid
-  remoteMirakurunHost: localhost
-  remoteMirakurunPort: 40772
   remote:
     url: http://localhost:40772/api

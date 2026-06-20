@@ -66,7 +66,7 @@ type tunerRuntime struct {
 	running   bool
 	stopped   bool
 	fault     bool
-	device    *TunerDevice
+	device    Device
 	requested *config.ChannelConfig
 	tuned     *config.ChannelConfig
 	users     map[string]*trackedUser
@@ -94,14 +94,15 @@ func (tm *TunerManager) Status(index int) (Status, bool) {
 func (tm *TunerManager) statusLocked(index int) Status {
 	item := tm.tuners[index]
 	runtime := tm.runtime[item]
-	available := !item.IsDisabled() && item.Command() != "" && !runtime.fault && !runtime.stopped
+	available := !item.IsDisabled() && item.Usable() && !runtime.fault && !runtime.stopped
 	status := Status{
 		Index: index, Name: item.Name(), Types: append([]string(nil), item.Groups()...),
 		IsAvailable: available, IsRemote: item.IsRemote(), IsFault: runtime.fault,
 	}
-	if runtime.device != nil {
-		status.Command = runtime.device.Command()
-		status.PID = runtime.device.Pid()
+	if process, ok := runtime.device.(ProcessStatus); ok {
+		info := process.ProcessStatus()
+		status.Command = info.Command
+		status.PID = info.PID
 	}
 	if runtime.requested != nil {
 		status.CurrentChannelType = runtime.requested.Type
