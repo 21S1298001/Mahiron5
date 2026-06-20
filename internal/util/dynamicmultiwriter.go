@@ -8,15 +8,26 @@ import (
 	"sync"
 )
 
+const dynamicMultiWriterBufferSize = 128
+
 type DynamicMultiWriter struct {
-	mutex   sync.RWMutex
-	writers []io.Writer
+	mutex       sync.RWMutex
+	subscribers []*dynamicMultiWriterSubscriber
+}
+
+type dynamicMultiWriterSubscriber struct {
+	writer io.Writer
+	ch     chan []byte
+	done   chan struct{}
+	once   sync.Once
 }
 
 func NewDynamicMultiWriter(writers ...io.Writer) *DynamicMultiWriter {
-	return &DynamicMultiWriter{
-		writers: writers,
+	d := &DynamicMultiWriter{}
+	for _, writer := range writers {
+		d.Attach(writer)
 	}
+	return d
 }
 
 func IsExpectedStreamCloseError(err error) bool {
@@ -27,18 +38,46 @@ func (d *DynamicMultiWriter) Attach(writer io.Writer) {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
-	d.writers = append(d.writers, writer)
+	sub := &dynamicMultiWriterSubscriber{
+		writer: writer,
+		ch:     make(chan []byte, dynamicMultiWriterBufferSize),
+		done:   make(chan struct{}),
+	}
+	d.subscribers = append(d.subscribers, sub)
+	go sub.run(func() {
+		d.detachSubscriber(sub, false)
+	})
 }
 
 func (d *DynamicMultiWriter) Detach(writer io.Writer) {
 	d.mutex.Lock()
-	defer d.mutex.Unlock()
-
-	for i, w := range d.writers {
-		if w == writer {
-			d.writers = slices.Delete(d.writers, i, i+1)
+	var sub *dynamicMultiWriterSubscriber
+	for _, candidate := range d.subscribers {
+		if candidate.writer == writer {
+			sub = candidate
 			break
 		}
+	}
+	d.mutex.Unlock()
+
+	if sub != nil {
+		d.detachSubscriber(sub, true)
+	}
+}
+
+func (d *DynamicMultiWriter) detachSubscriber(sub *dynamicMultiWriterSubscriber, wait bool) {
+	d.mutex.Lock()
+	for i, candidate := range d.subscribers {
+		if candidate == sub {
+			d.subscribers = slices.Delete(d.subscribers, i, i+1)
+			sub.close()
+			break
+		}
+	}
+	d.mutex.Unlock()
+
+	if wait {
+		<-sub.done
 	}
 }
 
@@ -46,56 +85,70 @@ func (d *DynamicMultiWriter) Count() int {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	return len(d.writers)
+	return len(d.subscribers)
 }
 
 func (d *DynamicMultiWriter) Close() {
 	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	subscribers := d.subscribers
+	d.subscribers = nil
+	d.mutex.Unlock()
 
-	for _, w := range d.writers {
-		if c, ok := w.(io.Closer); ok {
-			c.Close()
+	for _, sub := range subscribers {
+		sub.close()
+		if c, ok := sub.writer.(io.Closer); ok {
+			_ = c.Close()
 		}
 	}
-	d.writers = []io.Writer{}
 }
 
 func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 	d.mutex.RLock()
-	if len(d.writers) == 0 {
+	if len(d.subscribers) == 0 {
 		d.mutex.RUnlock()
 		return 0, io.ErrClosedPipe
 	}
 
-	var closed []io.Writer
-	var result error
-	for _, w := range d.writers {
-		written, err := w.Write(p)
-		if IsExpectedStreamCloseError(err) {
-			closed = append(closed, w)
-			continue
-		}
-		if err != nil {
-			result = errors.Join(result, err)
-			continue
-		}
-		if written != len(p) {
-			result = errors.Join(result, io.ErrShortWrite)
-		}
+	chunk := append([]byte(nil), p...)
+	for _, sub := range d.subscribers {
+		sub.enqueue(chunk)
 	}
-	remaining := len(d.writers) - len(closed)
 	d.mutex.RUnlock()
 
-	for _, w := range closed {
-		d.Detach(w)
+	return len(p), nil
+}
+
+func (s *dynamicMultiWriterSubscriber) enqueue(chunk []byte) {
+	select {
+	case s.ch <- chunk:
+		return
+	default:
 	}
 
-	if result != nil {
-		return 0, result
+	select {
+	case <-s.ch:
+	default:
 	}
-	if remaining == 0 {
-		return 0, io.ErrClosedPipe
+
+	select {
+	case s.ch <- chunk:
+	default:
 	}
-	return len(p), nil
+}
+
+func (s *dynamicMultiWriterSubscriber) run(onError func()) {
+	defer close(s.done)
+	for chunk := range s.ch {
+		written, err := s.writer.Write(chunk)
+		if err != nil || written != len(chunk) {
+			onError()
+			return
+		}
+	}
+}
+
+func (s *dynamicMultiWriterSubscriber) close() {
+	s.once.Do(func() {
+		close(s.ch)
+	})
 }

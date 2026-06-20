@@ -7,7 +7,37 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"time"
 )
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func waitUntil(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("condition was not satisfied before timeout")
+}
 
 func TestDynamicMultiWriter_Attach(t *testing.T) {
 	// Create initial buffers
@@ -159,9 +189,10 @@ func (d *discardWriter) Write(p []byte) (n int, err error) {
 
 func TestDynamicMultiWriter_Write(t *testing.T) {
 	t.Run("successful write to multiple writers", func(t *testing.T) {
-		buf1 := &bytes.Buffer{}
-		buf2 := &bytes.Buffer{}
+		buf1 := &syncBuffer{}
+		buf2 := &syncBuffer{}
 		d := NewDynamicMultiWriter(buf1, buf2)
+		defer d.Close()
 
 		data := []byte("test data")
 		n, err := d.Write(data)
@@ -172,6 +203,9 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 		if n != len(data) {
 			t.Errorf("Write() n = %v, want %v", n, len(data))
 		}
+		waitUntil(t, func() bool {
+			return buf1.String() == string(data) && buf2.String() == string(data)
+		})
 		if buf1.String() != string(data) {
 			t.Errorf("buf1 content = %v, want %v", buf1.String(), string(data))
 		}
@@ -181,20 +215,26 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 	})
 
 	t.Run("write with error", func(t *testing.T) {
-		buf := &bytes.Buffer{}
+		buf := &syncBuffer{}
 		errWriter := &mockErrorWriter{err: errors.New("write error")}
 		d := NewDynamicMultiWriter(buf, errWriter)
+		defer d.Close()
 
-		_, err := d.Write([]byte("test"))
-		if err == nil {
-			t.Error("Write() expected error, got nil")
+		n, err := d.Write([]byte("test"))
+		if err != nil {
+			t.Errorf("Write() error = %v, want nil", err)
 		}
+		if n != len("test") {
+			t.Errorf("Write() n = %v, want %v", n, len("test"))
+		}
+		waitUntil(t, func() bool { return d.Count() == 1 })
 	})
 
 	t.Run("write with closed pipe", func(t *testing.T) {
-		buf := &bytes.Buffer{}
+		buf := &syncBuffer{}
 		closedWriter := &mockErrorWriter{err: io.ErrClosedPipe}
 		d := NewDynamicMultiWriter(buf, closedWriter)
+		defer d.Close()
 
 		data := []byte("test")
 		n, err := d.Write(data)
@@ -204,6 +244,7 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 		if n != len(data) {
 			t.Errorf("Write() n = %v, want %v", n, len(data))
 		}
+		waitUntil(t, func() bool { return d.Count() == 1 })
 		if d.Count() != 1 {
 			t.Errorf("Count after closed pipe = %v, want 1", d.Count())
 		}
@@ -213,25 +254,35 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 		closedWriter1 := &mockErrorWriter{err: io.ErrClosedPipe}
 		closedWriter2 := &mockErrorWriter{err: io.ErrClosedPipe}
 		d := NewDynamicMultiWriter(closedWriter1, closedWriter2)
+		defer d.Close()
 
-		_, err := d.Write([]byte("test"))
-		if !errors.Is(err, io.ErrClosedPipe) {
-			t.Errorf("Write() error = %v, want %v", err, io.ErrClosedPipe)
+		n, err := d.Write([]byte("test"))
+		if err != nil {
+			t.Errorf("Write() error = %v, want nil", err)
 		}
+		if n != len("test") {
+			t.Errorf("Write() n = %v, want %v", n, len("test"))
+		}
+		waitUntil(t, func() bool { return d.Count() == 0 })
 		if got := d.Count(); got != 0 {
 			t.Errorf("Count after all closed pipes = %v, want 0", got)
 		}
 	})
 
 	t.Run("write with short write", func(t *testing.T) {
-		buf := &bytes.Buffer{}
+		buf := &syncBuffer{}
 		shortWriter := &mockShortWriter{}
 		d := NewDynamicMultiWriter(buf, shortWriter)
+		defer d.Close()
 
-		_, err := d.Write([]byte("test"))
-		if !errors.Is(err, io.ErrShortWrite) {
-			t.Errorf("Write() error = %v, want %v", err, io.ErrShortWrite)
+		n, err := d.Write([]byte("test"))
+		if err != nil {
+			t.Errorf("Write() error = %v, want nil", err)
 		}
+		if n != len("test") {
+			t.Errorf("Write() n = %v, want %v", n, len("test"))
+		}
+		waitUntil(t, func() bool { return d.Count() == 1 })
 	})
 
 	t.Run("write with no writers", func(t *testing.T) {
@@ -242,6 +293,131 @@ func TestDynamicMultiWriter_Write(t *testing.T) {
 			t.Errorf("Write() error = %v, want %v", err, io.ErrClosedPipe)
 		}
 	})
+}
+
+type blockingWriter struct {
+	release chan struct{}
+	started chan struct{}
+	once    sync.Once
+}
+
+func newBlockingWriter() *blockingWriter {
+	return &blockingWriter{
+		release: make(chan struct{}),
+		started: make(chan struct{}),
+	}
+}
+
+func (w *blockingWriter) Write(p []byte) (int, error) {
+	w.once.Do(func() { close(w.started) })
+	<-w.release
+	return len(p), nil
+}
+
+func TestDynamicMultiWriter_WriteDoesNotWaitForSlowWriter(t *testing.T) {
+	fast := &syncBuffer{}
+	slow := newBlockingWriter()
+	d := NewDynamicMultiWriter(fast, slow)
+	defer d.Close()
+	defer close(slow.release)
+
+	if _, err := d.Write([]byte("first")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-slow.started:
+	case <-time.After(time.Second):
+		t.Fatal("slow writer did not start")
+	}
+	waitUntil(t, func() bool { return fast.String() == "first" })
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := d.Write([]byte("second"))
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Write blocked on slow writer")
+	}
+	waitUntil(t, func() bool { return fast.String() == "firstsecond" })
+}
+
+type blockingRecorder struct {
+	mu      sync.Mutex
+	release chan struct{}
+	started chan struct{}
+	once    sync.Once
+	chunks  []string
+}
+
+func newBlockingRecorder() *blockingRecorder {
+	return &blockingRecorder{
+		release: make(chan struct{}),
+		started: make(chan struct{}),
+	}
+}
+
+func (w *blockingRecorder) Write(p []byte) (int, error) {
+	block := false
+	w.once.Do(func() {
+		block = true
+		close(w.started)
+	})
+	if block {
+		<-w.release
+	}
+	w.mu.Lock()
+	w.chunks = append(w.chunks, string(p))
+	w.mu.Unlock()
+	return len(p), nil
+}
+
+func (w *blockingRecorder) snapshot() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]string(nil), w.chunks...)
+}
+
+func TestDynamicMultiWriter_DropsOldChunksForSlowWriter(t *testing.T) {
+	slow := newBlockingRecorder()
+	d := NewDynamicMultiWriter(slow)
+	defer d.Close()
+
+	if _, err := d.Write([]byte("chunk-000")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-slow.started:
+	case <-time.After(time.Second):
+		t.Fatal("slow writer did not start")
+	}
+
+	for i := 1; i < dynamicMultiWriterBufferSize+50; i++ {
+		if _, err := d.Write([]byte(fmt.Sprintf("chunk-%03d", i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	close(slow.release)
+	waitUntil(t, func() bool {
+		for _, chunk := range slow.snapshot() {
+			if chunk == fmt.Sprintf("chunk-%03d", dynamicMultiWriterBufferSize+49) {
+				return true
+			}
+		}
+		return false
+	})
+
+	chunks := slow.snapshot()
+	if len(chunks) >= dynamicMultiWriterBufferSize+50 {
+		t.Fatalf("slow writer received %d chunks, want fewer than %d", len(chunks), dynamicMultiWriterBufferSize+50)
+	}
 }
 
 func TestDynamicMultiWriter_ConcurrentAccess(t *testing.T) {
