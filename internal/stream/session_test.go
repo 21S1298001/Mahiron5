@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -111,8 +112,101 @@ func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 	if got, want := routeManager.channelID, "C101"; got != want {
 		t.Fatalf("device channel = %q, want %q", got, want)
 	}
-	if got, want := session.typ, "BS"; got != want {
+	localSession := session.(*ChannelSession)
+	if got, want := localSession.typ, "BS"; got != want {
 		t.Fatalf("session type = %q, want public type %q", got, want)
+	}
+}
+
+func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
+	no := false
+	priorityLocal := 10
+	priorityRemote := 20
+	previousNewRemoteClient := newRemoteClient
+	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
+	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
+		client := NewRemoteClient(remote)
+		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch r.URL.Path {
+			case "/api/tuners":
+				return stringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
+			case "/api/channels/GR/27/stream":
+				return stringResponse(http.StatusOK, "remote-ts"), nil
+			default:
+				return stringResponse(http.StatusNotFound, ""), nil
+			}
+		})}
+		return client
+	}
+
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{
+				Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{
+					{Id: "local", Type: "GR", Channel: "27", IsDisabled: &no, Priority: &priorityLocal},
+					{Id: "remote", Remote: "living", Type: "GR", Channel: "27", IsDisabled: &no, Priority: &priorityRemote},
+				},
+			},
+		},
+		Remotes: config.RemotesConfig{{Name: "living", URL: "http://remote.local/api"}},
+		TunerManager: &routeSelectingTunerManager{
+			availableType: "BS",
+		},
+	})
+
+	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := session.(*RemoteSession); !ok {
+		t.Fatalf("session type = %T, want *RemoteSession", session)
+	}
+	var out bytes.Buffer
+	if err := session.ChannelStream(context.Background(), false, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := out.String(), "remote-ts"; got != want {
+		t.Fatalf("remote stream = %q, want %q", got, want)
+	}
+}
+
+func TestManagerFallsBackWhenRemoteUnavailable(t *testing.T) {
+	no := false
+	priorityRemote := 10
+	priorityLocal := 20
+	previousNewRemoteClient := newRemoteClient
+	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
+	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
+		client := NewRemoteClient(remote)
+		client.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return stringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":false,"isFault":false}]`), nil
+		})}
+		return client
+	}
+
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{
+				Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no,
+				Routes: []config.ChannelRouteConfig{
+					{Id: "remote", Remote: "living", Type: "GR", Channel: "27", IsDisabled: &no, Priority: &priorityRemote},
+					{Id: "local", Type: "GR", Channel: "27", IsDisabled: &no, Priority: &priorityLocal},
+				},
+			},
+		},
+		Remotes: config.RemotesConfig{{Name: "living", URL: "http://remote.local"}},
+		TunerManager: &routeSelectingTunerManager{
+			availableType: "GR",
+		},
+	})
+
+	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := session.(*ChannelSession); !ok {
+		t.Fatalf("session type = %T, want *ChannelSession", session)
 	}
 }
 

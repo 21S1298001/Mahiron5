@@ -74,6 +74,7 @@ func Run(ctx context.Context) int {
 
 	streams := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:     cfg.Channels,
+		Remotes:      cfg.Remotes,
 		EITCollector: epg.NewMirakcAribCollector(),
 		EITUpdater:   epgUpdater,
 		Filter:       filter.NewServiceFilter(),

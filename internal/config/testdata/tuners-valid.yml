@@ -15,8 +15,4 @@
   types:
     - CATV_BS
     - BS
-  remote:
-    url: http://localhost:40772/api
-    types:
-      BS: BS
-      CATV_BS: SKY
+  command: echo "Hello World"

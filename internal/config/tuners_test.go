@@ -29,7 +29,6 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 					DvbDevicePath: "",
 					Decoder:       "test",
 					IsDisabled:    false,
-					Remote:        nil,
 				},
 				{
 					Name:          "Tuner2",
@@ -38,19 +37,14 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 					DvbDevicePath: "/dev/dvb/adapter0",
 					Decoder:       "",
 					IsDisabled:    false,
-					Remote:        nil,
 				},
 				{
 					Name:          "Tuner4",
 					Types:         []string{"CATV_BS", "BS"},
-					Command:       "",
+					Command:       "echo \"Hello World\"",
 					DvbDevicePath: "",
 					Decoder:       "",
 					IsDisabled:    false,
-					Remote: &Remote{
-						Url:   "http://localhost:40772/api",
-						Types: map[string]string{"BS": "BS", "CATV_BS": "SKY"},
-					},
 				},
 			},
 			wantErr: false,
@@ -83,14 +77,6 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 			name: "Empty tuner types",
 			args: args{
 				filePath: "testdata/tuners-empty-grouping.yml",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "Multiple tuner sources",
-			args: args{
-				filePath: "testdata/tuners-multiple-sources.yml",
 			},
 			want:    nil,
 			wantErr: true,

@@ -182,6 +182,7 @@ func TestLoadAndParseChannelsConfig(t *testing.T) {
 						{Id: "bs-direct", Type: "BS", Channel: "101", CommandVars: map[string]any{}, IsDisabled: &no, Priority: &routePriority10},
 						{
 							Id:          "catv-bs-transmod",
+							Remote:      "living",
 							Type:        "CATV_BS",
 							Channel:     "C101",
 							CommandVars: map[string]any{"freq": 12345.0},

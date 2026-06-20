@@ -88,16 +88,22 @@ func (*Channel) getChannelRes() {}
 
 // Ref: #/components/schemas/ChannelRoute
 type ChannelRoute struct {
-	ID         string  `json:"id"`
-	Type       string  `json:"type"`
-	Channel    string  `json:"channel"`
-	Priority   OptInt  `json:"priority"`
-	IsDisabled OptBool `json:"isDisabled"`
+	ID         string    `json:"id"`
+	Remote     OptString `json:"remote"`
+	Type       string    `json:"type"`
+	Channel    string    `json:"channel"`
+	Priority   OptInt    `json:"priority"`
+	IsDisabled OptBool   `json:"isDisabled"`
 }
 
 // GetID returns the value of ID.
 func (s *ChannelRoute) GetID() string {
 	return s.ID
+}
+
+// GetRemote returns the value of Remote.
+func (s *ChannelRoute) GetRemote() OptString {
+	return s.Remote
 }
 
 // GetType returns the value of Type.
@@ -123,6 +129,11 @@ func (s *ChannelRoute) GetIsDisabled() OptBool {
 // SetID sets the value of ID.
 func (s *ChannelRoute) SetID(val string) {
 	s.ID = val
+}
+
+// SetRemote sets the value of Remote.
+func (s *ChannelRoute) SetRemote(val OptString) {
+	s.Remote = val
 }
 
 // SetType sets the value of Type.
@@ -238,6 +249,7 @@ func (*ChannelsTypeChannelStreamHeadServiceUnavailable) channelsTypeChannelStrea
 // Ref: #/components/schemas/ConfigChannelRoute
 type ConfigChannelRoute struct {
 	ID          OptString                      `json:"id"`
+	Remote      OptString                      `json:"remote"`
 	Type        string                         `json:"type"`
 	Channel     string                         `json:"channel"`
 	ServiceId   OptServiceId                   `json:"serviceId"`
@@ -250,6 +262,11 @@ type ConfigChannelRoute struct {
 // GetID returns the value of ID.
 func (s *ConfigChannelRoute) GetID() OptString {
 	return s.ID
+}
+
+// GetRemote returns the value of Remote.
+func (s *ConfigChannelRoute) GetRemote() OptString {
+	return s.Remote
 }
 
 // GetType returns the value of Type.
@@ -290,6 +307,11 @@ func (s *ConfigChannelRoute) GetPriority() OptInt {
 // SetID sets the value of ID.
 func (s *ConfigChannelRoute) SetID(val OptString) {
 	s.ID = val
+}
+
+// SetRemote sets the value of Remote.
+func (s *ConfigChannelRoute) SetRemote(val OptString) {
+	s.Remote = val
 }
 
 // SetType sets the value of Type.
@@ -4603,7 +4625,6 @@ type TunerDevice struct {
 	Pid                int         `json:"pid"`
 	Users              []TunerUser `json:"users"`
 	IsAvailable        bool        `json:"isAvailable"`
-	IsRemote           OptBool     `json:"isRemote"`
 	IsFree             bool        `json:"isFree"`
 	IsUsing            bool        `json:"isUsing"`
 	IsFault            bool        `json:"isFault"`
@@ -4646,11 +4667,6 @@ func (s *TunerDevice) GetUsers() []TunerUser {
 // GetIsAvailable returns the value of IsAvailable.
 func (s *TunerDevice) GetIsAvailable() bool {
 	return s.IsAvailable
-}
-
-// GetIsRemote returns the value of IsRemote.
-func (s *TunerDevice) GetIsRemote() OptBool {
-	return s.IsRemote
 }
 
 // GetIsFree returns the value of IsFree.
@@ -4721,11 +4737,6 @@ func (s *TunerDevice) SetUsers(val []TunerUser) {
 // SetIsAvailable sets the value of IsAvailable.
 func (s *TunerDevice) SetIsAvailable(val bool) {
 	s.IsAvailable = val
-}
-
-// SetIsRemote sets the value of IsRemote.
-func (s *TunerDevice) SetIsRemote(val OptBool) {
-	s.IsRemote = val
 }
 
 // SetIsFree sets the value of IsFree.

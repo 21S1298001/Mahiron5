@@ -17,14 +17,6 @@ type TunerConfig struct {
 	DvbDevicePath string   `json:"dvbDevicePath,omitempty"`
 	Decoder       string   `json:"decoder,omitempty"`
 	IsDisabled    bool     `json:"isDisabled,omitempty"`
-
-	// Mahiron extension
-	Remote *Remote `json:"remote,omitempty"`
-}
-
-type Remote struct {
-	Url   string            `json:"url"`
-	Types map[string]string `json:"types,omitempty"`
 }
 
 func LoadAndParseTunersConfig(filePath string) (TunersConfig, error) {
@@ -46,20 +38,14 @@ func LoadAndParseTunersConfig(filePath string) (TunersConfig, error) {
 		if tuner.Name == "" {
 			return nil, errors.New("tuner name is required")
 		}
-		if tuner.Command == "" && tuner.Remote == nil {
-			return nil, errors.New("command or remote is required")
-		}
-		if tuner.Command != "" && tuner.Remote != nil {
-			return nil, errors.New("only one command or remote is allowed")
+		if tuner.Command == "" {
+			return nil, errors.New("command is required")
 		}
 		if tuner.DvbDevicePath != "" && tuner.Command == "" {
 			return nil, errors.New("dvbDevicePath is only allowed when command is set")
 		}
 		if len(tuner.Types) == 0 {
 			return nil, errors.New("at least one types is required")
-		}
-		if tuner.Remote != nil && tuner.Remote.Url == "" {
-			return nil, errors.New("remote url is required")
 		}
 	}
 

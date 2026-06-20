@@ -228,6 +228,12 @@ func (s *ChannelRoute) encodeFields(e *jx.Encoder) {
 		e.Str(s.ID)
 	}
 	{
+		if s.Remote.Set {
+			e.FieldStart("remote")
+			s.Remote.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("type")
 		e.Str(s.Type)
 	}
@@ -249,12 +255,13 @@ func (s *ChannelRoute) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfChannelRoute = [5]string{
+var jsonFieldsNameOfChannelRoute = [6]string{
 	0: "id",
-	1: "type",
-	2: "channel",
-	3: "priority",
-	4: "isDisabled",
+	1: "remote",
+	2: "type",
+	3: "channel",
+	4: "priority",
+	5: "isDisabled",
 }
 
 // Decode decodes ChannelRoute from json.
@@ -278,8 +285,18 @@ func (s *ChannelRoute) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"id\"")
 			}
+		case "remote":
+			if err := func() error {
+				s.Remote.Reset()
+				if err := s.Remote.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"remote\"")
+			}
 		case "type":
-			requiredBitSet[0] |= 1 << 1
+			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
 				v, err := d.Str()
 				s.Type = string(v)
@@ -291,7 +308,7 @@ func (s *ChannelRoute) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"type\"")
 			}
 		case "channel":
-			requiredBitSet[0] |= 1 << 2
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				v, err := d.Str()
 				s.Channel = string(v)
@@ -332,7 +349,7 @@ func (s *ChannelRoute) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00000111,
+		0b00001101,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -394,6 +411,12 @@ func (s *ConfigChannelRoute) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.Remote.Set {
+			e.FieldStart("remote")
+			s.Remote.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("type")
 		e.Str(s.Type)
 	}
@@ -433,15 +456,16 @@ func (s *ConfigChannelRoute) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfConfigChannelRoute = [8]string{
+var jsonFieldsNameOfConfigChannelRoute = [9]string{
 	0: "id",
-	1: "type",
-	2: "channel",
-	3: "serviceId",
-	4: "tsmfRelTs",
-	5: "commandVars",
-	6: "isDisabled",
-	7: "priority",
+	1: "remote",
+	2: "type",
+	3: "channel",
+	4: "serviceId",
+	5: "tsmfRelTs",
+	6: "commandVars",
+	7: "isDisabled",
+	8: "priority",
 }
 
 // Decode decodes ConfigChannelRoute from json.
@@ -449,7 +473,7 @@ func (s *ConfigChannelRoute) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ConfigChannelRoute to nil")
 	}
-	var requiredBitSet [1]uint8
+	var requiredBitSet [2]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -463,8 +487,18 @@ func (s *ConfigChannelRoute) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"id\"")
 			}
+		case "remote":
+			if err := func() error {
+				s.Remote.Reset()
+				if err := s.Remote.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"remote\"")
+			}
 		case "type":
-			requiredBitSet[0] |= 1 << 1
+			requiredBitSet[0] |= 1 << 2
 			if err := func() error {
 				v, err := d.Str()
 				s.Type = string(v)
@@ -476,7 +510,7 @@ func (s *ConfigChannelRoute) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"type\"")
 			}
 		case "channel":
-			requiredBitSet[0] |= 1 << 2
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				v, err := d.Str()
 				s.Channel = string(v)
@@ -548,8 +582,9 @@ func (s *ConfigChannelRoute) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [1]uint8{
-		0b00000110,
+	for i, mask := range [2]uint8{
+		0b00001100,
+		0b00000000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -7088,12 +7123,6 @@ func (s *TunerDevice) encodeFields(e *jx.Encoder) {
 		e.Bool(s.IsAvailable)
 	}
 	{
-		if s.IsRemote.Set {
-			e.FieldStart("isRemote")
-			s.IsRemote.Encode(e)
-		}
-	}
-	{
 		e.FieldStart("isFree")
 		e.Bool(s.IsFree)
 	}
@@ -7131,7 +7160,7 @@ func (s *TunerDevice) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfTunerDevice = [15]string{
+var jsonFieldsNameOfTunerDevice = [14]string{
 	0:  "index",
 	1:  "name",
 	2:  "types",
@@ -7139,14 +7168,13 @@ var jsonFieldsNameOfTunerDevice = [15]string{
 	4:  "pid",
 	5:  "users",
 	6:  "isAvailable",
-	7:  "isRemote",
-	8:  "isFree",
-	9:  "isUsing",
-	10: "isFault",
-	11: "currentChannelType",
-	12: "currentChannel",
-	13: "tunedChannelType",
-	14: "tunedChannel",
+	7:  "isFree",
+	8:  "isUsing",
+	9:  "isFault",
+	10: "currentChannelType",
+	11: "currentChannel",
+	12: "tunedChannelType",
+	13: "tunedChannel",
 }
 
 // Decode decodes TunerDevice from json.
@@ -7256,18 +7284,8 @@ func (s *TunerDevice) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"isAvailable\"")
 			}
-		case "isRemote":
-			if err := func() error {
-				s.IsRemote.Reset()
-				if err := s.IsRemote.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"isRemote\"")
-			}
 		case "isFree":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[0] |= 1 << 7
 			if err := func() error {
 				v, err := d.Bool()
 				s.IsFree = bool(v)
@@ -7279,7 +7297,7 @@ func (s *TunerDevice) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"isFree\"")
 			}
 		case "isUsing":
-			requiredBitSet[1] |= 1 << 1
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				v, err := d.Bool()
 				s.IsUsing = bool(v)
@@ -7291,7 +7309,7 @@ func (s *TunerDevice) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"isUsing\"")
 			}
 		case "isFault":
-			requiredBitSet[1] |= 1 << 2
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := d.Bool()
 				s.IsFault = bool(v)
@@ -7352,8 +7370,8 @@ func (s *TunerDevice) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
-		0b01111111,
-		0b00000111,
+		0b11111111,
+		0b00000011,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

@@ -92,23 +92,19 @@ func TestTunerStatusMarksUnexpectedProcessExitAsFault(t *testing.T) {
 	_ = device.Stop(context.Background())
 }
 
-func TestDisabledAndRemoteTunerStatus(t *testing.T) {
+func TestDisabledAndDVBTunerStatus(t *testing.T) {
 	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "disabled", Types: []string{"GR"}, Command: "sleep 1", IsDisabled: true},
-		{Name: "remote", Types: []string{"BS"}, Remote: &config.Remote{Url: "http://localhost:40772/api"}},
 		{Name: "dvb", Types: []string{"SKY"}, Command: "sleep 1", DvbDevicePath: "/dev/null"},
 	}})
 	statuses := mgr.Statuses()
 	if statuses[0].IsAvailable || statuses[0].IsFree {
 		t.Fatalf("disabled tuner is available: %+v", statuses[0])
 	}
-	if !statuses[1].IsRemote || statuses[1].IsAvailable {
-		t.Fatalf("unexpected remote tuner status: %+v", statuses[1])
+	if !statuses[1].IsAvailable || !statuses[1].IsFree {
+		t.Fatalf("dvb tuner is not available: %+v", statuses[1])
 	}
-	if !statuses[2].IsAvailable || !statuses[2].IsFree {
-		t.Fatalf("dvb tuner is not available: %+v", statuses[2])
-	}
-	if _, ok := mgr.Status(3); ok {
+	if _, ok := mgr.Status(2); ok {
 		t.Fatal("out-of-range tuner status found")
 	}
 }

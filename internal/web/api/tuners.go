@@ -29,8 +29,8 @@ func apiTuner(status tuner.Status) *apigen.TunerDevice {
 	result := &apigen.TunerDevice{
 		Index: status.Index, Name: status.Name, Types: status.Types,
 		Command: status.Command, Pid: status.PID, Users: make([]apigen.TunerUser, len(status.Users)),
-		IsAvailable: status.IsAvailable, IsRemote: apigen.NewOptBool(status.IsRemote),
-		IsFree: status.IsFree, IsUsing: status.IsUsing, IsFault: status.IsFault,
+		IsAvailable: status.IsAvailable,
+		IsFree:      status.IsFree, IsUsing: status.IsUsing, IsFault: status.IsFault,
 	}
 	if status.CurrentChannelType != "" {
 		result.CurrentChannelType = apigen.NewOptString(status.CurrentChannelType)

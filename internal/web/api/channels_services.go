@@ -176,6 +176,9 @@ func apiChannelRoutes(routes []config.ChannelRouteConfig) []apigen.ChannelRoute 
 			Type:    route.Type,
 			Channel: route.Channel,
 		}
+		if route.Remote != "" {
+			result[i].Remote = apigen.NewOptString(route.Remote)
+		}
 		if route.Priority != nil {
 			result[i].Priority = apigen.NewOptInt(*route.Priority)
 		}

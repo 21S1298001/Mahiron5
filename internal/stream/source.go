@@ -24,19 +24,22 @@ type SourceLease struct {
 	Channel     *config.ChannelConfig
 	Descrambler Descrambler
 	RouteType   string
+	Session     Session
 	Source      LiveSource
 }
 
 type SourcePool struct {
 	channels           config.ChannelsConfig
 	descramblerFactory DescramblerFactory
+	remotes            map[string]*RemoteClient
 	tunerManager       TunerManager
 }
 
-func NewSourcePool(channels config.ChannelsConfig, tunerManager TunerManager, descramblerFactory DescramblerFactory) *SourcePool {
+func NewSourcePool(channels config.ChannelsConfig, tunerManager TunerManager, descramblerFactory DescramblerFactory, remotes map[string]*RemoteClient) *SourcePool {
 	return &SourcePool{
 		channels:           channels,
 		descramblerFactory: descramblerFactory,
+		remotes:            remotes,
 		tunerManager:       tunerManager,
 	}
 }
@@ -53,6 +56,24 @@ func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, w
 	route, routeChannelConfig, device, decoderCommand, err := p.newRouteDevice(ctx, channelConfig, wait)
 	if err != nil {
 		return nil, err
+	}
+	if route.Remote != "" {
+		remote := p.remotes[route.Remote]
+		if remote == nil {
+			return nil, ErrTunerNotFound
+		}
+		return &SourceLease{
+			Channel:   &routeChannelConfig,
+			RouteType: route.Type,
+			Session: NewRemoteSession(RemoteSessionConfig{
+				Client: remote,
+				Channel: &config.ChannelConfig{
+					Type:    channelType,
+					Channel: channel,
+				},
+				RouteChannel: &routeChannelConfig,
+			}),
+		}, nil
 	}
 
 	if decoderCommand == "" {
@@ -96,7 +117,16 @@ func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.Channel
 			var device TunerDevice
 			var decoder string
 			var err error
-			if allocator, ok := p.tunerManager.(TunerAllocator); ok {
+			if route.Remote != "" {
+				remote := p.remotes[route.Remote]
+				if remote == nil {
+					err = tuner.ErrTunerNotFound
+				} else if err = remote.CheckAvailable(ctx, route.Type); err == nil {
+					return route, routeChannel, nil, "", nil
+				} else {
+					err = tuner.ErrTunerUnavailable
+				}
+			} else if allocator, ok := p.tunerManager.(TunerAllocator); ok {
 				device, decoder, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, false)
 			} else {
 				device, err = p.tunerManager.NewDeviceByType(route.Type, &routeChannel)

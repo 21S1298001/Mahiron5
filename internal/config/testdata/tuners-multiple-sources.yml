@@ -1,6 +1,0 @@
-- name: Tuner
-  types:
-    - GR
-  command: invalid
-  remote:
-    url: http://localhost:40772/api

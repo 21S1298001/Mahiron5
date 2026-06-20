@@ -8,7 +8,6 @@ const (
 	SourceKindUnsupported SourceKind = ""
 	SourceKindCommand     SourceKind = "command"
 	SourceKindDVB         SourceKind = "dvb"
-	SourceKindRemote      SourceKind = "remote"
 )
 
 type Tuner struct {
@@ -52,8 +51,6 @@ func (t *Tuner) SourceKind() SourceKind {
 		return SourceKindDVB
 	case t.config.Command != "":
 		return SourceKindCommand
-	case t.config.Remote != nil:
-		return SourceKindRemote
 	default:
 		return SourceKindUnsupported
 	}
@@ -66,10 +63,6 @@ func (t *Tuner) Usable() bool {
 	default:
 		return false
 	}
-}
-
-func (t *Tuner) IsRemote() bool {
-	return t.config.Remote != nil
 }
 
 func (t *Tuner) DecoderCommand() string {

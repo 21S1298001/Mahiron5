@@ -15,7 +15,7 @@ func NewServiceScannerAdapter(manager *StreamManager) *ServiceScannerAdapter {
 
 func (a *ServiceScannerAdapter) ScanServices(ctx context.Context, channelType, channelID string, wait bool, dst io.Writer) error {
 	var (
-		session *ChannelSession
+		session Session
 		err     error
 	)
 	if wait {

@@ -30,6 +30,7 @@ type ChannelConfig struct {
 
 type ChannelRouteConfig struct {
 	Id          string         `json:"id,omitempty"`
+	Remote      string         `json:"remote,omitempty"`
 	Type        string         `json:"type"`
 	Channel     string         `json:"channel"`
 	ServiceId   *uint32        `json:"serviceId,omitempty"`
@@ -46,7 +47,7 @@ func LoadAndParseChannelsConfig(filePath string) (ChannelsConfig, error) {
 	}
 
 	var config ChannelsConfig
-	err = yaml.Unmarshal(file, &config)
+	err = yaml.UnmarshalStrict(file, &config)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +143,11 @@ func normalizeRoutes(channel ChannelConfig) ([]ChannelRouteConfig, error) {
 			return nil, errors.New("route channel is required")
 		}
 		if routes[i].Id == "" {
-			routes[i].Id = routes[i].Type + ":" + routes[i].Channel
+			if routes[i].Remote != "" {
+				routes[i].Id = routes[i].Remote + ":" + routes[i].Type + ":" + routes[i].Channel
+			} else {
+				routes[i].Id = routes[i].Type + ":" + routes[i].Channel
+			}
 		}
 		if _, ok := seen[routes[i].Id]; ok {
 			return nil, errors.New("duplicate route id")

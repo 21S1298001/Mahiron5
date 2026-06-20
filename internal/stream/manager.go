@@ -15,8 +15,9 @@ type StreamManager struct {
 	eitCollector EITCollector
 	eitUpdater   EITSectionUpdater
 	filter       ServiceFilter
+	remotes      map[string]*RemoteClient
 	scanner      ServiceScanner
-	sessions     map[sessionKey]*ChannelSession
+	sessions     map[sessionKey]Session
 	sessionTypes map[sessionKey]string
 	sources      *SourcePool
 }
@@ -27,6 +28,7 @@ type StreamManagerConfig struct {
 	Filter             ServiceFilter
 	EITCollector       EITCollector
 	EITUpdater         EITSectionUpdater
+	Remotes            config.RemotesConfig
 	Scanner            ServiceScanner
 	TunerManager       TunerManager
 }
@@ -36,31 +38,45 @@ type sessionKey struct {
 	typ     string
 }
 
+type Session interface {
+	ChannelStream(context.Context, bool, io.Writer) error
+	ServiceStream(context.Context, uint16, bool, io.Writer) error
+	ScanServices(context.Context, io.Writer) error
+	CollectEITS(context.Context, io.Writer) error
+	CollectEITPF(context.Context, io.Writer) error
+	Stop(context.Context) error
+}
+
 func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 	descramblerFactory := cfg.DescramblerFactory
 	if descramblerFactory == nil {
 		descramblerFactory = NewCommandDescrambler
 	}
+	remotes := make(map[string]*RemoteClient, len(cfg.Remotes))
+	for _, remote := range cfg.Remotes {
+		remotes[remote.Name] = newRemoteClient(remote)
+	}
 	return &StreamManager{
 		eitCollector: cfg.EITCollector,
 		eitUpdater:   cfg.EITUpdater,
 		filter:       cfg.Filter,
+		remotes:      remotes,
 		scanner:      cfg.Scanner,
-		sessions:     map[sessionKey]*ChannelSession{},
+		sessions:     map[sessionKey]Session{},
 		sessionTypes: map[sessionKey]string{},
-		sources:      NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory),
+		sources:      NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
 	}
 }
 
-func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel string) (*ChannelSession, error) {
+func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel string) (Session, error) {
 	return m.getOrCreate(ctx, channelType, channel, false)
 }
 
-func (m *StreamManager) GetOrCreateWait(ctx context.Context, channelType, channel string) (*ChannelSession, error) {
+func (m *StreamManager) GetOrCreateWait(ctx context.Context, channelType, channel string) (Session, error) {
 	return m.getOrCreate(ctx, channelType, channel, true)
 }
 
-func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel string, wait bool) (*ChannelSession, error) {
+func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel string, wait bool) (Session, error) {
 	key := sessionKey{typ: channelType, channel: channel}
 
 	m.mu.Lock()
@@ -73,6 +89,11 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	lease, err := m.sources.Acquire(ctx, channelType, channel, wait)
 	if err != nil {
 		return nil, err
+	}
+	if lease.Session != nil {
+		m.sessions[key] = lease.Session
+		m.sessionTypes[key] = lease.RouteType
+		return lease.Session, nil
 	}
 
 	hooks := []BroadcastHook{}
@@ -124,7 +145,7 @@ func (m *StreamManager) ActiveSessionCountByType(channelType string) int {
 
 func (m *StreamManager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
-	sessions := make([]*ChannelSession, 0, len(m.sessions))
+	sessions := make([]Session, 0, len(m.sessions))
 	for _, session := range m.sessions {
 		sessions = append(sessions, session)
 	}

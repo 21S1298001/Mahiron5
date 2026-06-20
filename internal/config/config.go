@@ -1,7 +1,14 @@
 package config
 
+import (
+	"errors"
+	"fmt"
+	"os"
+)
+
 type Config struct {
 	Channels ChannelsConfig
+	Remotes  RemotesConfig
 	System   *SystemConfig
 	Tuners   TunersConfig
 }
@@ -17,14 +24,53 @@ func LoadAndParseConfig() (*Config, error) {
 		return nil, err
 	}
 
-	tunres, err := LoadAndParseTunersConfig("tuners.yml")
+	tuners, err := LoadAndParseTunersConfig("tuners.yml")
+	if err != nil {
+		return nil, err
+	}
+
+	remotes, err := loadRemotesForChannels("remotes.yml", channels)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Config{
 		Channels: channels,
+		Remotes:  remotes,
 		System:   system,
-		Tuners:   tunres,
+		Tuners:   tuners,
 	}, nil
+}
+
+func loadRemotesForChannels(filePath string, channels ChannelsConfig) (RemotesConfig, error) {
+	needsRemotes := false
+	for _, channel := range channels {
+		for _, route := range channel.RoutesOrDefault() {
+			if route.Remote != "" {
+				needsRemotes = true
+				break
+			}
+		}
+	}
+
+	remotes, err := LoadAndParseRemotesConfig(filePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) && !needsRemotes {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	for _, channel := range channels {
+		for _, route := range channel.RoutesOrDefault() {
+			if route.Remote == "" {
+				continue
+			}
+			if remotes.Get(route.Remote) == nil {
+				return nil, fmt.Errorf("remote %q is not configured", route.Remote)
+			}
+		}
+	}
+
+	return remotes, nil
 }

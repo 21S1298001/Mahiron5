@@ -1318,6 +1318,8 @@ components:
       properties:
         id:
           type: string
+        remote:
+          type: string
         type:
           type: string
         channel:
@@ -1555,8 +1557,6 @@ components:
             $ref: "#/components/schemas/TunerUser"
         isAvailable:
           type: boolean
-        isRemote:
-          type: boolean
         isFree:
           type: boolean
         isUsing:
@@ -1770,6 +1770,8 @@ components:
       type: object
       properties:
         id:
+          type: string
+        remote:
           type: string
         type:
           type: string

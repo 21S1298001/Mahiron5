@@ -35,7 +35,6 @@ type Status struct {
 	PID                int
 	Users              []User
 	IsAvailable        bool
-	IsRemote           bool
 	IsFree             bool
 	IsUsing            bool
 	IsFault            bool
@@ -97,7 +96,7 @@ func (tm *TunerManager) statusLocked(index int) Status {
 	available := !item.IsDisabled() && item.Usable() && !runtime.fault && !runtime.stopped
 	status := Status{
 		Index: index, Name: item.Name(), Types: append([]string(nil), item.Groups()...),
-		IsAvailable: available, IsRemote: item.IsRemote(), IsFault: runtime.fault,
+		IsAvailable: available, IsFault: runtime.fault,
 	}
 	if process, ok := runtime.device.(ProcessStatus); ok {
 		info := process.ProcessStatus()

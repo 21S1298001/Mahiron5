@@ -7,6 +7,7 @@
       channel: "101"
       priority: 10
     - id: catv-bs-transmod
+      remote: living
       type: CATV_BS
       channel: C101
       priority: 20
