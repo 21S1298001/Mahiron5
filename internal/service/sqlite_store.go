@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/21S1298001/Mahiron5/internal/db/gen"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 )
 
 type sqliteStore struct {
@@ -127,6 +128,11 @@ func (s *sqliteStore) SetEPGSuccess(ctx context.Context, networkID, serviceID ui
 }
 
 func (s *sqliteStore) EPGSummary(ctx context.Context, staleAfter int64, now int64) (stale, failed int, lastSuccess *int64, err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanDBServiceEPGSummary,
+		observability.AttrEPGStaleAfter.Int64(staleAfter),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	row, err := s.q.GetEPGSummary(ctx, gen.GetEPGSummaryParams{
 		Now:        &now,
 		StaleAfter: &staleAfter,
@@ -171,7 +177,14 @@ func nullableString(value string) *string {
 	return &value
 }
 
-func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, channelId string, services []*Service) error {
+func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, channelId string, services []*Service) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanDBServiceReplaceChannelServices,
+		observability.AttrChannelType.String(channelType),
+		observability.AttrChannelID.String(channelId),
+		observability.AttrServiceCount.Int(len(services)),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

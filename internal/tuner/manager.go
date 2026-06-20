@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 )
 
 const (
@@ -79,7 +80,16 @@ func (tm *TunerManager) NewDeviceByType(channelType string, channel *config.Chan
 	return device, err
 }
 
-func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (Device, string, error) {
+func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (device Device, decoder string, err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanTunerAcquireDevice,
+		observability.AttrChannelType.String(channelType),
+		observability.AttrChannelID.String(channelID(requestedChannel)),
+		observability.AttrTunedChannelType.String(channelTypeOf(tunedChannel)),
+		observability.AttrTunedChannelID.String(channelID(tunedChannel)),
+		observability.AttrWait.Bool(wait),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	requestPriority := priorityFromContext(ctx)
 	for {
 		tm.mu.Lock()

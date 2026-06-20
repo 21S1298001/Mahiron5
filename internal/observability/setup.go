@@ -2,21 +2,31 @@ package observability
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
+const instrumentationName = "github.com/21S1298001/Mahiron5"
+
 type SetupResult struct {
-	LogStore *LogStore
-	Shutdown func(context.Context) error
+	LogStore       *LogStore
+	TracerProvider trace.TracerProvider
+	Shutdown       func(context.Context) error
 }
 
 func Setup(ctx context.Context, cfg config.ObservabilityConfig, level slog.Leveler) SetupResult {
@@ -24,9 +34,8 @@ func Setup(ctx context.Context, cfg config.ObservabilityConfig, level slog.Level
 	stderr := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
 	apiLogs := slog.NewTextHandler(store, &slog.HandlerOptions{Level: level})
 
-	var shutdown func(context.Context) error
-	var handlers []slog.Handler
-	handlers = append(handlers, stderr, apiLogs)
+	var shutdowns []func(context.Context) error
+	handlers := []slog.Handler{stderr, apiLogs}
 
 	if cfg.Endpoint != "" && cfg.Logs.Enabled {
 		handler, cleanup, err := newOTelLogHandler(ctx, cfg)
@@ -34,16 +43,29 @@ func Setup(ctx context.Context, cfg config.ObservabilityConfig, level slog.Level
 			slog.New(stderr).Warn("failed to initialize OTLP log exporter", "err", err)
 		} else {
 			handlers = append(handlers, handler)
-			shutdown = cleanup
+			shutdowns = append(shutdowns, cleanup)
 		}
 	}
 
 	slog.SetDefault(slog.New(newFanoutHandler(handlers...)))
 
-	if shutdown == nil {
-		shutdown = func(context.Context) error { return nil }
+	tracerProvider := trace.TracerProvider(noop.NewTracerProvider())
+	if cfg.Endpoint != "" && cfg.Traces.Enabled {
+		provider, cleanup, err := newOTelTracerProvider(ctx, cfg)
+		if err != nil {
+			slog.Warn("failed to initialize OTLP trace exporter", "err", err)
+		} else {
+			tracerProvider = provider
+			shutdowns = append(shutdowns, cleanup)
+		}
 	}
-	return SetupResult{LogStore: store, Shutdown: shutdown}
+	otel.SetTracerProvider(tracerProvider)
+
+	return SetupResult{
+		LogStore:       store,
+		TracerProvider: tracerProvider,
+		Shutdown:       shutdownAll(shutdowns...),
+	}
 }
 
 func newOTelLogHandler(ctx context.Context, cfg config.ObservabilityConfig) (slog.Handler, func(context.Context) error, error) {
@@ -60,13 +82,7 @@ func newOTelLogHandler(ctx context.Context, cfg config.ObservabilityConfig) (slo
 		return nil, nil, err
 	}
 
-	res, err := resource.Merge(
-		resource.Default(),
-		resource.NewSchemaless(
-			semconv.ServiceName(cfg.ServiceName),
-			attribute.String("telemetry.sdk.language", "go"),
-		),
-	)
+	res, err := newResource(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -75,6 +91,65 @@ func newOTelLogHandler(ctx context.Context, cfg config.ObservabilityConfig) (slo
 		log.WithResource(res),
 		log.WithProcessor(log.NewBatchProcessor(exporter)),
 	)
-	handler := otelslog.NewHandler("github.com/21S1298001/Mahiron5", otelslog.WithLoggerProvider(provider))
+	handler := otelslog.NewHandler(instrumentationName, otelslog.WithLoggerProvider(provider))
 	return handler, provider.Shutdown, nil
+}
+
+func newOTelTracerProvider(ctx context.Context, cfg config.ObservabilityConfig) (trace.TracerProvider, func(context.Context) error, error) {
+	options := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(cfg.Endpoint)}
+	if cfg.Insecure {
+		options = append(options, otlptracegrpc.WithInsecure())
+	}
+	if len(cfg.Headers) > 0 {
+		options = append(options, otlptracegrpc.WithHeaders(cfg.Headers))
+	}
+
+	exporter, err := otlptracegrpc.New(ctx, options...)
+	if err != nil {
+		return nil, nil, err
+	}
+	res, err := newResource(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	provider := sdktrace.NewTracerProvider(
+		sdktrace.WithResource(res),
+		sdktrace.WithBatcher(exporter),
+	)
+	return provider, provider.Shutdown, nil
+}
+
+func newResource(cfg config.ObservabilityConfig) (*resource.Resource, error) {
+	return resource.Merge(
+		resource.Default(),
+		resource.NewSchemaless(
+			semconv.ServiceName(cfg.ServiceName),
+			attribute.String("telemetry.sdk.language", "go"),
+		),
+	)
+}
+
+func shutdownAll(shutdowns ...func(context.Context) error) func(context.Context) error {
+	return func(ctx context.Context) error {
+		var result error
+		for _, shutdown := range shutdowns {
+			if shutdown == nil {
+				continue
+			}
+			result = errors.Join(result, shutdown(ctx))
+		}
+		return result
+	}
+}
+
+func StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	return otel.Tracer(instrumentationName).Start(ctx, name, trace.WithAttributes(attrs...))
+}
+
+func EndSpan(span trace.Span, err error) {
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
 }

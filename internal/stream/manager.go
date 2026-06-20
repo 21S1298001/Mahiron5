@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 )
@@ -82,7 +83,14 @@ func (m *StreamManager) GetOrCreateWait(ctx context.Context, channelType, channe
 	return m.getOrCreate(ctx, channelType, channel, true)
 }
 
-func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel string, wait bool) (Session, error) {
+func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel string, wait bool) (session Session, err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanStreamGetOrCreate,
+		observability.AttrChannelType.String(channelType),
+		observability.AttrChannelID.String(channel),
+		observability.AttrWait.Bool(wait),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	key := sessionKey{typ: channelType, channel: channel}
 
 	m.mu.Lock()
@@ -117,7 +125,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		broadcast = NewBroadcast(lease.Source, hooks, func() { m.remove(key) })
 	}
 
-	session := NewChannelSession(ChannelSessionConfig{
+	session = NewChannelSession(ChannelSessionConfig{
 		Channel:       channel,
 		ChannelConfig: lease.Channel,
 		Broadcast:     broadcast,

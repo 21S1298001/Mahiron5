@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 	"github.com/google/uuid"
 )
@@ -54,7 +55,14 @@ func NewSourcePool(channels config.ChannelsConfig, tunerManager TunerManager, de
 	}
 }
 
-func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, wait bool, hooks []BroadcastHook) (*SourceLease, error) {
+func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, wait bool, hooks []BroadcastHook) (lease *SourceLease, err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanStreamSourceAcquire,
+		observability.AttrChannelType.String(channelType),
+		observability.AttrChannelID.String(channel),
+		observability.AttrWait.Bool(wait),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	channelConfig := p.findChannel(channelType, channel)
 	if channelConfig == nil {
 		return nil, ErrChannelNotFound
@@ -120,23 +128,40 @@ func (p *SourcePool) findChannel(channelType, channel string) *config.ChannelCon
 	return nil
 }
 
-func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.ChannelConfig, wait bool, hooks []BroadcastHook) (config.ChannelRouteConfig, config.ChannelConfig, TunerDevice, string, *Broadcast, error) {
+func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.ChannelConfig, wait bool, hooks []BroadcastHook) (selectedRoute config.ChannelRouteConfig, selectedChannel config.ChannelConfig, selectedDevice TunerDevice, selectedDecoder string, selectedBroadcast *Broadcast, err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanStreamSourceSelectRoute,
+		observability.AttrChannelType.String(channel.Type),
+		observability.AttrChannelID.String(channel.Channel),
+		observability.AttrWait.Bool(wait),
+		observability.AttrRouteCount.Int(len(channel.RoutesOrDefault())),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	routes := enabledRoutes(channel.RoutesOrDefault())
 	for {
 		var lastErr error
 		unavailable := false
 		for _, route := range routes {
 			routeChannel := channel.RouteChannelConfig(route)
+			routeCtx, routeSpan := observability.StartSpan(ctx, observability.SpanStreamSourceTryRoute,
+				observability.AttrChannelType.String(channel.Type),
+				observability.AttrChannelID.String(channel.Channel),
+				observability.AttrRouteType.String(route.Type),
+				observability.AttrRouteChannel.String(route.Channel),
+				observability.AttrRouteRemote.String(route.Remote),
+			)
 			slog.Debug("trying stream route", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote, "wait", wait)
 			key := newRouteSourceKey(route)
 			var finishCreate func()
 			if route.Remote == "" {
-				source, finish, err := p.beginRouteSourceCreate(ctx, key)
+				source, finish, err := p.beginRouteSourceCreate(routeCtx, key)
 				if err != nil {
+					observability.EndSpan(routeSpan, err)
 					return config.ChannelRouteConfig{}, config.ChannelConfig{}, nil, "", nil, err
 				}
 				if source != nil {
 					slog.Debug("reusing local stream route", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type)
+					observability.EndSpan(routeSpan, nil)
 					return route, routeChannel, nil, source.decoderCommand, source.broadcast, nil
 				}
 				finishCreate = finish
@@ -148,13 +173,14 @@ func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.Channel
 				remote := p.remotes[route.Remote]
 				if remote == nil {
 					err = tuner.ErrTunerNotFound
-				} else if err = remote.CheckAvailableForRoute(ctx, route.Type, route.Channel); err == nil {
+				} else if err = remote.CheckAvailableForRoute(routeCtx, route.Type, route.Channel); err == nil {
+					observability.EndSpan(routeSpan, nil)
 					return route, routeChannel, nil, "", nil, nil
 				} else {
 					err = tuner.ErrTunerUnavailable
 				}
 			} else if allocator, ok := p.tunerManager.(TunerAllocator); ok {
-				device, decoder, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, false)
+				device, decoder, err = allocator.AcquireDevice(routeCtx, route.Type, channel, &routeChannel, false)
 			} else {
 				device, err = p.tunerManager.NewDeviceByType(route.Type, &routeChannel)
 			}
@@ -168,12 +194,14 @@ func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.Channel
 					finishCreate()
 				}
 				slog.Debug("stream route acquired", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote)
+				observability.EndSpan(routeSpan, nil)
 				return route, routeChannel, device, decoder, broadcast, nil
 			}
 			if finishCreate != nil {
 				finishCreate()
 			}
 			slog.Debug("stream route unavailable", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote, "err", err)
+			observability.EndSpan(routeSpan, err)
 			if errors.Is(err, tuner.ErrTunerUnavailable) {
 				unavailable = true
 			}

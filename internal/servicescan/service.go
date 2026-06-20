@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 	"github.com/google/uuid"
@@ -64,7 +65,14 @@ func (s *Service) Channels() []Channel {
 	return channels
 }
 
-func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID string, wait bool) ([]uint16, error) {
+func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID string, wait bool) (newNIDs []uint16, err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanServiceScanScanChannel,
+		observability.AttrChannelType.String(channelType),
+		observability.AttrChannelID.String(channelID),
+		observability.AttrWait.Bool(wait),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	startedAt := time.Now()
 	slog.Info("service scan started", "type", channelType, "channel", channelID, "wait", wait)
 	existing, err := s.store.GetServicesByChannel(ctx, channelType, channelID)
@@ -86,7 +94,13 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 		},
 	})
 
-	if err := s.scanner.ScanServices(ctx, channelType, channelID, wait, &out); err != nil {
+	scanCtx, scanSpan := observability.StartSpan(ctx, observability.SpanServiceScanRunScanner,
+		observability.AttrChannelType.String(channelType),
+		observability.AttrChannelID.String(channelID),
+	)
+	err = s.scanner.ScanServices(scanCtx, channelType, channelID, wait, &out)
+	observability.EndSpan(scanSpan, err)
+	if err != nil {
 		slog.Warn("service scan failed", "type", channelType, "channel", channelID, "duration", time.Since(startedAt), "err", err)
 		return nil, err
 	}
@@ -112,11 +126,18 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 		}
 	}
 
-	if err := s.store.ReplaceChannelServices(ctx, channelType, channelID, scanned); err != nil {
+	replaceCtx, replaceSpan := observability.StartSpan(ctx, observability.SpanServiceScanReplaceChannelServices,
+		observability.AttrChannelType.String(channelType),
+		observability.AttrChannelID.String(channelID),
+		observability.AttrServiceCount.Int(len(scanned)),
+	)
+	err = s.store.ReplaceChannelServices(replaceCtx, channelType, channelID, scanned)
+	observability.EndSpan(replaceSpan, err)
+	if err != nil {
 		return nil, err
 	}
 
-	newNIDs := newNetworkIDsFromDiff(before, scanned)
+	newNIDs = newNetworkIDsFromDiff(before, scanned)
 	slog.Info("service scan completed", "type", channelType, "channel", channelID, "services", len(scanned), "newNetworks", len(newNIDs), "duration", time.Since(startedAt))
 	return newNIDs, nil
 }

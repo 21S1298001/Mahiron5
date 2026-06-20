@@ -125,6 +125,7 @@ func Run(ctx context.Context) int {
 		LogStore:       obs.LogStore,
 		EventHub:       events,
 		EpgStaleAfter:  int64(cfg.System.EpgStaleAfter),
+		TracerProvider: obs.TracerProvider,
 	})
 	if err != nil {
 		slog.Error("failed to create web handler", "err", err)

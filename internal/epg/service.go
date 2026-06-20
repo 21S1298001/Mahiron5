@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
@@ -175,7 +176,14 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 	return candidates, networkServices, nil
 }
 
-func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey, retrievalTime time.Duration) error {
+func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey, retrievalTime time.Duration) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanEPGGatherNetwork,
+		observability.AttrEPGNetworkID.Int(int(networkID)),
+		observability.AttrEPGCandidates.Int(len(candidates)),
+		observability.AttrEPGServices.Int(len(serviceKeys)),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	if len(serviceKeys) == 0 {
 		return fmt.Errorf("network %d has no known services", networkID)
 	}
@@ -195,27 +203,35 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 	var result error
 	for _, candidate := range ordered {
 		slog.Info("starting network EPG collection", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel, "services", len(serviceKeys), "activeSession", active[candidate])
+		candidateCtx, candidateSpan := observability.StartSpan(ctx, observability.SpanEPGGatherCandidate,
+			observability.AttrEPGNetworkID.Int(int(networkID)),
+			observability.AttrChannelType.String(candidate.Type),
+			observability.AttrChannelID.String(candidate.Channel),
+			observability.AttrStreamActiveSession.Bool(active[candidate]),
+		)
 		yes := true
-		userCtx := tuner.WithUser(ctx, tuner.User{
+		userCtx := tuner.WithUser(candidateCtx, tuner.User{
 			ID: uuid.NewString(), Priority: -1, Agent: "Mahiron EPG Gatherer",
 			StreamSetting: tuner.StreamSetting{
 				Channel:  &config.ChannelConfig{Type: candidate.Type, Channel: candidate.Channel},
 				ParseEIT: &yes,
 			},
 		})
-		session, err := streams.GetOrCreate(userCtx, candidate.Type, candidate.Channel)
-		if err == nil {
-			err = CollectServiceSnapshots(userCtx, programStore, serviceStore, session, serviceKeys, retrievalTime)
+		var candidateErr error
+		session, candidateErr := streams.GetOrCreate(userCtx, candidate.Type, candidate.Channel)
+		if candidateErr == nil {
+			candidateErr = CollectServiceSnapshots(userCtx, programStore, serviceStore, session, serviceKeys, retrievalTime)
 		}
-		if err == nil {
+		observability.EndSpan(candidateSpan, candidateErr)
+		if candidateErr == nil {
 			slog.Debug("finished network EPG collection", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel)
 			return nil
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		slog.Warn("network EPG collection candidate failed", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel, "err", err)
-		result = errors.Join(result, fmt.Errorf("%s/%s: %w", candidate.Type, candidate.Channel, err))
+		slog.Warn("network EPG collection candidate failed", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel, "err", candidateErr)
+		result = errors.Join(result, fmt.Errorf("%s/%s: %w", candidate.Type, candidate.Channel, candidateErr))
 	}
 	if result == nil {
 		return fmt.Errorf("network %d has no channel candidates", networkID)
@@ -227,7 +243,13 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, session interface {
 	CollectEITS(context.Context, io.Writer) error
 	CollectEITPF(context.Context, io.Writer) error
-}, expected []ServiceKey, retrievalTime time.Duration) error {
+}, expected []ServiceKey, retrievalTime time.Duration) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanEPGCollectServiceSnapshots,
+		observability.AttrEPGServices.Int(len(expected)),
+		observability.AttrEPGRetrievalTimeMS.Int64(retrievalTime.Milliseconds()),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	if len(expected) == 0 {
 		return errors.New("collectServiceSnapshots: expected is empty")
 	}
@@ -390,7 +412,14 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 					"report", snapshot.CompletionReport(key))
 			}
 			slog.Info("merging EPG collection", "networkId", key.NetworkID, "serviceId", key.ServiceID, "programs", len(programs))
-			if err := programStore.UpsertPrograms(ctx, programs); err != nil {
+			mergeCtx, mergeSpan := observability.StartSpan(ctx, observability.SpanEPGMergeServicePrograms,
+				observability.AttrEPGNetworkID.Int(int(key.NetworkID)),
+				observability.AttrEPGServiceID.Int(int(key.ServiceID)),
+				observability.AttrProgramCount.Int(len(programs)),
+			)
+			err := programStore.UpsertPrograms(mergeCtx, programs)
+			observability.EndSpan(mergeSpan, err)
+			if err != nil {
 				_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
 				result = errors.Join(result, fmt.Errorf("service %d: merge: %w", key.ServiceID, err))
 				continue
@@ -411,7 +440,13 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	return result
 }
 
-func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, lister StoredProgramLister, expected []ServiceKey, retrievalTime time.Duration) error {
+func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, lister StoredProgramLister, expected []ServiceKey, retrievalTime time.Duration) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanEPGSyncStoredServicePrograms,
+		observability.AttrEPGServices.Int(len(expected)),
+		observability.AttrEPGRetrievalTimeMS.Int64(retrievalTime.Milliseconds()),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	syncCtx, cancel := context.WithTimeout(ctx, retrievalTime)
 	defer cancel()
 
@@ -428,7 +463,14 @@ func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, s
 			continue
 		}
 		slog.Info("syncing stored remote EPG", "networkId", key.NetworkID, "serviceId", key.ServiceID, "programs", len(programs))
-		if err := programStore.ReplaceServicePrograms(ctx, key.NetworkID, key.ServiceID, 0, programs); err != nil {
+		replaceCtx, replaceSpan := observability.StartSpan(ctx, observability.SpanEPGReplaceRemoteServicePrograms,
+			observability.AttrEPGNetworkID.Int(int(key.NetworkID)),
+			observability.AttrEPGServiceID.Int(int(key.ServiceID)),
+			observability.AttrProgramCount.Int(len(programs)),
+		)
+		err = programStore.ReplaceServicePrograms(replaceCtx, key.NetworkID, key.ServiceID, 0, programs)
+		observability.EndSpan(replaceSpan, err)
+		if err != nil {
 			_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
 			result = errors.Join(result, fmt.Errorf("service %d: replace remote programs: %w", key.ServiceID, err))
 			continue

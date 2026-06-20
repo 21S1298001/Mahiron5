@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/21S1298001/Mahiron5/internal/db/gen"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 )
 
 type sqliteStore struct {
@@ -21,7 +22,12 @@ func NewSQLiteStore(db *sql.DB) ProgramStore {
 	}
 }
 
-func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) error {
+func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanDBProgramUpsertAll,
+		observability.AttrProgramCount.Int(len(programs)),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -98,11 +104,24 @@ func (s *sqliteStore) ListEndedIDsBefore(ctx context.Context, cutoff int64) ([]i
 	return s.q.ListEndedProgramIDsBefore(ctx, cutoff)
 }
 
-func (s *sqliteStore) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
+func (s *sqliteStore) DeleteEndedBefore(ctx context.Context, cutoff int64) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanDBProgramDeleteEndedBefore,
+		observability.AttrProgramCutoff.Int64(cutoff),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	return s.q.DeleteEndedAtBefore(ctx, cutoff)
 }
 
-func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
+func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanDBProgramReplaceServicePrograms,
+		observability.AttrEPGNetworkID.Int(int(networkID)),
+		observability.AttrEPGServiceID.Int(int(serviceID)),
+		observability.AttrProgramFrom.Int64(from),
+		observability.AttrProgramCount.Int(len(programs)),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin replace: %w", err)

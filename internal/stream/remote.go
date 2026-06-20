@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
 )
 
@@ -46,7 +47,14 @@ func (c *RemoteClient) CheckAvailable(ctx context.Context, channelType string) e
 	return c.CheckAvailableForRoute(ctx, channelType, "")
 }
 
-func (c *RemoteClient) CheckAvailableForRoute(ctx context.Context, channelType, channel string) error {
+func (c *RemoteClient) CheckAvailableForRoute(ctx context.Context, channelType, channel string) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanRemoteCheckAvailable,
+		observability.AttrRemoteURL.String(c.baseURL),
+		observability.AttrChannelType.String(channelType),
+		observability.AttrChannelID.String(channel),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	checkCtx, cancel := context.WithTimeout(ctx, remoteAvailabilityTimeout)
 	defer cancel()
 
@@ -96,7 +104,14 @@ func (c *RemoteClient) ProgramStream(ctx context.Context, programID int64, decod
 	return c.stream(ctx, decode, dst, "programs", fmt.Sprint(programID), "stream")
 }
 
-func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel string, dst io.Writer) error {
+func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel string, dst io.Writer) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanRemoteScanServices,
+		observability.AttrRemoteURL.String(c.baseURL),
+		observability.AttrChannelType.String(channelType),
+		observability.AttrChannelID.String(channel),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	var services []remoteService
 	if err := c.getJSON(ctx, &services, "channels", channelType, channel, "services"); err != nil {
 		return err
@@ -116,7 +131,14 @@ func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel st
 	return json.NewEncoder(dst).Encode(scanned)
 }
 
-func (c *RemoteClient) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) ([]*program.Program, error) {
+func (c *RemoteClient) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) (programs []*program.Program, err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanRemoteListServicePrograms,
+		observability.AttrRemoteURL.String(c.baseURL),
+		observability.AttrEPGNetworkID.Int(int(networkID)),
+		observability.AttrEPGServiceID.Int(int(serviceID)),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	req, err := c.newRequest(ctx, http.MethodGet, "programs")
 	if err != nil {
 		return nil, err
@@ -130,16 +152,21 @@ func (c *RemoteClient) ListServicePrograms(ctx context.Context, networkID, servi
 	if err := c.doJSON(req, &remotePrograms); err != nil {
 		return nil, err
 	}
-	programs := make([]*program.Program, len(remotePrograms))
+	programs = make([]*program.Program, len(remotePrograms))
 	for i := range remotePrograms {
 		programs[i] = remotePrograms[i].Program()
 	}
 	return programs, nil
 }
 
-func (c *RemoteClient) StreamProgramEvents(ctx context.Context, updater ProgramUpdater) error {
+func (c *RemoteClient) StreamProgramEvents(ctx context.Context, updater ProgramUpdater) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanRemoteStreamProgramEventsConnect,
+		observability.AttrRemoteURL.String(c.baseURL),
+	)
+
 	req, err := c.newRequest(ctx, http.MethodGet, "events", "stream")
 	if err != nil {
+		observability.EndSpan(span, err)
 		return err
 	}
 	query := req.URL.Query()
@@ -148,12 +175,16 @@ func (c *RemoteClient) StreamProgramEvents(ctx context.Context, updater ProgramU
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		observability.EndSpan(span, err)
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("remote events stream status: %s", resp.Status)
+		err = fmt.Errorf("remote events stream status: %s", resp.Status)
+		observability.EndSpan(span, err)
+		return err
 	}
+	observability.EndSpan(span, nil)
 	return readRemoteProgramEvents(ctx, resp.Body, updater)
 }
 

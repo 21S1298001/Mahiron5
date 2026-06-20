@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/util"
 )
 
@@ -126,7 +127,15 @@ func newProcessDevice(config processDeviceConfig) *processDevice {
 	return device
 }
 
-func (d *processDevice) Start(ctx context.Context, dst io.Writer) error {
+func (d *processDevice) Start(ctx context.Context, dst io.Writer) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanTunerProcessStart,
+		observability.AttrChannelType.String(channelTypeOf(d.channel)),
+		observability.AttrChannelID.String(channelID(d.channel)),
+		observability.AttrStartupRetry.Bool(d.startupRetryMax > 0),
+		observability.AttrStartupRetryMax.Int(d.startupRetryMax),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	d.mu.Lock()
 	if d.done != nil {
 		d.mu.Unlock()
@@ -138,7 +147,6 @@ func (d *processDevice) Start(ctx context.Context, dst io.Writer) error {
 	retry := d.startupRetryMax > 0
 	d.mu.Unlock()
 
-	var err error
 	if retry {
 		err = d.startWithRetry(ctx, dst)
 	} else {
@@ -192,7 +200,15 @@ func (d *processDevice) startOnce(ctx context.Context, dst io.Writer) error {
 	return nil
 }
 
-func (d *processDevice) startWithRetry(ctx context.Context, dst io.Writer) error {
+func (d *processDevice) startWithRetry(ctx context.Context, dst io.Writer) (err error) {
+	ctx, span := observability.StartSpan(ctx, observability.SpanTunerProcessStartWithRetry,
+		observability.AttrChannelType.String(channelTypeOf(d.channel)),
+		observability.AttrChannelID.String(channelID(d.channel)),
+		observability.AttrStartupRetryMax.Int(d.startupRetryMax),
+		observability.AttrStartupRetryTimeoutMS.Int64(d.startupTimeout.Milliseconds()),
+	)
+	defer func() { observability.EndSpan(span, err) }()
+
 	var lastErr error
 	for attempt := 0; attempt <= d.startupRetryMax; attempt++ {
 		if err := ctx.Err(); err != nil {

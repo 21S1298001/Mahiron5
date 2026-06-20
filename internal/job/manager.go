@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/google/uuid"
 )
@@ -222,7 +223,14 @@ func (m *JobManager) dispatchLocked() {
 
 func (m *JobManager) run(ctx context.Context, item *Job) {
 	defer m.wg.Done()
+	ctx, span := observability.StartSpan(ctx, observability.SpanJobRun,
+		observability.AttrJobID.String(item.ID),
+		observability.AttrJobKey.String(item.Key),
+		observability.AttrJobName.String(item.Name),
+		observability.AttrJobRetryCount.Int(item.RetryCount),
+	)
 	err := item.definition.Handler(ctx)
+	observability.EndSpan(span, err)
 	m.mu.Lock()
 	delete(m.active, item.ID)
 	m.running--
