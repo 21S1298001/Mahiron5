@@ -365,12 +365,9 @@ paths:
         "200":
           description: OK
           content:
-            application/json:
-              x-ogen-json-streaming: true
+            text/plain:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Event"
+                type: string
         default:
           description: Unexpected Error
           content:
@@ -1722,7 +1719,7 @@ components:
           $ref: "#/components/schemas/EventType"
         data:
           type: object
-          properties: {}
+          additionalProperties: {}
         time:
           $ref: "#/components/schemas/UnixtimeMS"
     EventResource:

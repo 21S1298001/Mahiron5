@@ -126,11 +126,11 @@ func (h *Handler) GetChannelsByType(ctx context.Context, params apigen.GetChanne
 }
 
 func (h *Handler) GetEvents(ctx context.Context) (apigen.GetEventsRes, error) {
-	return notImplemented("GET /events is not implemented"), nil
+	return GetEvents(ctx, h)
 }
 
 func (h *Handler) GetEventsStream(ctx context.Context, params apigen.GetEventsStreamParams) (apigen.GetEventsStreamRes, error) {
-	return notImplemented("GET /events/stream is not implemented"), nil
+	return GetEventsStream(ctx, h, params)
 }
 
 func (h *Handler) GetJobSchedules(ctx context.Context) (apigen.GetJobSchedulesRes, error) {

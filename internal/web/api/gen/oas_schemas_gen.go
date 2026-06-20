@@ -633,7 +633,16 @@ func (s *Event) SetTime(val UnixtimeMS) {
 	s.Time = val
 }
 
-type EventData struct{}
+type EventData map[string]jx.Raw
+
+func (s *EventData) init() EventData {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
 
 type EventId int
 
@@ -829,9 +838,21 @@ type GetEventsOKApplicationJSON []Event
 
 func (*GetEventsOKApplicationJSON) getEventsRes() {}
 
-type GetEventsStreamOKApplicationJSON []Event
+type GetEventsStreamOK struct {
+	Data io.Reader
+}
 
-func (*GetEventsStreamOKApplicationJSON) getEventsStreamRes() {}
+// Read reads data from the Data reader.
+//
+// Kept to satisfy the io.Reader interface.
+func (s GetEventsStreamOK) Read(p []byte) (n int, err error) {
+	if s.Data == nil {
+		return 0, io.EOF
+	}
+	return s.Data.Read(p)
+}
+
+func (*GetEventsStreamOK) getEventsStreamRes() {}
 
 type GetEventsStreamResource string
 

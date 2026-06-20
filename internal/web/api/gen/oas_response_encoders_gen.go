@@ -514,14 +514,16 @@ func encodeGetEventsResponse(response GetEventsRes, w http.ResponseWriter, span 
 
 func encodeGetEventsStreamResponse(response GetEventsStreamRes, w http.ResponseWriter, span trace.Span) error {
 	switch response := response.(type) {
-	case *GetEventsStreamOKApplicationJSON:
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	case *GetEventsStreamOK:
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(200)
 
-		e := jx.NewStreamingEncoder(w, -1)
-		response.Encode(e)
-		if err := e.Close(); err != nil {
-			return errors.Wrap(err, "flush streaming")
+		writer := w
+		if closer, ok := response.Data.(io.Closer); ok {
+			defer closer.Close()
+		}
+		if _, err := io.Copy(writer, response); err != nil {
+			return errors.Wrap(err, "write")
 		}
 
 		return nil
