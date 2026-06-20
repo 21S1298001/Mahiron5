@@ -28,6 +28,7 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 					},
 				},
 				LogLevel:         "info",
+				Observability:    ObservabilityConfig{ServiceName: "mahiron5"},
 				JobMaxRunning:    1,
 				DatabasePath:     "./mahiron.db",
 				EpgRetentionDays: 3,
@@ -54,6 +55,7 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 					},
 				},
 				LogLevel:         "info",
+				Observability:    ObservabilityConfig{ServiceName: "mahiron5"},
 				JobMaxRunning:    1,
 				DatabasePath:     "./mahiron.db",
 				EpgRetentionDays: 3,
@@ -80,6 +82,7 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 					},
 				},
 				LogLevel:         "info",
+				Observability:    ObservabilityConfig{ServiceName: "mahiron5"},
 				JobMaxRunning:    1,
 				DatabasePath:     "./mahiron.db",
 				EpgRetentionDays: 3,
@@ -108,6 +111,7 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 					},
 				},
 				LogLevel:         "debug",
+				Observability:    ObservabilityConfig{ServiceName: "mahiron5"},
 				JobMaxRunning:    1,
 				DatabasePath:     "./mahiron.db",
 				EpgRetentionDays: 3,
@@ -130,6 +134,7 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 			want: &SystemConfig{
 				Addresses:        []ServerAddress{{Http: "localhost:40772"}},
 				LogLevel:         "info",
+				Observability:    ObservabilityConfig{ServiceName: "mahiron5"},
 				JobMaxRunning:    4,
 				DatabasePath:     "./mahiron.db",
 				EpgRetentionDays: 3,
@@ -141,6 +146,33 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 			name:    "Invalid job max running",
 			args:    args{filePath: "testdata/system-invalid-job-max-running.yml"},
 			wantErr: true,
+		},
+		{
+			name: "Configured observability",
+			args: args{filePath: "testdata/system-observability.yml"},
+			want: &SystemConfig{
+				Addresses:     []ServerAddress{{Http: "localhost:40772"}},
+				LogLevel:      "info",
+				JobMaxRunning: 1,
+				Observability: ObservabilityConfig{
+					ServiceName: "custom-mahiron",
+					Endpoint:    "localhost:4317",
+					Insecure:    true,
+					Headers: map[string]string{
+						"authorization": "Bearer token",
+						"x-tenant":      "test",
+					},
+					Logs:   ObservabilitySignal{Enabled: true},
+					Traces: ObservabilitySignal{Enabled: false},
+					Metrics: ObservabilitySignal{
+						Enabled: true,
+					},
+				},
+				DatabasePath:     "./mahiron.db",
+				EpgRetentionDays: 3,
+				EpgRetrievalTime: 600000,
+				EpgStaleAfter:    7200000,
+			},
 		},
 	}
 	for _, tt := range tests {

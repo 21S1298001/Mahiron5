@@ -19,6 +19,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/filter"
 	"github.com/21S1298001/Mahiron5/internal/job"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/server"
 	"github.com/21S1298001/Mahiron5/internal/service"
@@ -46,8 +47,7 @@ func Run(ctx context.Context) int {
 	case "error":
 		level = slog.LevelError
 	}
-	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
-	slog.SetDefault(slog.New(h))
+	obs := observability.Setup(ctx, cfg.System.Observability, level)
 
 	database, err := db.Open(cfg.System.DatabasePath)
 	if err != nil {
@@ -117,6 +117,7 @@ func Run(ctx context.Context) int {
 		StreamManager:  apiStreams,
 		TunerManager:   tuners,
 		JobManager:     jobs,
+		LogStore:       obs.LogStore,
 		EpgStaleAfter:  int64(cfg.System.EpgStaleAfter),
 	})
 	if err != nil {
@@ -187,6 +188,14 @@ func Run(ctx context.Context) int {
 		slog.Error("failed to close database", "err", err)
 	}
 	slog.Info("database closed")
+
+	observabilityCtx, observabilityCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer observabilityCancel()
+	slog.Info("shutting down observability")
+	if err := obs.Shutdown(observabilityCtx); err != nil {
+		slog.Error("failed to shutdown observability", "err", err)
+	}
+	slog.Info("observability shut down")
 
 	slog.Info("exiting")
 	return 0

@@ -19,6 +19,7 @@ type Handler struct {
 	streamManager  StreamManager
 	tunerManager   TunerManager
 	jobManager     JobManager
+	logStore       LogStore
 	epgStaleAfter  int64
 }
 
@@ -30,6 +31,7 @@ type HandlerConfig struct {
 	StreamManager  StreamManager
 	TunerManager   TunerManager
 	JobManager     JobManager
+	LogStore       LogStore
 	EpgStaleAfter  int64
 }
 
@@ -70,6 +72,11 @@ type JobManager interface {
 	RunSchedule(string) error
 }
 
+type LogStore interface {
+	Snapshot() []byte
+	Subscribe() (io.ReadCloser, func())
+}
+
 func NewHandler(config HandlerConfig) *Handler {
 	return &Handler{
 		serviceManager: config.ServiceManager,
@@ -77,6 +84,7 @@ func NewHandler(config HandlerConfig) *Handler {
 		streamManager:  config.StreamManager,
 		tunerManager:   config.TunerManager,
 		jobManager:     config.JobManager,
+		logStore:       config.LogStore,
 		epgStaleAfter:  config.EpgStaleAfter,
 	}
 }
@@ -134,11 +142,11 @@ func (h *Handler) GetJobs(ctx context.Context) (apigen.GetJobsRes, error) {
 }
 
 func (h *Handler) GetLog(ctx context.Context) (apigen.GetLogRes, error) {
-	return &apigen.GetLogDef{StatusCode: http.StatusNotImplemented}, nil
+	return GetLog(ctx, h)
 }
 
 func (h *Handler) GetLogStream(ctx context.Context) (apigen.GetLogStreamRes, error) {
-	return &apigen.GetLogStreamDef{StatusCode: http.StatusNotImplemented}, nil
+	return GetLogStream(ctx, h)
 }
 
 func (h *Handler) GetLogoImage(ctx context.Context, params apigen.GetLogoImageParams) (apigen.GetLogoImageRes, error) {

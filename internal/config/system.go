@@ -10,6 +10,7 @@ import (
 type SystemConfig struct {
 	Addresses        []ServerAddress     `json:"addresses"`
 	LogLevel         string              `json:"logLevel,omitempty"`
+	Observability    ObservabilityConfig `json:"observability,omitempty"`
 	JobMaxRunning    int                 `json:"jobMaxRunning,omitempty"`
 	Jobs             []JobScheduleConfig `json:"jobs,omitempty"`
 	DatabasePath     string              `json:"databasePath,omitempty"`
@@ -26,6 +27,20 @@ type JobScheduleConfig struct {
 type ServerAddress struct {
 	Http string `json:"http,omitempty"`
 	Unix string `json:"unix,omitempty"`
+}
+
+type ObservabilityConfig struct {
+	ServiceName string              `json:"serviceName,omitempty"`
+	Endpoint    string              `json:"endpoint,omitempty"`
+	Insecure    bool                `json:"insecure,omitempty"`
+	Headers     map[string]string   `json:"headers,omitempty"`
+	Logs        ObservabilitySignal `json:"logs,omitempty"`
+	Traces      ObservabilitySignal `json:"traces,omitempty"`
+	Metrics     ObservabilitySignal `json:"metrics,omitempty"`
+}
+
+type ObservabilitySignal struct {
+	Enabled bool `json:"enabled,omitempty"`
 }
 
 func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
@@ -64,6 +79,9 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 
 	if config.LogLevel == "" {
 		config.LogLevel = "info"
+	}
+	if config.Observability.ServiceName == "" {
+		config.Observability.ServiceName = "mahiron5"
 	}
 
 	switch config.LogLevel {

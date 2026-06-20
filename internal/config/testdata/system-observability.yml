@@ -1,0 +1,13 @@
+observability:
+  serviceName: custom-mahiron
+  endpoint: localhost:4317
+  insecure: true
+  headers:
+    authorization: Bearer token
+    x-tenant: test
+  logs:
+    enabled: true
+  traces:
+    enabled: false
+  metrics:
+    enabled: true
