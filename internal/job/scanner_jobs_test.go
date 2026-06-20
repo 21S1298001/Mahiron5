@@ -10,6 +10,7 @@ import (
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
+	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/internal/stream"
@@ -116,8 +117,9 @@ func TestEnqueueEPGGatherForNetworkDispatches(t *testing.T) {
 	mgr := newTestManager(t)
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
 
-	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 10*time.Minute, 4, nil, nil)
+	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, epgService, 4, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,8 +143,9 @@ func TestEnqueueEPGGatherForNetworkIgnoresMissingNetwork(t *testing.T) {
 	sm := service.NewServiceManager(service.NewSQLiteStore(database), channels)
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
+	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
 
-	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 10*time.Minute, 999, nil, nil)
+	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, epgService, 999, nil, nil)
 	if err != nil {
 		t.Fatalf("expected nil error for missing network, got %v", err)
 	}

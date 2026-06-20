@@ -1,6 +1,10 @@
-package program
+package epg
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/21S1298001/Mahiron5/internal/program"
+)
 
 type EITSection struct {
 	OriginalNetworkID        uint16     `json:"originalNetworkId"`
@@ -104,11 +108,11 @@ func decodeLanguageCode(raw json.RawMessage) (string, bool) {
 	return string([]byte{byte(n >> 16), byte(n >> 8), byte(n)}), true
 }
 
-func (s *EITSection) Programs() []*Program {
-	programs := make([]*Program, 0, len(s.Events))
+func (s *EITSection) Programs() []*program.Program {
+	programs := make([]*program.Program, 0, len(s.Events))
 	for _, event := range s.Events {
-		program := &Program{
-			ID:        ProgramID(s.OriginalNetworkID, s.ServiceID, event.EventID),
+		item := &program.Program{
+			ID:        program.ProgramID(s.OriginalNetworkID, s.ServiceID, event.EventID),
 			EventID:   event.EventID,
 			ServiceID: s.ServiceID,
 			NetworkID: s.OriginalNetworkID,
@@ -117,24 +121,24 @@ func (s *EITSection) Programs() []*Program {
 			IsFree:    !event.Scrambled,
 		}
 		for _, descriptor := range event.Descriptors {
-			applyDescriptor(program, descriptor)
+			applyDescriptor(item, descriptor)
 		}
-		programs = append(programs, program)
+		programs = append(programs, item)
 	}
 	return programs
 }
 
-func applyDescriptor(program *Program, descriptor EITDescriptor) {
+func applyDescriptor(item *program.Program, descriptor EITDescriptor) {
 	switch descriptor.Type {
 	case "ShortEvent":
-		program.Name = descriptor.EventName
-		program.Description = descriptor.Text
+		item.Name = descriptor.EventName
+		item.Description = descriptor.Text
 	case "Content":
 		for _, nibble := range descriptor.Nibbles {
 			if len(nibble) < 4 {
 				continue
 			}
-			program.Genres = append(program.Genres, Genre{
+			item.Genres = append(item.Genres, program.Genre{
 				Lv1: nibble[0],
 				Lv2: nibble[1],
 				Un1: nibble[2],
@@ -142,16 +146,16 @@ func applyDescriptor(program *Program, descriptor EITDescriptor) {
 			})
 		}
 	case "Component":
-		video := &Video{}
+		video := &program.Video{}
 		if descriptor.StreamContent != nil {
 			video.StreamContent = *descriptor.StreamContent
 		}
 		if descriptor.ComponentType != nil {
 			video.ComponentType = *descriptor.ComponentType
 		}
-		program.Video = video
+		item.Video = video
 	case "AudioComponent":
-		audio := Audio{}
+		audio := program.Audio{}
 		if descriptor.ComponentType != nil {
 			audio.ComponentType = *descriptor.ComponentType
 		}
@@ -168,30 +172,30 @@ func applyDescriptor(program *Program, descriptor EITDescriptor) {
 			audio.SamplingRate = &v
 		}
 		audio.Langs = descriptorLangs(descriptor)
-		program.Audios = append(program.Audios, audio)
+		item.Audios = append(item.Audios, audio)
 	case "ExtendedEvent":
-		if program.Extended == nil {
-			program.Extended = make(map[string]string)
+		if item.Extended == nil {
+			item.Extended = make(map[string]string)
 		}
-		for _, item := range descriptor.Items {
-			if len(item) >= 2 {
-				program.Extended[item[0]] = item[1]
+		for _, field := range descriptor.Items {
+			if len(field) >= 2 {
+				item.Extended[field[0]] = field[1]
 			}
 		}
 	case "EventGroup":
-		var groupType RelatedItemType
+		var groupType program.RelatedItemType
 		if descriptor.GroupType != nil {
 			switch *descriptor.GroupType {
 			case 0x01:
-				groupType = RelatedItemTypeShared
+				groupType = program.RelatedItemTypeShared
 			case 0x02:
-				groupType = RelatedItemTypeRelay
+				groupType = program.RelatedItemTypeRelay
 			case 0x04:
-				groupType = RelatedItemTypeMovement
+				groupType = program.RelatedItemTypeMovement
 			}
 		}
 		for _, event := range descriptor.Events {
-			program.RelatedItems = append(program.RelatedItems, RelatedItem{
+			item.RelatedItems = append(item.RelatedItems, program.RelatedItem{
 				Type:              groupType,
 				NetworkID:         event.OriginalNetworkID,
 				TransportStreamID: event.TransportStreamID,
@@ -200,7 +204,7 @@ func applyDescriptor(program *Program, descriptor EITDescriptor) {
 			})
 		}
 	case "Series":
-		series := &Series{Name: descriptor.SeriesName}
+		series := &program.Series{Name: descriptor.SeriesName}
 		if descriptor.SeriesID != nil {
 			series.ID = *descriptor.SeriesID
 		}
@@ -220,7 +224,7 @@ func applyDescriptor(program *Program, descriptor EITDescriptor) {
 		if descriptor.LastEpisodeNumber != nil {
 			series.LastEpisode = *descriptor.LastEpisodeNumber
 		}
-		program.Series = series
+		item.Series = series
 	}
 }
 

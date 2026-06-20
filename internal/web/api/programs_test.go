@@ -6,6 +6,7 @@ import (
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
+	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
@@ -20,17 +21,18 @@ func testProgramHandler(t *testing.T) *Handler {
 	}
 	t.Cleanup(func() { database.Close() })
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	if err := pm.UpsertEITSection(ctx, &program.EITSection{
+	updater := epg.NewUpdater(pm)
+	if err := updater.UpsertEITSection(ctx, &epg.EITSection{
 		OriginalNetworkID: 1,
 		ServiceID:         101,
-		Events: []program.EITEvent{
+		Events: []epg.EITEvent{
 			{EventID: 10, StartTime: 2000, Duration: 30000, Scrambled: false,
-				Descriptors: []program.EITDescriptor{
+				Descriptors: []epg.EITDescriptor{
 					{Type: "ShortEvent", EventName: "second"},
 				},
 			},
 			{EventID: 9, StartTime: 1000, Duration: 30000, Scrambled: false,
-				Descriptors: []program.EITDescriptor{
+				Descriptors: []epg.EITDescriptor{
 					{Type: "ShortEvent", EventName: "first"},
 				},
 			},

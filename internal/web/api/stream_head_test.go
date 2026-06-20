@@ -6,6 +6,7 @@ import (
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
+	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/internal/stream"
@@ -64,7 +65,7 @@ func testStreamHeadHandler(t *testing.T) (*Handler, *service.ServiceManager) {
 	sm := service.NewServiceManager(store, channels)
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:     channels,
-		EITUpdater:   pm,
+		EITUpdater:   epg.NewUpdater(pm),
 		TunerManager: tunerManager,
 	})
 	handler := NewHandler(HandlerConfig{

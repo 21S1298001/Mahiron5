@@ -1,4 +1,4 @@
-package processor
+package epg
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestEITCollectorCommands(t *testing.T) {
+func TestMirakcAribCollectorCommands(t *testing.T) {
 	if eitsCollectorCommand != "mirakc-arib collect-eits" {
 		t.Fatalf("EITS command = %q", eitsCollectorCommand)
 	}
@@ -18,12 +18,12 @@ func TestEITCollectorCommands(t *testing.T) {
 	}
 }
 
-func TestEITCollectorReportsMissingMirakcAribForEITS(t *testing.T) {
+func TestMirakcAribCollectorReportsMissingMirakcAribForEITS(t *testing.T) {
 	replaceVar(t, &lookPath, func(file string) (string, error) {
 		return "", exec.ErrNotFound
 	})
 
-	err := NewEITCollector().CollectEITS(context.Background(), strings.NewReader(""), io.Discard)
+	err := NewMirakcAribCollector().CollectEITS(context.Background(), strings.NewReader(""), io.Discard)
 	if !errors.Is(err, ErrMirakcAribRequired) {
 		t.Fatalf("CollectEITS error = %v, want ErrMirakcAribRequired", err)
 	}
@@ -35,12 +35,12 @@ func TestEITCollectorReportsMissingMirakcAribForEITS(t *testing.T) {
 	}
 }
 
-func TestEITCollectorReportsMissingMirakcAribForEITPF(t *testing.T) {
+func TestMirakcAribCollectorReportsMissingMirakcAribForEITPF(t *testing.T) {
 	replaceVar(t, &lookPath, func(file string) (string, error) {
 		return "", exec.ErrNotFound
 	})
 
-	err := NewEITCollector().CollectEITPF(context.Background(), strings.NewReader(""), io.Discard)
+	err := NewMirakcAribCollector().CollectEITPF(context.Background(), strings.NewReader(""), io.Discard)
 	if !errors.Is(err, ErrMirakcAribRequired) {
 		t.Fatalf("CollectEITPF error = %v, want ErrMirakcAribRequired", err)
 	}
@@ -50,4 +50,13 @@ func TestEITCollectorReportsMissingMirakcAribForEITPF(t *testing.T) {
 	if !strings.Contains(err.Error(), "EITPF collection") {
 		t.Fatalf("CollectEITPF error = %q, want EITPF context", err.Error())
 	}
+}
+
+func replaceVar[T any](t *testing.T, target *T, value T) {
+	t.Helper()
+	orig := *target
+	*target = value
+	t.Cleanup(func() {
+		*target = orig
+	})
 }

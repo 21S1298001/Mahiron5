@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/service"
 )
 
@@ -18,6 +19,7 @@ const (
 )
 
 func RegisterServiceUpdater(registry Registry, programs EPGProgramStore, services ServiceScanner, streamScanner service.StreamScanner, epgStreams EPGStreamManager, channels config.ChannelsConfig, retrievalTime time.Duration) {
+	epgService := epg.NewService(programs, services, epgStreams, channels, 0, retrievalTime)
 	registry.Register(JobDefinition{
 		Key: ServiceUpdaterKey, Name: ServiceUpdaterName, IsRerunnable: true,
 		Handler: func(ctx context.Context) error {
@@ -43,7 +45,7 @@ func RegisterServiceUpdater(registry Registry, programs EPGProgramStore, service
 							if err := childCtx.Err(); err != nil {
 								return err
 							}
-							if _, err := enqueueEPGGatherForNetwork(childCtx, registry, programs, services, epgStreams, channels, retrievalTime, nid, nil, nil); err != nil {
+							if _, err := enqueueEPGGatherForNetwork(childCtx, registry, epgService, nid, nil, nil); err != nil {
 								slog.Warn("failed to enqueue EPG gather for newly scanned network", "networkId", nid, "channel", fmt.Sprintf("%s/%s", channel.Type, channel.Channel), "err", err)
 							}
 						}

@@ -3,11 +3,11 @@ package stream
 import (
 	"context"
 	"io"
+
+	"github.com/21S1298001/Mahiron5/internal/processor"
 )
 
-type Processor interface {
-	Run(context.Context, io.Reader, io.Writer) error
-}
+type Processor = processor.Processor
 
 type errorProcessor struct {
 	err error

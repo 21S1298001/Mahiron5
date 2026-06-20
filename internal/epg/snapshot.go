@@ -1,9 +1,11 @@
-package program
+package epg
 
 import (
 	"log/slog"
 	"sort"
 	"time"
+
+	"github.com/21S1298001/Mahiron5/internal/program"
 )
 
 type ServiceKey struct {
@@ -11,40 +13,35 @@ type ServiceKey struct {
 	ServiceID uint16
 }
 
-type EITSnapshot struct {
+type Snapshot struct {
 	services     map[ServiceKey]*snapshotService
 	lastProgress time.Time
 }
 
+type EITSnapshot = Snapshot
+
 type snapshotService struct {
 	tables   map[uint8]*snapshotTable
-	programs map[int64]*Program
+	programs map[int64]*program.Program
 }
 
 type snapshotTable struct {
-	version     uint8
-	hasVersion  bool
-	lastSection uint8
-	segmentLast map[uint8]uint8
-	// sections records which section numbers have been observed during this
-	// collection and drives the diagnostic completeness report.
-	sections map[uint8]struct{}
-	// sectionPrograms keeps the latest payload observed for each section. EIT
-	// versions can coexist while a broadcaster rolls an update out, so a new
-	// version replaces only the section it arrived in, not the whole table.
-	sectionPrograms map[uint8][]*Program
+	version         uint8
+	hasVersion      bool
+	lastSection     uint8
+	segmentLast     map[uint8]uint8
+	sections        map[uint8]struct{}
+	sectionPrograms map[uint8][]*program.Program
 	sectionVersions map[uint8]uint8
 }
 
-// EITSnapshotReport describes why a service snapshot is not complete.  It is
-// intentionally safe to pass directly to slog as a structured value.
-type EITSnapshotReport struct {
-	ObservedTables  int                      `json:"observedTables"`
-	MissingTableIDs []int                    `json:"missingTableIds,omitempty"`
-	Tables          []EITSnapshotTableReport `json:"tables,omitempty"`
+type SnapshotReport struct {
+	ObservedTables  int                   `json:"observedTables"`
+	MissingTableIDs []int                 `json:"missingTableIds,omitempty"`
+	Tables          []SnapshotTableReport `json:"tables,omitempty"`
 }
 
-type EITSnapshotTableReport struct {
+type SnapshotTableReport struct {
 	TableID            int   `json:"tableId"`
 	Version            int   `json:"version"`
 	LastSection        int   `json:"lastSection"`
@@ -54,11 +51,15 @@ type EITSnapshotTableReport struct {
 	Complete           bool  `json:"complete"`
 }
 
-func NewEITSnapshot() *EITSnapshot {
-	return &EITSnapshot{services: make(map[ServiceKey]*snapshotService)}
+func NewSnapshot() *Snapshot {
+	return &Snapshot{services: make(map[ServiceKey]*snapshotService)}
 }
 
-func (s *EITSnapshot) Observe(section *EITSection, now time.Time) bool {
+func NewEITSnapshot() *Snapshot {
+	return NewSnapshot()
+}
+
+func (s *Snapshot) Observe(section *EITSection, now time.Time) bool {
 	if section == nil {
 		return false
 	}
@@ -74,7 +75,7 @@ func (s *EITSnapshot) Observe(section *EITSection, now time.Time) bool {
 	if service == nil {
 		service = &snapshotService{
 			tables:   make(map[uint8]*snapshotTable),
-			programs: make(map[int64]*Program),
+			programs: make(map[int64]*program.Program),
 		}
 		s.services[key] = service
 	}
@@ -83,7 +84,7 @@ func (s *EITSnapshot) Observe(section *EITSection, now time.Time) bool {
 		table = &snapshotTable{
 			segmentLast:     make(map[uint8]uint8),
 			sections:        make(map[uint8]struct{}),
-			sectionPrograms: make(map[uint8][]*Program),
+			sectionPrograms: make(map[uint8][]*program.Program),
 			sectionVersions: make(map[uint8]uint8),
 		}
 		service.tables[section.TableID] = table
@@ -92,8 +93,7 @@ func (s *EITSnapshot) Observe(section *EITSection, now time.Time) bool {
 	previousVersion, existed := table.sectionVersions[section.SectionNumber]
 	changed := !existed || previousVersion != section.VersionNumber
 	table.sections[section.SectionNumber] = struct{}{}
-	progs := section.Programs()
-	table.sectionPrograms[section.SectionNumber] = progs
+	table.sectionPrograms[section.SectionNumber] = section.Programs()
 	table.sectionVersions[section.SectionNumber] = section.VersionNumber
 	rebuildServicePrograms(service)
 
@@ -109,7 +109,7 @@ func (s *EITSnapshot) Observe(section *EITSection, now time.Time) bool {
 }
 
 func rebuildServicePrograms(service *snapshotService) {
-	service.programs = make(map[int64]*Program)
+	service.programs = make(map[int64]*program.Program)
 	for _, table := range service.tables {
 		for _, programs := range table.sectionPrograms {
 			for _, item := range programs {
@@ -119,7 +119,7 @@ func rebuildServicePrograms(service *snapshotService) {
 	}
 }
 
-func (s *EITSnapshot) ServiceComplete(key ServiceKey) bool {
+func (s *Snapshot) ServiceComplete(key ServiceKey) bool {
 	service := s.services[key]
 	if service == nil || len(service.tables) == 0 {
 		return false
@@ -155,13 +155,10 @@ func (s *EITSnapshot) ServiceComplete(key ServiceKey) bool {
 	return true
 }
 
-// CompletionReport returns the table and section gaps used by
-// ServiceComplete.  MissingSegmentInfo contains segment indexes for which no
-// segment_last_section_number has been observed yet.
-func (s *EITSnapshot) CompletionReport(key ServiceKey) EITSnapshotReport {
+func (s *Snapshot) CompletionReport(key ServiceKey) SnapshotReport {
 	service := s.services[key]
 	if service == nil {
-		return EITSnapshotReport{}
+		return SnapshotReport{}
 	}
 
 	tableIDs := make([]int, 0, len(service.tables))
@@ -170,7 +167,7 @@ func (s *EITSnapshot) CompletionReport(key ServiceKey) EITSnapshotReport {
 	}
 	sort.Ints(tableIDs)
 
-	report := EITSnapshotReport{ObservedTables: len(tableIDs)}
+	report := SnapshotReport{ObservedTables: len(tableIDs)}
 	groups := make(map[uint8]map[uint8]struct{})
 	for _, id := range tableIDs {
 		tableID := uint8(id)
@@ -181,7 +178,7 @@ func (s *EITSnapshot) CompletionReport(key ServiceKey) EITSnapshotReport {
 		}
 		groups[base][tableID] = struct{}{}
 
-		tableReport := EITSnapshotTableReport{
+		tableReport := SnapshotTableReport{
 			TableID:          id,
 			Version:          int(table.version),
 			LastSection:      int(table.lastSection),
@@ -196,8 +193,6 @@ func (s *EITSnapshot) CompletionReport(key ServiceKey) EITSnapshotReport {
 		for segment := uint8(0); segment <= lastSegment; segment++ {
 			segmentLast, ok := table.segmentLast[segment]
 			if !ok {
-				// The first schedule table stops carrying elapsed three-hour
-				// segments.  A contiguous leading gap is therefore expected.
 				if tableID != base || segment >= firstObservedSegment {
 					tableReport.MissingSegmentInfo = append(tableReport.MissingSegmentInfo, int(segment))
 				}
@@ -290,7 +285,7 @@ func firstSegmentWithInfo(table *snapshotTable) uint8 {
 	return first
 }
 
-func (s *EITSnapshot) AllComplete(expected []ServiceKey) bool {
+func (s *Snapshot) AllComplete(expected []ServiceKey) bool {
 	if len(expected) == 0 {
 		return false
 	}
@@ -302,23 +297,23 @@ func (s *EITSnapshot) AllComplete(expected []ServiceKey) bool {
 	return true
 }
 
-func (s *EITSnapshot) StableFor(now time.Time, duration time.Duration) bool {
+func (s *Snapshot) StableFor(now time.Time, duration time.Duration) bool {
 	return !s.lastProgress.IsZero() && now.Sub(s.lastProgress) >= duration
 }
 
-func (s *EITSnapshot) Programs(key ServiceKey) []*Program {
+func (s *Snapshot) Programs(key ServiceKey) []*program.Program {
 	service := s.services[key]
 	if service == nil {
 		return nil
 	}
-	result := make([]*Program, 0, len(service.programs))
+	result := make([]*program.Program, 0, len(service.programs))
 	for _, item := range service.programs {
 		result = append(result, item)
 	}
 	return result
 }
 
-func (s *EITSnapshot) Observed(key ServiceKey) bool {
+func (s *Snapshot) Observed(key ServiceKey) bool {
 	service := s.services[key]
 	return service != nil && len(service.tables) > 0
 }

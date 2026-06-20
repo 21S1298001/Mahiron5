@@ -16,6 +16,7 @@ import (
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
+	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/filter"
 	"github.com/21S1298001/Mahiron5/internal/job"
 	"github.com/21S1298001/Mahiron5/internal/processor"
@@ -69,11 +70,12 @@ func Run(ctx context.Context) int {
 	services := service.NewServiceManager(serviceStore, cfg.Channels)
 
 	programs := program.NewProgramManager(programStore)
+	epgUpdater := epg.NewUpdater(programs)
 
 	streams := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:     cfg.Channels,
-		EITCollector: processor.NewEITCollector(),
-		EITUpdater:   programs,
+		EITCollector: epg.NewMirakcAribCollector(),
+		EITUpdater:   epgUpdater,
 		Filter:       filter.NewServiceFilter(),
 		Scanner:      processor.NewServiceScanner(),
 		TunerManager: tuners,

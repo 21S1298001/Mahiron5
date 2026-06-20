@@ -10,7 +10,7 @@
   - transport_error_indicator 付きパケットは無視
   - CRC 不一致の section は破棄
   - 未知の descriptor はスキップ
-- 既存の `program.EITSection` / `service.scanService` 構造体を再利用し、`mirakc-arib` の JSON 出力と互換を保つ
+- EPG 出力は `internal/epg` の EIT JSON 表現と互換にし、`program` は TS/EIT 詳細を知らない状態を保つ
 
 ## ディレクトリ構成
 
@@ -68,18 +68,18 @@ ts/
 - `eit.go`: EIT section のパース
 - `descriptor_short_event.go`, `descriptor_content.go`, `descriptor_component.go`, `descriptor_audio_component.go`
 - `eitcollector.go`: `CollectEITPF` を実装
-- 既存 `processor/eit_collector.go` の EITPF 側を置き換え
+- 既存 `internal/epg` の `mirakc-arib` collector backend の EITPF 側を置き換え
 
 ### Phase 4: EITS 収集
 
 - `descriptor_extended_event.go`, `descriptor_event_group.go`, `descriptor_series.go`
 - `eitcollector.go`: `CollectEITS` を実装
-- 既存 `processor/eit_collector.go` の EITS 側を置き換え
+- 既存 `internal/epg` の `mirakc-arib` collector backend の EITS 側を置き換え
 - この時点で `mirakc-arib collect-eits/collect-eitpf` 依存を削除
 
 ### Phase 5: 後始末
 
-- `processor/errors.go` の `ErrMirakcAribRequired` を整理
+- `internal/epg` の `ErrMirakcAribRequired` と `mirakc-arib` backend を整理
 - `lookPath("mirakc-arib")` チェックを削除
 - 既存テストを外部コマンド依存のない形に置き換え
 
