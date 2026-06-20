@@ -1,0 +1,204 @@
+package api
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/21S1298001/Mahiron5/internal/job"
+	"github.com/21S1298001/Mahiron5/internal/program"
+	"github.com/21S1298001/Mahiron5/internal/service"
+	"github.com/21S1298001/Mahiron5/internal/stream"
+	"github.com/21S1298001/Mahiron5/internal/tuner"
+	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+)
+
+type Handler struct {
+	serviceManager *service.ServiceManager
+	programManager *program.ProgramManager
+	streamManager  *stream.StreamManager
+	tunerManager   *tuner.TunerManager
+	jobManager     *job.JobManager
+	epgStaleAfter  int64
+}
+
+var _ apigen.Handler = (*Handler)(nil)
+
+type HandlerConfig struct {
+	ServiceManager *service.ServiceManager
+	ProgramManager *program.ProgramManager
+	StreamManager  *stream.StreamManager
+	TunerManager   *tuner.TunerManager
+	JobManager     *job.JobManager
+	EpgStaleAfter  int64
+}
+
+func NewHandler(config HandlerConfig) *Handler {
+	return &Handler{
+		serviceManager: config.ServiceManager,
+		programManager: config.ProgramManager,
+		streamManager:  config.StreamManager,
+		tunerManager:   config.TunerManager,
+		jobManager:     config.JobManager,
+		epgStaleAfter:  config.EpgStaleAfter,
+	}
+}
+
+func (h *Handler) AbortJob(ctx context.Context, params apigen.AbortJobParams) (apigen.AbortJobRes, error) {
+	return AbortJob(ctx, h, params)
+}
+
+func (h *Handler) ChannelsTypeChannelServicesIDStreamHead(ctx context.Context, params apigen.ChannelsTypeChannelServicesIDStreamHeadParams) (apigen.ChannelsTypeChannelServicesIDStreamHeadRes, error) {
+	return ChannelsTypeChannelServicesIDStreamHead(ctx, h, params)
+}
+
+func (h *Handler) ChannelsTypeChannelStreamHead(ctx context.Context, params apigen.ChannelsTypeChannelStreamHeadParams) (apigen.ChannelsTypeChannelStreamHeadRes, error) {
+	return ChannelsTypeChannelStreamHead(ctx, h, params)
+}
+
+func (h *Handler) CheckVersion(ctx context.Context) (apigen.CheckVersionRes, error) {
+	return CheckVersion(ctx, h)
+}
+
+func (h *Handler) GetApiDocumentation(ctx context.Context) (apigen.GetApiDocumentationRes, error) {
+	return GetApiDocumentation(ctx, h)
+}
+
+func (h *Handler) GetChannel(ctx context.Context, params apigen.GetChannelParams) (apigen.GetChannelRes, error) {
+	return GetChannel(ctx, h, params)
+}
+
+func (h *Handler) GetChannelStream(ctx context.Context, params apigen.GetChannelStreamParams) (apigen.GetChannelStreamRes, error) {
+	return GetChannelStream(ctx, h, params)
+}
+
+func (h *Handler) GetChannels(ctx context.Context, params apigen.GetChannelsParams) (apigen.GetChannelsRes, error) {
+	return GetChannels(ctx, h, params)
+}
+
+func (h *Handler) GetChannelsByType(ctx context.Context, params apigen.GetChannelsByTypeParams) (apigen.GetChannelsByTypeRes, error) {
+	return GetChannelsByType(ctx, h, params)
+}
+
+func (h *Handler) GetEvents(ctx context.Context) (apigen.GetEventsRes, error) {
+	return notImplemented("GET /events is not implemented"), nil
+}
+
+func (h *Handler) GetEventsStream(ctx context.Context, params apigen.GetEventsStreamParams) (apigen.GetEventsStreamRes, error) {
+	return notImplemented("GET /events/stream is not implemented"), nil
+}
+
+func (h *Handler) GetJobSchedules(ctx context.Context) (apigen.GetJobSchedulesRes, error) {
+	return GetJobSchedules(ctx, h)
+}
+
+func (h *Handler) GetJobs(ctx context.Context) (apigen.GetJobsRes, error) {
+	return GetJobs(ctx, h)
+}
+
+func (h *Handler) GetLog(ctx context.Context) (apigen.GetLogRes, error) {
+	return &apigen.GetLogDef{StatusCode: http.StatusNotImplemented}, nil
+}
+
+func (h *Handler) GetLogStream(ctx context.Context) (apigen.GetLogStreamRes, error) {
+	return &apigen.GetLogStreamDef{StatusCode: http.StatusNotImplemented}, nil
+}
+
+func (h *Handler) GetLogoImage(ctx context.Context, params apigen.GetLogoImageParams) (apigen.GetLogoImageRes, error) {
+	return &apigen.GetLogoImageDef{StatusCode: http.StatusNotImplemented}, nil
+}
+
+func (h *Handler) GetProgram(ctx context.Context, params apigen.GetProgramParams) (apigen.GetProgramRes, error) {
+	return GetProgram(ctx, h, params)
+}
+
+func (h *Handler) GetProgramStream(ctx context.Context, params apigen.GetProgramStreamParams) (apigen.GetProgramStreamRes, error) {
+	return &apigen.GetProgramStreamDef{StatusCode: http.StatusNotImplemented}, nil
+}
+
+func (h *Handler) GetPrograms(ctx context.Context, params apigen.GetProgramsParams) (apigen.GetProgramsRes, error) {
+	return GetPrograms(ctx, h, params)
+}
+
+func (h *Handler) GetService(ctx context.Context, params apigen.GetServiceParams) (apigen.GetServiceRes, error) {
+	return GetService(ctx, h, params)
+}
+
+func (h *Handler) GetServiceByChannel(ctx context.Context, params apigen.GetServiceByChannelParams) (apigen.GetServiceByChannelRes, error) {
+	return GetServiceByChannel(ctx, h, params)
+}
+
+func (h *Handler) GetServicePrograms(ctx context.Context, params apigen.GetServiceProgramsParams) (apigen.GetServiceProgramsRes, error) {
+	return GetServicePrograms(ctx, h, params)
+}
+
+func (h *Handler) GetServiceStream(ctx context.Context, params apigen.GetServiceStreamParams) (apigen.GetServiceStreamRes, error) {
+	return GetServiceStream(ctx, h, params)
+}
+
+func (h *Handler) GetServiceStreamByChannel(ctx context.Context, params apigen.GetServiceStreamByChannelParams) (apigen.GetServiceStreamByChannelRes, error) {
+	return GetServiceStreamByChannel(ctx, h, params)
+}
+
+func (h *Handler) GetServices(ctx context.Context, params apigen.GetServicesParams) (apigen.GetServicesRes, error) {
+	return GetServices(ctx, h, params)
+}
+
+func (h *Handler) GetServicesByChannel(ctx context.Context, params apigen.GetServicesByChannelParams) (apigen.GetServicesByChannelRes, error) {
+	return GetServicesByChannel(ctx, h, params)
+}
+
+func (h *Handler) GetStatus(ctx context.Context) (apigen.GetStatusRes, error) {
+	return GetStatus(ctx, h)
+}
+
+func (h *Handler) GetTuner(ctx context.Context, params apigen.GetTunerParams) (apigen.GetTunerRes, error) {
+	return GetTuner(ctx, h, params)
+}
+
+func (h *Handler) GetTunerProcess(ctx context.Context, params apigen.GetTunerProcessParams) (apigen.GetTunerProcessRes, error) {
+	return notImplemented("GET /tuners/{index}/process is not implemented"), nil
+}
+
+func (h *Handler) GetTuners(ctx context.Context) (apigen.GetTunersRes, error) {
+	return GetTuners(ctx, h)
+}
+
+func (h *Handler) IptvDiscoverJSONGet(ctx context.Context) (apigen.IptvDiscoverJSONGetRes, error) {
+	return notImplemented("GET /iptv/discover.json is not implemented"), nil
+}
+
+func (h *Handler) IptvLineupJSONGet(ctx context.Context) (apigen.IptvLineupJSONGetRes, error) {
+	return notImplemented("GET /iptv/lineup.json is not implemented"), nil
+}
+
+func (h *Handler) IptvLineupStatusJSONGet(ctx context.Context) (apigen.IptvLineupStatusJSONGetRes, error) {
+	return notImplemented("GET /iptv/lineup_status.json is not implemented"), nil
+}
+
+func (h *Handler) IptvPlaylistGet(ctx context.Context) (apigen.IptvPlaylistGetRes, error) {
+	return notImplemented("GET /iptv/playlist.m3u8 is not implemented"), nil
+}
+
+func (h *Handler) IptvXmltvGet(ctx context.Context) (apigen.IptvXmltvGetRes, error) {
+	return notImplemented("GET /iptv/xmltv.xml is not implemented"), nil
+}
+
+func (h *Handler) KillTunerProcess(ctx context.Context, params apigen.KillTunerProcessParams) (apigen.KillTunerProcessRes, error) {
+	return notImplemented("DELETE /tuners/{index}/process is not implemented"), nil
+}
+
+func (h *Handler) ProgramsIDStreamHead(ctx context.Context, params apigen.ProgramsIDStreamHeadParams) (apigen.ProgramsIDStreamHeadRes, error) {
+	return ProgramsIDStreamHead(ctx, h, params)
+}
+
+func (h *Handler) RerunJob(ctx context.Context, params apigen.RerunJobParams) (apigen.RerunJobRes, error) {
+	return RerunJob(ctx, h, params)
+}
+
+func (h *Handler) RunJobSchedule(ctx context.Context, params apigen.RunJobScheduleParams) (apigen.RunJobScheduleRes, error) {
+	return RunJobSchedule(ctx, h, params)
+}
+
+func (h *Handler) ServicesIDStreamHead(ctx context.Context, params apigen.ServicesIDStreamHeadParams) (apigen.ServicesIDStreamHeadRes, error) {
+	return ServicesIDStreamHead(ctx, h, params)
+}
