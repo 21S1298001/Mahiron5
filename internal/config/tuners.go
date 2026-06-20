@@ -11,12 +11,15 @@ type TunersConfig []*TunerConfig
 
 type TunerConfig struct {
 	// https://github.com/Chinachu/Mirakurun/blob/61c4155d2535c56fbf6fd379c5e8aba779fd642b/api.d.ts#L297
-	Name          string   `json:"name"`
-	Types         []string `json:"types,omitempty"`
-	Command       string   `json:"command,omitempty"`
-	DvbDevicePath string   `json:"dvbDevicePath,omitempty"`
-	Decoder       string   `json:"decoder,omitempty"`
-	IsDisabled    bool     `json:"isDisabled,omitempty"`
+	Name              string   `json:"name"`
+	Types             []string `json:"types,omitempty"`
+	Command           string   `json:"command,omitempty"`
+	DvbDevicePath     string   `json:"dvbDevicePath,omitempty"`
+	Decoder           string   `json:"decoder,omitempty"`
+	IsDisabled        bool     `json:"isDisabled,omitempty"`
+	StartupRetryMax   int      `json:"startupRetryMax,omitempty"`
+	StartupTimeout    int      `json:"startupTimeout,omitempty"`
+	StartupRetryDelay int      `json:"startupRetryDelay,omitempty"`
 }
 
 func LoadAndParseTunersConfig(filePath string) (TunersConfig, error) {
@@ -46,6 +49,15 @@ func LoadAndParseTunersConfig(filePath string) (TunersConfig, error) {
 		}
 		if len(tuner.Types) == 0 {
 			return nil, errors.New("at least one types is required")
+		}
+		if tuner.StartupRetryMax < 0 {
+			return nil, errors.New("startupRetryMax must be >= 0")
+		}
+		if tuner.StartupTimeout < 0 {
+			return nil, errors.New("startupTimeout must be >= 0")
+		}
+		if tuner.StartupRetryDelay < 0 {
+			return nil, errors.New("startupRetryDelay must be >= 0")
 		}
 	}
 

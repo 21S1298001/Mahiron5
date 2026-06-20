@@ -9,6 +9,9 @@
     - SKY
   command: echo "Hello World"
   dvbDevicePath: /dev/dvb/adapter0
+  startupRetryMax: 2
+  startupTimeout: 2000
+  startupRetryDelay: 500
   isDisabled: false
 
 - name: Tuner4

@@ -244,18 +244,27 @@ func (tm *TunerManager) markRunning(item *Tuner) {
 
 func (tm *TunerManager) markStopped(item *Tuner) {
 	tm.mu.Lock()
-	tm.runtime[item].running = false
-	tm.runtime[item].stopped = true
+	runtime := tm.runtime[item]
+	if runtime.inUse {
+		runtime.running = false
+		runtime.stopped = true
+	}
 	tm.mu.Unlock()
 }
 
 func (tm *TunerManager) markFault(item *Tuner) {
 	tm.mu.Lock()
 	runtime := tm.runtime[item]
-	runtime.running = false
-	runtime.fault = true
+	marked := false
+	if runtime.inUse {
+		runtime.running = false
+		runtime.fault = true
+		marked = true
+	}
 	tm.mu.Unlock()
-	slog.Warn("tuner marked fault", "name", item.Name())
+	if marked {
+		slog.Warn("tuner marked fault", "name", item.Name())
+	}
 }
 
 func channelTypeOf(channel *config.ChannelConfig) string {

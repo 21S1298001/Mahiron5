@@ -1,0 +1,5 @@
+- name: Tuner1
+  types:
+    - GR
+  command: echo "Hello World"
+  startupRetryMax: -1

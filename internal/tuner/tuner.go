@@ -1,6 +1,10 @@
 package tuner
 
-import "github.com/21S1298001/Mahiron5/internal/config"
+import (
+	"time"
+
+	"github.com/21S1298001/Mahiron5/internal/config"
+)
 
 type SourceKind string
 
@@ -70,11 +74,16 @@ func (t *Tuner) DecoderCommand() string {
 }
 
 func (t *Tuner) NewDevice(channel *config.ChannelConfig) Device {
+	startupRetry := StartupRetryConfig{
+		Max:     t.config.StartupRetryMax,
+		Timeout: time.Duration(t.config.StartupTimeout) * time.Millisecond,
+		Delay:   time.Duration(t.config.StartupRetryDelay) * time.Millisecond,
+	}
 	switch t.SourceKind() {
 	case SourceKindDVB:
-		return NewDVBDevice(channel, t.config.Command, t.config.DvbDevicePath)
+		return NewDVBDevice(channel, t.config.Command, t.config.DvbDevicePath, startupRetry)
 	case SourceKindCommand:
-		return NewCommandDevice(channel, t.config.Command)
+		return NewCommandDevice(channel, t.config.Command, startupRetry)
 	default:
 		return nil
 	}

@@ -31,12 +31,15 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 					IsDisabled:    false,
 				},
 				{
-					Name:          "Tuner2",
-					Types:         []string{"SKY"},
-					Command:       "echo \"Hello World\"",
-					DvbDevicePath: "/dev/dvb/adapter0",
-					Decoder:       "",
-					IsDisabled:    false,
+					Name:              "Tuner2",
+					Types:             []string{"SKY"},
+					Command:           "echo \"Hello World\"",
+					DvbDevicePath:     "/dev/dvb/adapter0",
+					Decoder:           "",
+					IsDisabled:        false,
+					StartupRetryMax:   2,
+					StartupTimeout:    2000,
+					StartupRetryDelay: 500,
 				},
 				{
 					Name:          "Tuner4",
@@ -85,6 +88,14 @@ func TestLoadAndParseTunersConfig(t *testing.T) {
 			name: "Only specified dvbDevicePath",
 			args: args{
 				filePath: "testdata/tuners-dvb-path.yml",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Negative startup retry config",
+			args: args{
+				filePath: "testdata/tuners-invalid-startup-retry.yml",
 			},
 			want:    nil,
 			wantErr: true,
