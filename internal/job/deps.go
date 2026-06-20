@@ -25,6 +25,7 @@ type EPGServiceStore interface {
 type EPGProgramStore interface {
 	UpsertPrograms(context.Context, []*program.Program) error
 	DeleteEndedBefore(context.Context, int64) error
+	ReplaceServicePrograms(context.Context, uint16, uint16, int64, []*program.Program) error
 }
 
 type EPGStreamManager interface {

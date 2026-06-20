@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/program"
 )
 
 const remoteAvailabilityTimeout = 3 * time.Second
@@ -76,6 +77,47 @@ func (c *RemoteClient) ServiceStream(ctx context.Context, channelType, channel s
 	return c.stream(ctx, decode, dst, "channels", channelType, channel, "services", fmt.Sprint(serviceID), "stream")
 }
 
+func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel string, dst io.Writer) error {
+	var services []remoteService
+	if err := c.getJSON(ctx, &services, "channels", channelType, channel, "services"); err != nil {
+		return err
+	}
+	scanned := make([]remoteScanService, len(services))
+	for i, svc := range services {
+		scanned[i] = remoteScanService{
+			Nid:                svc.NetworkID,
+			Tsid:               svc.TransportStreamID,
+			Sid:                svc.ServiceID,
+			Name:               svc.Name,
+			Type:               uint8(svc.Type),
+			LogoId:             svc.LogoID,
+			RemoteControlKeyId: uint8(svc.RemoteControlKeyID),
+		}
+	}
+	return json.NewEncoder(dst).Encode(scanned)
+}
+
+func (c *RemoteClient) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) ([]*program.Program, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, "programs")
+	if err != nil {
+		return nil, err
+	}
+	query := req.URL.Query()
+	query.Set("networkId", fmt.Sprint(networkID))
+	query.Set("serviceId", fmt.Sprint(serviceID))
+	req.URL.RawQuery = query.Encode()
+
+	var remotePrograms []remoteProgram
+	if err := c.doJSON(req, &remotePrograms); err != nil {
+		return nil, err
+	}
+	programs := make([]*program.Program, len(remotePrograms))
+	for i := range remotePrograms {
+		programs[i] = remotePrograms[i].Program()
+	}
+	return programs, nil
+}
+
 func (c *RemoteClient) stream(ctx context.Context, decode bool, dst io.Writer, elems ...string) error {
 	req, err := c.newRequest(ctx, http.MethodGet, elems...)
 	if err != nil {
@@ -96,6 +138,26 @@ func (c *RemoteClient) stream(ctx context.Context, decode bool, dst io.Writer, e
 	}
 	_, err = io.Copy(dst, resp.Body)
 	return err
+}
+
+func (c *RemoteClient) getJSON(ctx context.Context, dst any, elems ...string) error {
+	req, err := c.newRequest(ctx, http.MethodGet, elems...)
+	if err != nil {
+		return err
+	}
+	return c.doJSON(req, dst)
+}
+
+func (c *RemoteClient) doJSON(req *http.Request, dst any) error {
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("remote API status: %s", resp.Status)
+	}
+	return json.NewDecoder(resp.Body).Decode(dst)
 }
 
 func (c *RemoteClient) newRequest(ctx context.Context, method string, elems ...string) (*http.Request, error) {
@@ -123,6 +185,156 @@ type remoteTuner struct {
 	IsAvailable bool     `json:"isAvailable"`
 	IsFree      bool     `json:"isFree"`
 	IsFault     bool     `json:"isFault"`
+}
+
+type remoteService struct {
+	ServiceID          uint16 `json:"serviceId"`
+	NetworkID          uint16 `json:"networkId"`
+	TransportStreamID  uint16 `json:"transportStreamId"`
+	Name               string `json:"name"`
+	Type               int    `json:"type"`
+	LogoID             uint64 `json:"logoId"`
+	RemoteControlKeyID int    `json:"remoteControlKeyId"`
+}
+
+type remoteScanService struct {
+	Nid                uint16 `json:"nid"`
+	Tsid               uint16 `json:"tsid"`
+	Sid                uint16 `json:"sid"`
+	Name               string `json:"name"`
+	Type               uint8  `json:"type"`
+	LogoId             uint64 `json:"logoId"`
+	RemoteControlKeyId uint8  `json:"remoteControlKeyId"`
+}
+
+type remoteProgram struct {
+	ID           int64               `json:"id"`
+	EventID      uint16              `json:"eventId"`
+	ServiceID    uint16              `json:"serviceId"`
+	NetworkID    uint16              `json:"networkId"`
+	StartAt      int64               `json:"startAt"`
+	Duration     int                 `json:"duration"`
+	IsFree       bool                `json:"isFree"`
+	Name         string              `json:"name"`
+	Description  string              `json:"description"`
+	Genres       []remoteGenre       `json:"genres"`
+	Video        *remoteVideo        `json:"video"`
+	Audios       []remoteAudio       `json:"audios"`
+	Extended     map[string]string   `json:"extended"`
+	RelatedItems []remoteRelatedItem `json:"relatedItems"`
+	Series       *remoteSeries       `json:"series"`
+}
+
+func (p remoteProgram) Program() *program.Program {
+	prog := &program.Program{
+		ID:           p.ID,
+		EventID:      p.EventID,
+		ServiceID:    p.ServiceID,
+		NetworkID:    p.NetworkID,
+		StartAt:      p.StartAt,
+		Duration:     p.Duration,
+		IsFree:       p.IsFree,
+		Name:         p.Name,
+		Description:  p.Description,
+		Genres:       remoteGenres(p.Genres),
+		Audios:       remoteAudios(p.Audios),
+		Extended:     p.Extended,
+		RelatedItems: remoteRelatedItems(p.RelatedItems),
+	}
+	if p.Video != nil {
+		prog.Video = &program.Video{
+			StreamContent: p.Video.StreamContent,
+			ComponentType: p.Video.ComponentType,
+		}
+	}
+	if p.Series != nil {
+		pattern := -1
+		if p.Series.Pattern != nil {
+			pattern = *p.Series.Pattern
+		}
+		prog.Series = &program.Series{
+			ID:          p.Series.ID,
+			Repeat:      p.Series.Repeat,
+			Pattern:     pattern,
+			ExpiresAt:   p.Series.ExpiresAt,
+			Episode:     p.Series.Episode,
+			LastEpisode: p.Series.LastEpisode,
+			Name:        p.Series.Name,
+		}
+	}
+	return prog
+}
+
+type remoteGenre struct {
+	Lv1 int `json:"lv1"`
+	Lv2 int `json:"lv2"`
+	Un1 int `json:"un1"`
+	Un2 int `json:"un2"`
+}
+
+func remoteGenres(items []remoteGenre) []program.Genre {
+	result := make([]program.Genre, len(items))
+	for i, item := range items {
+		result[i] = program.Genre{Lv1: item.Lv1, Lv2: item.Lv2, Un1: item.Un1, Un2: item.Un2}
+	}
+	return result
+}
+
+type remoteVideo struct {
+	StreamContent int `json:"streamContent"`
+	ComponentType int `json:"componentType"`
+}
+
+type remoteAudio struct {
+	ComponentType int      `json:"componentType"`
+	ComponentTag  *int     `json:"componentTag"`
+	IsMain        *bool    `json:"isMain"`
+	SamplingRate  *int     `json:"samplingRate"`
+	Langs         []string `json:"langs"`
+}
+
+func remoteAudios(items []remoteAudio) []program.Audio {
+	result := make([]program.Audio, len(items))
+	for i, item := range items {
+		result[i] = program.Audio{
+			ComponentType: item.ComponentType,
+			ComponentTag:  item.ComponentTag,
+			IsMain:        item.IsMain,
+			SamplingRate:  item.SamplingRate,
+			Langs:         item.Langs,
+		}
+	}
+	return result
+}
+
+type remoteRelatedItem struct {
+	Type      string  `json:"type"`
+	NetworkID *uint16 `json:"networkId"`
+	ServiceID uint16  `json:"serviceId"`
+	EventID   uint16  `json:"eventId"`
+}
+
+func remoteRelatedItems(items []remoteRelatedItem) []program.RelatedItem {
+	result := make([]program.RelatedItem, len(items))
+	for i, item := range items {
+		result[i] = program.RelatedItem{
+			Type:      program.RelatedItemType(item.Type),
+			NetworkID: item.NetworkID,
+			ServiceID: item.ServiceID,
+			EventID:   item.EventID,
+		}
+	}
+	return result
+}
+
+type remoteSeries struct {
+	ID          int    `json:"id"`
+	Repeat      int    `json:"repeat"`
+	Pattern     *int   `json:"pattern"`
+	ExpiresAt   *int64 `json:"expiresAt"`
+	Episode     int    `json:"episode"`
+	LastEpisode int    `json:"lastEpisode"`
+	Name        string `json:"name"`
 }
 
 type RemoteSessionConfig struct {
@@ -153,8 +365,12 @@ func (s *RemoteSession) ServiceStream(ctx context.Context, serviceID uint16, dec
 	return s.client.ServiceStream(ctx, s.routeChannel.Type, s.routeChannel.Channel, serviceID, decode, dst)
 }
 
-func (s *RemoteSession) ScanServices(context.Context, io.Writer) error {
-	return ErrServiceScannerNotConfigured
+func (s *RemoteSession) ScanServices(ctx context.Context, dst io.Writer) error {
+	return s.client.ScanServices(ctx, s.routeChannel.Type, s.routeChannel.Channel, dst)
+}
+
+func (s *RemoteSession) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) ([]*program.Program, error) {
+	return s.client.ListServicePrograms(ctx, networkID, serviceID)
 }
 
 func (s *RemoteSession) CollectEITS(context.Context, io.Writer) error {

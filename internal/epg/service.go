@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 	"github.com/google/uuid"
@@ -29,6 +30,10 @@ type StreamManager interface {
 		CollectEITS(context.Context, io.Writer) error
 		CollectEITPF(context.Context, io.Writer) error
 	}, error)
+}
+
+type StoredProgramLister interface {
+	ListServicePrograms(context.Context, uint16, uint16) ([]*program.Program, error)
 }
 
 type Service struct {
@@ -241,6 +246,9 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	for _, key := range expected {
 		_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, startedAt, "")
 	}
+	if lister, ok := session.(StoredProgramLister); ok {
+		return syncStoredServicePrograms(ctx, programStore, serviceStore, lister, expected, retrievalTime)
+	}
 	collectCtx, cancel := context.WithTimeout(ctx, retrievalTime)
 	defer cancel()
 
@@ -392,6 +400,35 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 				"report", snapshot.CompletionReport(key))
 			err := fmt.Errorf("service %d EITS incomplete", key.ServiceID)
 			_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
+			result = errors.Join(result, err)
+		}
+	}
+	return result
+}
+
+func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, lister StoredProgramLister, expected []ServiceKey, retrievalTime time.Duration) error {
+	syncCtx, cancel := context.WithTimeout(ctx, retrievalTime)
+	defer cancel()
+
+	var result error
+	for _, key := range expected {
+		if err := syncCtx.Err(); err != nil {
+			return errors.Join(result, err)
+		}
+		programs, err := lister.ListServicePrograms(syncCtx, key.NetworkID, key.ServiceID)
+		now := time.Now().UnixMilli()
+		if err != nil {
+			_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
+			result = errors.Join(result, fmt.Errorf("service %d: list remote programs: %w", key.ServiceID, err))
+			continue
+		}
+		slog.Info("syncing stored remote EPG", "networkId", key.NetworkID, "serviceId", key.ServiceID, "programs", len(programs))
+		if err := programStore.ReplaceServicePrograms(ctx, key.NetworkID, key.ServiceID, 0, programs); err != nil {
+			_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
+			result = errors.Join(result, fmt.Errorf("service %d: replace remote programs: %w", key.ServiceID, err))
+			continue
+		}
+		if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, now); err != nil {
 			result = errors.Join(result, err)
 		}
 	}
