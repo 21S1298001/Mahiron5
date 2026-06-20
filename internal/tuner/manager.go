@@ -66,10 +66,17 @@ func (tm *TunerManager) NewDeviceByType(channelType string, channel *config.Chan
 }
 
 func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (Device, string, error) {
+	requestPriority := 0
+	if user, ok := UserFromContext(ctx); ok {
+		requestPriority = user.Priority
+	}
 	for {
 		tm.mu.Lock()
 		found := false
 		usable := false
+		var grabDevice Device
+		grabName := ""
+		grabPriority := 0
 		start := tm.nextByType[channelType]
 		for offset := range len(tm.tuners) {
 			index := (start + offset) % len(tm.tuners)
@@ -83,23 +90,25 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 			}
 			usable = true
 			runtime := tm.runtime[item]
-			if runtime.fault || tm.inUse[item] {
+			if runtime.fault {
 				continue
 			}
-			base := item.NewDevice(tunedChannel)
-			if base == nil {
+			if tm.inUse[item] {
+				if runtime.device != nil {
+					effectivePriority := runtime.effectivePriority()
+					if requestPriority > effectivePriority && (grabDevice == nil || effectivePriority < grabPriority) {
+						grabDevice = runtime.device
+						grabName = item.Name()
+						grabPriority = effectivePriority
+					}
+				}
 				continue
 			}
-			tm.inUse[item] = true
-			runtime.inUse = true
-			runtime.running = false
-			runtime.stopped = false
-			runtime.requested = requestedChannel
-			runtime.tuned = tunedChannel
-			managed := &managedDevice{Device: base, manager: tm, tuner: item}
+			managed, decoder, ok := tm.reserveLocked(item, requestPriority, requestedChannel, tunedChannel)
+			if !ok {
+				continue
+			}
 			tm.nextByType[channelType] = (index + 1) % len(tm.tuners)
-			runtime.device = managed
-			decoder := item.DecoderCommand()
 			slog.Info("tuner acquired",
 				"name", item.Name(),
 				"type", channelType,
@@ -122,6 +131,24 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 			slog.Warn("tuner unsupported", "type", channelType, "channel", channelID(requestedChannel))
 			return nil, "", ErrUnsupportedTuner
 		}
+		if grabDevice != nil {
+			slog.Info("grabbing tuner",
+				"name", grabName,
+				"type", channelType,
+				"channel", channelID(requestedChannel),
+				"priority", requestPriority,
+				"victimPriority", grabPriority,
+			)
+			if err := grabDevice.Stop(ctx); err != nil {
+				return nil, "", err
+			}
+			select {
+			case <-ctx.Done():
+				return nil, "", ctx.Err()
+			case <-changed:
+			}
+			continue
+		}
 		if !wait {
 			slog.Debug("tuner unavailable", "type", channelType, "channel", channelID(requestedChannel))
 			return nil, "", ErrTunerUnavailable
@@ -134,6 +161,24 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 		case <-changed:
 		}
 	}
+}
+
+func (tm *TunerManager) reserveLocked(item *Tuner, priority int, requestedChannel, tunedChannel *config.ChannelConfig) (Device, string, bool) {
+	base := item.NewDevice(tunedChannel)
+	if base == nil {
+		return nil, "", false
+	}
+	runtime := tm.runtime[item]
+	tm.inUse[item] = true
+	runtime.inUse = true
+	runtime.running = false
+	runtime.stopped = false
+	runtime.reservationPriority = priority
+	runtime.requested = requestedChannel
+	runtime.tuned = tunedChannel
+	managed := &managedDevice{Device: base, manager: tm, tuner: item}
+	runtime.device = managed
+	return managed, item.DecoderCommand(), true
 }
 
 func (tm *TunerManager) KillProcess(ctx context.Context, index int) error {
@@ -160,6 +205,7 @@ func (tm *TunerManager) release(item *Tuner) {
 		runtime.inUse = false
 		runtime.running = false
 		runtime.stopped = false
+		runtime.reservationPriority = 0
 		runtime.device = nil
 		runtime.requested = nil
 		runtime.tuned = nil

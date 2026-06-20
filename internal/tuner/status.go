@@ -62,14 +62,25 @@ type trackedUser struct {
 }
 
 type tunerRuntime struct {
-	inUse     bool
-	running   bool
-	stopped   bool
-	fault     bool
-	device    Device
-	requested *config.ChannelConfig
-	tuned     *config.ChannelConfig
-	users     map[string]*trackedUser
+	inUse               bool
+	running             bool
+	stopped             bool
+	fault               bool
+	reservationPriority int
+	device              Device
+	requested           *config.ChannelConfig
+	tuned               *config.ChannelConfig
+	users               map[string]*trackedUser
+}
+
+func (r *tunerRuntime) effectivePriority() int {
+	priority := r.reservationPriority
+	for _, tracked := range r.users {
+		if tracked.user.Priority > priority {
+			priority = tracked.user.Priority
+		}
+	}
+	return priority
 }
 
 func (tm *TunerManager) Statuses() []Status {
