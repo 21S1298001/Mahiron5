@@ -66,86 +66,38 @@ func (tm *TunerManager) NewDeviceByType(channelType string, channel *config.Chan
 }
 
 func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (Device, string, error) {
-	requestPriority := 0
-	if user, ok := UserFromContext(ctx); ok {
-		requestPriority = user.Priority
-	}
+	requestPriority := priorityFromContext(ctx)
 	for {
 		tm.mu.Lock()
-		found := false
-		usable := false
-		var grabDevice Device
-		grabName := ""
-		grabPriority := 0
-		start := tm.nextByType[channelType]
-		for offset := range len(tm.tuners) {
-			index := (start + offset) % len(tm.tuners)
-			item := tm.tuners[index]
-			if item.IsDisabled() || !slices.Contains(item.Groups(), channelType) {
-				continue
-			}
-			found = true
-			if !item.Usable() {
-				continue
-			}
-			usable = true
-			runtime := tm.runtime[item]
-			if runtime.fault {
-				continue
-			}
-			if tm.inUse[item] {
-				if runtime.device != nil {
-					effectivePriority := runtime.effectivePriority()
-					if requestPriority > effectivePriority && (grabDevice == nil || effectivePriority < grabPriority) {
-						grabDevice = runtime.device
-						grabName = item.Name()
-						grabPriority = effectivePriority
-					}
-				}
-				continue
-			}
-			managed, decoder, ok := tm.reserveLocked(item, requestPriority, requestedChannel, tunedChannel)
-			if !ok {
-				continue
-			}
-			tm.nextByType[channelType] = (index + 1) % len(tm.tuners)
-			slog.Info("tuner acquired",
-				"name", item.Name(),
-				"type", channelType,
-				"channel", channelID(requestedChannel),
-				"tunedType", channelTypeOf(tunedChannel),
-				"tunedChannel", channelID(tunedChannel),
-				"decoder", decoder != "",
-			)
-			tm.mu.Unlock()
-			return managed, decoder, nil
-		}
-		changed := tm.changed
+		attempt := tm.tryAcquireLocked(channelType, requestPriority, requestedChannel, tunedChannel)
 		tm.mu.Unlock()
 
-		if !found {
+		if attempt.device != nil {
+			return attempt.device, attempt.decoder, nil
+		}
+		if !attempt.found {
 			slog.Warn("tuner not found", "type", channelType, "channel", channelID(requestedChannel))
 			return nil, "", ErrTunerNotFound
 		}
-		if !usable {
+		if !attempt.usable {
 			slog.Warn("tuner unsupported", "type", channelType, "channel", channelID(requestedChannel))
 			return nil, "", ErrUnsupportedTuner
 		}
-		if grabDevice != nil {
+		if attempt.grab.device != nil {
 			slog.Info("grabbing tuner",
-				"name", grabName,
+				"name", attempt.grab.tunerName,
 				"type", channelType,
 				"channel", channelID(requestedChannel),
 				"priority", requestPriority,
-				"victimPriority", grabPriority,
+				"victimPriority", attempt.grab.priority,
 			)
-			if err := grabDevice.Stop(ctx); err != nil {
+			if err := attempt.grab.device.Stop(ctx); err != nil {
 				return nil, "", err
 			}
 			select {
 			case <-ctx.Done():
 				return nil, "", ctx.Err()
-			case <-changed:
+			case <-attempt.changed:
 			}
 			continue
 		}
@@ -158,8 +110,90 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 		case <-ctx.Done():
 			slog.Debug("tuner wait canceled", "type", channelType, "channel", channelID(requestedChannel), "err", ctx.Err())
 			return nil, "", ctx.Err()
-		case <-changed:
+		case <-attempt.changed:
 		}
+	}
+}
+
+type acquireAttempt struct {
+	device  Device
+	decoder string
+	found   bool
+	usable  bool
+	grab    grabCandidate
+	changed <-chan struct{}
+}
+
+type grabCandidate struct {
+	device    Device
+	tunerName string
+	priority  int
+}
+
+func priorityFromContext(ctx context.Context) int {
+	if user, ok := UserFromContext(ctx); ok {
+		return user.Priority
+	}
+	return 0
+}
+
+func (tm *TunerManager) tryAcquireLocked(channelType string, requestPriority int, requestedChannel, tunedChannel *config.ChannelConfig) acquireAttempt {
+	result := acquireAttempt{changed: tm.changed}
+	start := tm.nextByType[channelType]
+	for offset := range len(tm.tuners) {
+		index := (start + offset) % len(tm.tuners)
+		item := tm.tuners[index]
+		if item.IsDisabled() || !slices.Contains(item.Groups(), channelType) {
+			continue
+		}
+		result.found = true
+		if !item.Usable() {
+			continue
+		}
+		result.usable = true
+		runtime := tm.runtime[item]
+		if runtime.fault {
+			continue
+		}
+		if tm.inUse[item] {
+			result.grab = betterGrabCandidate(result.grab, item, runtime, requestPriority)
+			continue
+		}
+		managed, decoder, ok := tm.reserveLocked(item, requestPriority, requestedChannel, tunedChannel)
+		if !ok {
+			continue
+		}
+		tm.nextByType[channelType] = (index + 1) % len(tm.tuners)
+		result.device = managed
+		result.decoder = decoder
+		slog.Info("tuner acquired",
+			"name", item.Name(),
+			"type", channelType,
+			"channel", channelID(requestedChannel),
+			"tunedType", channelTypeOf(tunedChannel),
+			"tunedChannel", channelID(tunedChannel),
+			"decoder", decoder != "",
+		)
+		return result
+	}
+	return result
+}
+
+func betterGrabCandidate(current grabCandidate, item *Tuner, runtime *tunerRuntime, requestPriority int) grabCandidate {
+	if runtime.device == nil {
+		return current
+	}
+	effectivePriority := runtime.effectivePriority()
+	if requestPriority <= effectivePriority {
+		return current
+	}
+	if current.device != nil && current.priority <= effectivePriority {
+		return current
+	}
+	return grabCandidate{
+		device:    runtime.device,
+		tunerName: item.Name(),
+		priority:  effectivePriority,
 	}
 }
 
