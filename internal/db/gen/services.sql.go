@@ -9,6 +9,17 @@ import (
 	"context"
 )
 
+const countServices = `-- name: CountServices :one
+SELECT COUNT(*) FROM services
+`
+
+func (q *Queries) CountServices(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countServices)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteServicesByChannel = `-- name: DeleteServicesByChannel :exec
 DELETE FROM services WHERE channel_type = ? AND channel_id = ?
 `
@@ -23,13 +34,94 @@ func (q *Queries) DeleteServicesByChannel(ctx context.Context, arg DeleteService
 	return err
 }
 
-const getServiceByID = `-- name: GetServiceByID :one
-SELECT id, service_id, network_id, transport_stream_id, name, type, remote_control_key_id, channel_type, channel_id FROM services WHERE id = ?
+const getEPGSummary = `-- name: GetEPGSummary :one
+SELECT COUNT(CASE
+         WHEN epg.last_success_at IS NULL
+           OR ?1 - epg.last_success_at > ?2
+         THEN 1
+       END) AS stale,
+       COUNT(CASE
+         WHEN epg.last_error IS NOT NULL AND epg.last_error != ''
+         THEN 1
+       END) AS failed,
+       MAX(epg.last_success_at) AS last_success_at
+FROM services s
+LEFT JOIN epg_service_status epg
+  ON epg.network_id = s.network_id AND epg.service_id = s.service_id
 `
 
-func (q *Queries) GetServiceByID(ctx context.Context, id string) (Service, error) {
-	row := q.db.QueryRowContext(ctx, getServiceByID, id)
-	var i Service
+type GetEPGSummaryParams struct {
+	Now        *int64 `json:"now"`
+	StaleAfter *int64 `json:"stale_after"`
+}
+
+type GetEPGSummaryRow struct {
+	Stale         int64       `json:"stale"`
+	Failed        int64       `json:"failed"`
+	LastSuccessAt interface{} `json:"last_success_at"`
+}
+
+func (q *Queries) GetEPGSummary(ctx context.Context, arg GetEPGSummaryParams) (GetEPGSummaryRow, error) {
+	row := q.db.QueryRowContext(ctx, getEPGSummary, arg.Now, arg.StaleAfter)
+	var i GetEPGSummaryRow
+	err := row.Scan(&i.Stale, &i.Failed, &i.LastSuccessAt)
+	return i, err
+}
+
+const getServiceByChannelAndID = `-- name: GetServiceByChannelAndID :one
+SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.remote_control_key_id, s.channel_type, s.channel_id,
+       epg.last_attempt_at, epg.last_success_at, epg.last_error
+FROM services s
+LEFT JOIN epg_service_status epg
+  ON epg.network_id = s.network_id AND epg.service_id = s.service_id
+WHERE s.channel_type = ?1
+  AND s.channel_id = ?2
+  AND s.id = ?3
+UNION ALL
+SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.remote_control_key_id, s.channel_type, s.channel_id,
+       epg.last_attempt_at, epg.last_success_at, epg.last_error
+FROM services s
+LEFT JOIN epg_service_status epg
+  ON epg.network_id = s.network_id AND epg.service_id = s.service_id
+WHERE s.channel_type = ?1
+  AND s.channel_id = ?2
+  AND s.id != ?3
+  AND s.network_id * 100000 + s.service_id = ?4
+LIMIT 1
+`
+
+type GetServiceByChannelAndIDParams struct {
+	ChannelType string `json:"channel_type"`
+	ChannelID   string `json:"channel_id"`
+	ID          string `json:"id"`
+	ItemID      int64  `json:"item_id"`
+}
+
+type GetServiceByChannelAndIDRow struct {
+	ID                 string  `json:"id"`
+	ServiceID          int64   `json:"service_id"`
+	NetworkID          int64   `json:"network_id"`
+	TransportStreamID  int64   `json:"transport_stream_id"`
+	Name               string  `json:"name"`
+	Type               int64   `json:"type"`
+	RemoteControlKeyID int64   `json:"remote_control_key_id"`
+	ChannelType        string  `json:"channel_type"`
+	ChannelID          string  `json:"channel_id"`
+	LastAttemptAt      *int64  `json:"last_attempt_at"`
+	LastSuccessAt      *int64  `json:"last_success_at"`
+	LastError          *string `json:"last_error"`
+}
+
+func (q *Queries) GetServiceByChannelAndID(ctx context.Context, arg GetServiceByChannelAndIDParams) (GetServiceByChannelAndIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getServiceByChannelAndID,
+		arg.ChannelType,
+		arg.ChannelID,
+		arg.ID,
+		arg.ItemID,
+	)
+	var i GetServiceByChannelAndIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.ServiceID,
@@ -40,12 +132,161 @@ func (q *Queries) GetServiceByID(ctx context.Context, id string) (Service, error
 		&i.RemoteControlKeyID,
 		&i.ChannelType,
 		&i.ChannelID,
+		&i.LastAttemptAt,
+		&i.LastSuccessAt,
+		&i.LastError,
+	)
+	return i, err
+}
+
+const getServiceByID = `-- name: GetServiceByID :one
+SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.remote_control_key_id, s.channel_type, s.channel_id,
+       epg.last_attempt_at, epg.last_success_at, epg.last_error
+FROM services s
+LEFT JOIN epg_service_status epg
+  ON epg.network_id = s.network_id AND epg.service_id = s.service_id
+WHERE s.id = ?
+`
+
+type GetServiceByIDRow struct {
+	ID                 string  `json:"id"`
+	ServiceID          int64   `json:"service_id"`
+	NetworkID          int64   `json:"network_id"`
+	TransportStreamID  int64   `json:"transport_stream_id"`
+	Name               string  `json:"name"`
+	Type               int64   `json:"type"`
+	RemoteControlKeyID int64   `json:"remote_control_key_id"`
+	ChannelType        string  `json:"channel_type"`
+	ChannelID          string  `json:"channel_id"`
+	LastAttemptAt      *int64  `json:"last_attempt_at"`
+	LastSuccessAt      *int64  `json:"last_success_at"`
+	LastError          *string `json:"last_error"`
+}
+
+func (q *Queries) GetServiceByID(ctx context.Context, id string) (GetServiceByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getServiceByID, id)
+	var i GetServiceByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.ServiceID,
+		&i.NetworkID,
+		&i.TransportStreamID,
+		&i.Name,
+		&i.Type,
+		&i.RemoteControlKeyID,
+		&i.ChannelType,
+		&i.ChannelID,
+		&i.LastAttemptAt,
+		&i.LastSuccessAt,
+		&i.LastError,
+	)
+	return i, err
+}
+
+const getServiceByItemID = `-- name: GetServiceByItemID :one
+SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.remote_control_key_id, s.channel_type, s.channel_id,
+       epg.last_attempt_at, epg.last_success_at, epg.last_error
+FROM services s
+LEFT JOIN epg_service_status epg
+  ON epg.network_id = s.network_id AND epg.service_id = s.service_id
+WHERE s.network_id * 100000 + s.service_id = ?
+`
+
+type GetServiceByItemIDRow struct {
+	ID                 string  `json:"id"`
+	ServiceID          int64   `json:"service_id"`
+	NetworkID          int64   `json:"network_id"`
+	TransportStreamID  int64   `json:"transport_stream_id"`
+	Name               string  `json:"name"`
+	Type               int64   `json:"type"`
+	RemoteControlKeyID int64   `json:"remote_control_key_id"`
+	ChannelType        string  `json:"channel_type"`
+	ChannelID          string  `json:"channel_id"`
+	LastAttemptAt      *int64  `json:"last_attempt_at"`
+	LastSuccessAt      *int64  `json:"last_success_at"`
+	LastError          *string `json:"last_error"`
+}
+
+func (q *Queries) GetServiceByItemID(ctx context.Context, networkID int64) (GetServiceByItemIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getServiceByItemID, networkID)
+	var i GetServiceByItemIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.ServiceID,
+		&i.NetworkID,
+		&i.TransportStreamID,
+		&i.Name,
+		&i.Type,
+		&i.RemoteControlKeyID,
+		&i.ChannelType,
+		&i.ChannelID,
+		&i.LastAttemptAt,
+		&i.LastSuccessAt,
+		&i.LastError,
+	)
+	return i, err
+}
+
+const getServiceByNetworkServiceID = `-- name: GetServiceByNetworkServiceID :one
+SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.remote_control_key_id, s.channel_type, s.channel_id,
+       epg.last_attempt_at, epg.last_success_at, epg.last_error
+FROM services s
+LEFT JOIN epg_service_status epg
+  ON epg.network_id = s.network_id AND epg.service_id = s.service_id
+WHERE s.network_id = ? AND s.service_id = ?
+`
+
+type GetServiceByNetworkServiceIDParams struct {
+	NetworkID int64 `json:"network_id"`
+	ServiceID int64 `json:"service_id"`
+}
+
+type GetServiceByNetworkServiceIDRow struct {
+	ID                 string  `json:"id"`
+	ServiceID          int64   `json:"service_id"`
+	NetworkID          int64   `json:"network_id"`
+	TransportStreamID  int64   `json:"transport_stream_id"`
+	Name               string  `json:"name"`
+	Type               int64   `json:"type"`
+	RemoteControlKeyID int64   `json:"remote_control_key_id"`
+	ChannelType        string  `json:"channel_type"`
+	ChannelID          string  `json:"channel_id"`
+	LastAttemptAt      *int64  `json:"last_attempt_at"`
+	LastSuccessAt      *int64  `json:"last_success_at"`
+	LastError          *string `json:"last_error"`
+}
+
+func (q *Queries) GetServiceByNetworkServiceID(ctx context.Context, arg GetServiceByNetworkServiceIDParams) (GetServiceByNetworkServiceIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getServiceByNetworkServiceID, arg.NetworkID, arg.ServiceID)
+	var i GetServiceByNetworkServiceIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.ServiceID,
+		&i.NetworkID,
+		&i.TransportStreamID,
+		&i.Name,
+		&i.Type,
+		&i.RemoteControlKeyID,
+		&i.ChannelType,
+		&i.ChannelID,
+		&i.LastAttemptAt,
+		&i.LastSuccessAt,
+		&i.LastError,
 	)
 	return i, err
 }
 
 const getServicesByChannel = `-- name: GetServicesByChannel :many
-SELECT id, service_id, network_id, transport_stream_id, name, type, remote_control_key_id, channel_type, channel_id FROM services WHERE channel_type = ? AND channel_id = ?
+SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.remote_control_key_id, s.channel_type, s.channel_id,
+       epg.last_attempt_at, epg.last_success_at, epg.last_error
+FROM services s
+LEFT JOIN epg_service_status epg
+  ON epg.network_id = s.network_id AND epg.service_id = s.service_id
+WHERE s.channel_type = ? AND s.channel_id = ?
 `
 
 type GetServicesByChannelParams struct {
@@ -53,15 +294,30 @@ type GetServicesByChannelParams struct {
 	ChannelID   string `json:"channel_id"`
 }
 
-func (q *Queries) GetServicesByChannel(ctx context.Context, arg GetServicesByChannelParams) ([]Service, error) {
+type GetServicesByChannelRow struct {
+	ID                 string  `json:"id"`
+	ServiceID          int64   `json:"service_id"`
+	NetworkID          int64   `json:"network_id"`
+	TransportStreamID  int64   `json:"transport_stream_id"`
+	Name               string  `json:"name"`
+	Type               int64   `json:"type"`
+	RemoteControlKeyID int64   `json:"remote_control_key_id"`
+	ChannelType        string  `json:"channel_type"`
+	ChannelID          string  `json:"channel_id"`
+	LastAttemptAt      *int64  `json:"last_attempt_at"`
+	LastSuccessAt      *int64  `json:"last_success_at"`
+	LastError          *string `json:"last_error"`
+}
+
+func (q *Queries) GetServicesByChannel(ctx context.Context, arg GetServicesByChannelParams) ([]GetServicesByChannelRow, error) {
 	rows, err := q.db.QueryContext(ctx, getServicesByChannel, arg.ChannelType, arg.ChannelID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Service
+	var items []GetServicesByChannelRow
 	for rows.Next() {
-		var i Service
+		var i GetServicesByChannelRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ServiceID,
@@ -72,37 +328,6 @@ func (q *Queries) GetServicesByChannel(ctx context.Context, arg GetServicesByCha
 			&i.RemoteControlKeyID,
 			&i.ChannelType,
 			&i.ChannelID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listEPGStatuses = `-- name: ListEPGStatuses :many
-SELECT network_id, service_id, last_attempt_at, last_success_at, last_error
-FROM epg_service_status
-`
-
-func (q *Queries) ListEPGStatuses(ctx context.Context) ([]EpgServiceStatus, error) {
-	rows, err := q.db.QueryContext(ctx, listEPGStatuses)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []EpgServiceStatus
-	for rows.Next() {
-		var i EpgServiceStatus
-		if err := rows.Scan(
-			&i.NetworkID,
-			&i.ServiceID,
 			&i.LastAttemptAt,
 			&i.LastSuccessAt,
 			&i.LastError,
@@ -121,18 +346,38 @@ func (q *Queries) ListEPGStatuses(ctx context.Context) ([]EpgServiceStatus, erro
 }
 
 const listServices = `-- name: ListServices :many
-SELECT id, service_id, network_id, transport_stream_id, name, type, remote_control_key_id, channel_type, channel_id FROM services
+SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.remote_control_key_id, s.channel_type, s.channel_id,
+       epg.last_attempt_at, epg.last_success_at, epg.last_error
+FROM services s
+LEFT JOIN epg_service_status epg
+  ON epg.network_id = s.network_id AND epg.service_id = s.service_id
 `
 
-func (q *Queries) ListServices(ctx context.Context) ([]Service, error) {
+type ListServicesRow struct {
+	ID                 string  `json:"id"`
+	ServiceID          int64   `json:"service_id"`
+	NetworkID          int64   `json:"network_id"`
+	TransportStreamID  int64   `json:"transport_stream_id"`
+	Name               string  `json:"name"`
+	Type               int64   `json:"type"`
+	RemoteControlKeyID int64   `json:"remote_control_key_id"`
+	ChannelType        string  `json:"channel_type"`
+	ChannelID          string  `json:"channel_id"`
+	LastAttemptAt      *int64  `json:"last_attempt_at"`
+	LastSuccessAt      *int64  `json:"last_success_at"`
+	LastError          *string `json:"last_error"`
+}
+
+func (q *Queries) ListServices(ctx context.Context) ([]ListServicesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listServices)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Service
+	var items []ListServicesRow
 	for rows.Next() {
-		var i Service
+		var i ListServicesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ServiceID,
@@ -143,6 +388,9 @@ func (q *Queries) ListServices(ctx context.Context) ([]Service, error) {
 			&i.RemoteControlKeyID,
 			&i.ChannelType,
 			&i.ChannelID,
+			&i.LastAttemptAt,
+			&i.LastSuccessAt,
+			&i.LastError,
 		); err != nil {
 			return nil, err
 		}

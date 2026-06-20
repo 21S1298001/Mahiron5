@@ -68,15 +68,34 @@ func (s *sqliteStore) List(ctx context.Context, query Query) ([]*Program, error)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]*Program, 0, len(rows))
-	for i := range rows {
-		p, err := fromGenProgram(rows[i])
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, p)
+	return fromGenPrograms(rows)
+}
+
+func (s *sqliteStore) ListByIDs(ctx context.Context, ids []int64) ([]*Program, error) {
+	if len(ids) == 0 {
+		return nil, nil
 	}
-	return result, nil
+	rows, err := s.q.ListProgramsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	return fromGenPrograms(rows)
+}
+
+func (s *sqliteStore) ListByServiceFrom(ctx context.Context, networkID, serviceID uint16, from int64) ([]*Program, error) {
+	rows, err := s.q.ListProgramsByServiceFrom(ctx, gen.ListProgramsByServiceFromParams{
+		NetworkID: int64(networkID),
+		ServiceID: int64(serviceID),
+		StartAt:   from,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return fromGenPrograms(rows)
+}
+
+func (s *sqliteStore) ListEndedIDsBefore(ctx context.Context, cutoff int64) ([]int64, error) {
+	return s.q.ListEndedProgramIDsBefore(ctx, cutoff)
 }
 
 func (s *sqliteStore) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
@@ -115,6 +134,18 @@ func (s *sqliteStore) Count(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	return int(n), nil
+}
+
+func fromGenPrograms(rows []gen.Program) ([]*Program, error) {
+	result := make([]*Program, 0, len(rows))
+	for i := range rows {
+		p, err := fromGenProgram(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, p)
+	}
+	return result, nil
 }
 
 func nilOrInt64[T ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](p *T) interface{} {

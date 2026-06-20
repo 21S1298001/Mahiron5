@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 
 	"github.com/21S1298001/Mahiron5/internal/db/gen"
 )
@@ -27,12 +28,17 @@ func (s *sqliteStore) List(ctx context.Context) ([]*Service, error) {
 	}
 	result := make([]*Service, len(svcs))
 	for i := range svcs {
-		result[i] = fromStoregenService(svcs[i])
-	}
-	if err := s.attachEPGStatuses(ctx, result); err != nil {
-		return nil, err
+		result[i] = fromServiceRow(listServiceRow(svcs[i]))
 	}
 	return result, nil
+}
+
+func (s *sqliteStore) Count(ctx context.Context) (int, error) {
+	n, err := s.q.CountServices(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return int(n), nil
 }
 
 func (s *sqliteStore) GetByID(ctx context.Context, id string) (*Service, error) {
@@ -43,11 +49,32 @@ func (s *sqliteStore) GetByID(ctx context.Context, id string) (*Service, error) 
 	if err != nil {
 		return nil, err
 	}
-	result := fromStoregenService(svc)
-	if err := s.attachEPGStatuses(ctx, []*Service{result}); err != nil {
+	return fromServiceRow(getServiceByIDRow(svc)), nil
+}
+
+func (s *sqliteStore) GetByItemID(ctx context.Context, itemID int64) (*Service, error) {
+	svc, err := s.q.GetServiceByItemID(ctx, itemID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return fromServiceRow(getServiceByItemIDRow(svc)), nil
+}
+
+func (s *sqliteStore) GetByNetworkServiceID(ctx context.Context, networkID, serviceID uint16) (*Service, error) {
+	svc, err := s.q.GetServiceByNetworkServiceID(ctx, gen.GetServiceByNetworkServiceIDParams{
+		NetworkID: int64(networkID),
+		ServiceID: int64(serviceID),
+	})
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return fromServiceRow(getServiceByNetworkServiceIDRow(svc)), nil
 }
 
 func (s *sqliteStore) GetByChannel(ctx context.Context, channelType, channelId string) ([]*Service, error) {
@@ -60,12 +87,25 @@ func (s *sqliteStore) GetByChannel(ctx context.Context, channelType, channelId s
 	}
 	result := make([]*Service, len(svcs))
 	for i := range svcs {
-		result[i] = fromStoregenService(svcs[i])
-	}
-	if err := s.attachEPGStatuses(ctx, result); err != nil {
-		return nil, err
+		result[i] = fromServiceRow(getServicesByChannelRow(svcs[i]))
 	}
 	return result, nil
+}
+
+func (s *sqliteStore) GetByChannelAndID(ctx context.Context, channelType, channelId string, id string, itemID int64) (*Service, error) {
+	svc, err := s.q.GetServiceByChannelAndID(ctx, gen.GetServiceByChannelAndIDParams{
+		ChannelType: channelType,
+		ChannelID:   channelId,
+		ID:          id,
+		ItemID:      itemID,
+	})
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return fromServiceRow(getServiceByChannelAndIDRow(svc)), nil
 }
 
 func (s *sqliteStore) SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
@@ -86,31 +126,42 @@ func (s *sqliteStore) SetEPGSuccess(ctx context.Context, networkID, serviceID ui
 	})
 }
 
-func (s *sqliteStore) attachEPGStatuses(ctx context.Context, services []*Service) error {
-	if len(services) == 0 {
-		return nil
-	}
-	statuses, err := s.q.ListEPGStatuses(ctx)
+func (s *sqliteStore) EPGSummary(ctx context.Context, staleAfter int64, now int64) (stale, failed int, lastSuccess *int64, err error) {
+	row, err := s.q.GetEPGSummary(ctx, gen.GetEPGSummaryParams{
+		Now:        &now,
+		StaleAfter: &staleAfter,
+	})
 	if err != nil {
-		return err
+		return 0, 0, nil, err
 	}
-	type key struct{ networkID, serviceID uint16 }
-	byKey := make(map[key]*Service, len(services))
-	for _, svc := range services {
-		byKey[key{svc.NetworkId, svc.ServiceId}] = svc
+	lastSuccess, err = nullableInt64(row.LastSuccessAt)
+	if err != nil {
+		return 0, 0, nil, err
 	}
-	for _, st := range statuses {
-		svc, ok := byKey[key{uint16(st.NetworkID), uint16(st.ServiceID)}]
-		if !ok {
-			continue
+	return int(row.Stale), int(row.Failed), lastSuccess, nil
+}
+
+func nullableInt64(value any) (*int64, error) {
+	switch v := value.(type) {
+	case nil:
+		return nil, nil
+	case int64:
+		return &v, nil
+	case []byte:
+		n, err := strconv.ParseInt(string(v), 10, 64)
+		if err != nil {
+			return nil, err
 		}
-		svc.EPG.LastAttemptAt = st.LastAttemptAt
-		svc.EPG.LastSuccessAt = st.LastSuccessAt
-		if st.LastError != nil {
-			svc.EPG.LastError = *st.LastError
+		return &n, nil
+	case string:
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return nil, err
 		}
+		return &n, nil
+	default:
+		return nil, fmt.Errorf("unexpected nullable int64 type %T", value)
 	}
-	return nil
 }
 
 func nullableString(value string) *string {
@@ -187,16 +238,63 @@ func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) er
 	return tx.Commit()
 }
 
-func fromStoregenService(s gen.Service) *Service {
-	return &Service{
-		Id:                 s.ID,
-		ServiceId:          uint16(s.ServiceID),
-		NetworkId:          uint16(s.NetworkID),
-		TransportStreamId:  uint16(s.TransportStreamID),
-		Name:               s.Name,
-		Type:               uint8(s.Type),
-		RemoteControlKeyId: uint8(s.RemoteControlKeyID),
-		ChannelType:        s.ChannelType,
-		ChannelId:          s.ChannelID,
+type serviceRow struct {
+	id                 string
+	serviceID          int64
+	networkID          int64
+	transportStreamID  int64
+	name               string
+	typ                int64
+	remoteControlKeyID int64
+	channelType        string
+	channelID          string
+	lastAttemptAt      *int64
+	lastSuccessAt      *int64
+	lastError          *string
+}
+
+func fromServiceRow(s serviceRow) *Service {
+	result := &Service{
+		Id:                 s.id,
+		ServiceId:          uint16(s.serviceID),
+		NetworkId:          uint16(s.networkID),
+		TransportStreamId:  uint16(s.transportStreamID),
+		Name:               s.name,
+		Type:               uint8(s.typ),
+		RemoteControlKeyId: uint8(s.remoteControlKeyID),
+		ChannelType:        s.channelType,
+		ChannelId:          s.channelID,
+		EPG: EPGStatus{
+			LastAttemptAt: s.lastAttemptAt,
+			LastSuccessAt: s.lastSuccessAt,
+		},
 	}
+	if s.lastError != nil {
+		result.EPG.LastError = *s.lastError
+	}
+	return result
+}
+
+func listServiceRow(s gen.ListServicesRow) serviceRow {
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+}
+
+func getServiceByIDRow(s gen.GetServiceByIDRow) serviceRow {
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+}
+
+func getServiceByItemIDRow(s gen.GetServiceByItemIDRow) serviceRow {
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+}
+
+func getServiceByNetworkServiceIDRow(s gen.GetServiceByNetworkServiceIDRow) serviceRow {
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+}
+
+func getServicesByChannelRow(s gen.GetServicesByChannelRow) serviceRow {
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+}
+
+func getServiceByChannelAndIDRow(s gen.GetServiceByChannelAndIDRow) serviceRow {
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }

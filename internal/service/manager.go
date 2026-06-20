@@ -37,11 +37,7 @@ func NewServiceManager(store Store, channels config.ChannelsConfig, events ...ev
 }
 
 func (s *ServiceManager) CountServices(ctx context.Context) (int, error) {
-	services, err := s.store.List(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return len(services), nil
+	return s.store.Count(ctx)
 }
 
 func (s *ServiceManager) GetServices(ctx context.Context) ([]*Service, error) {
@@ -65,23 +61,7 @@ func (s *ServiceManager) SetEPGSuccess(ctx context.Context, networkID, serviceID
 }
 
 func (s *ServiceManager) EPGSummary(ctx context.Context, staleAfter int64, now int64) (stale, failed int, lastSuccess *int64, err error) {
-	services, err := s.store.List(ctx)
-	if err != nil {
-		return 0, 0, nil, err
-	}
-	for _, svc := range services {
-		if svc.EPG.LastSuccessAt == nil || now-*svc.EPG.LastSuccessAt > staleAfter {
-			stale++
-		}
-		if svc.EPG.LastError != "" {
-			failed++
-		}
-		if svc.EPG.LastSuccessAt != nil && (lastSuccess == nil || *svc.EPG.LastSuccessAt > *lastSuccess) {
-			v := *svc.EPG.LastSuccessAt
-			lastSuccess = &v
-		}
-	}
-	return
+	return s.store.EPGSummary(ctx, staleAfter, now)
 }
 
 func (s *ServiceManager) ReconcileChannels(ctx context.Context) error {
@@ -119,16 +99,7 @@ func (s *ServiceManager) GetServiceById(ctx context.Context, id string) (*Servic
 	if parseErr != nil {
 		return nil, nil
 	}
-	services, err := s.store.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, service := range services {
-		if service.ItemId() == parsedId {
-			return service, nil
-		}
-	}
-	return nil, nil
+	return s.store.GetByItemID(ctx, parsedId)
 }
 
 func (s *ServiceManager) GetChannels() config.ChannelsConfig {
@@ -200,17 +171,11 @@ func (s *ServiceManager) ReplaceChannelServices(ctx context.Context, channelType
 }
 
 func (s *ServiceManager) GetServiceByChannelAndId(ctx context.Context, channelType string, channelId string, id string) (*Service, error) {
-	services, err := s.store.GetByChannel(ctx, channelType, channelId)
-	if err != nil {
-		return nil, err
-	}
 	parsedId, parseErr := strconv.ParseInt(id, 10, 64)
-	for _, service := range services {
-		if service.Id == id || (parseErr == nil && service.ItemId() == parsedId) {
-			return service, nil
-		}
+	if parseErr != nil {
+		parsedId = 0
 	}
-	return nil, nil
+	return s.store.GetByChannelAndID(ctx, channelType, channelId, id, parsedId)
 }
 
 func sameServiceCore(a, b *Service) bool {
@@ -236,16 +201,11 @@ func (s *ServiceManager) SeedEventLog(ctx context.Context) error {
 }
 
 func (s *ServiceManager) publishServiceByKey(ctx context.Context, typ string, networkID, serviceID uint16) {
-	services, err := s.store.List(ctx)
+	svc, err := s.store.GetByNetworkServiceID(ctx, networkID, serviceID)
 	if err != nil {
 		return
 	}
-	for _, svc := range services {
-		if svc.NetworkId == networkID && svc.ServiceId == serviceID {
-			s.publishService(typ, svc)
-			return
-		}
-	}
+	s.publishService(typ, svc)
 }
 
 func (s *ServiceManager) publishService(typ string, svc *Service) {

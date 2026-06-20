@@ -7,6 +7,7 @@ package gen
 
 import (
 	"context"
+	"strings"
 )
 
 const countPrograms = `-- name: CountPrograms :one
@@ -73,6 +74,33 @@ func (q *Queries) GetProgram(ctx context.Context, id int64) (Program, error) {
 	return i, err
 }
 
+const listEndedProgramIDsBefore = `-- name: ListEndedProgramIDsBefore :many
+SELECT id FROM programs WHERE start_at + duration < ? ORDER BY id
+`
+
+func (q *Queries) ListEndedProgramIDsBefore(ctx context.Context, startAt int64) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listEndedProgramIDsBefore, startAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPrograms = `-- name: ListPrograms :many
 SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
        name, description, genres, video, audios, extended, related_items, series
@@ -98,6 +126,116 @@ func (q *Queries) ListPrograms(ctx context.Context, arg ListProgramsParams) ([]P
 		arg.ServiceID,
 		arg.EventID,
 	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Program
+	for rows.Next() {
+		var i Program
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.ServiceID,
+			&i.NetworkID,
+			&i.StartAt,
+			&i.Duration,
+			&i.IsFree,
+			&i.Name,
+			&i.Description,
+			&i.Genres,
+			&i.Video,
+			&i.Audios,
+			&i.Extended,
+			&i.RelatedItems,
+			&i.Series,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProgramsByIDs = `-- name: ListProgramsByIDs :many
+SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
+       name, description, genres, video, audios, extended, related_items, series
+FROM programs
+WHERE id IN (/*SLICE:ids*/?)
+ORDER BY start_at, id
+`
+
+func (q *Queries) ListProgramsByIDs(ctx context.Context, ids []int64) ([]Program, error) {
+	query := listProgramsByIDs
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Program
+	for rows.Next() {
+		var i Program
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.ServiceID,
+			&i.NetworkID,
+			&i.StartAt,
+			&i.Duration,
+			&i.IsFree,
+			&i.Name,
+			&i.Description,
+			&i.Genres,
+			&i.Video,
+			&i.Audios,
+			&i.Extended,
+			&i.RelatedItems,
+			&i.Series,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProgramsByServiceFrom = `-- name: ListProgramsByServiceFrom :many
+SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
+       name, description, genres, video, audios, extended, related_items, series
+FROM programs
+WHERE network_id = ? AND service_id = ? AND start_at >= ?
+ORDER BY start_at, id
+`
+
+type ListProgramsByServiceFromParams struct {
+	NetworkID int64 `json:"network_id"`
+	ServiceID int64 `json:"service_id"`
+	StartAt   int64 `json:"start_at"`
+}
+
+func (q *Queries) ListProgramsByServiceFrom(ctx context.Context, arg ListProgramsByServiceFromParams) ([]Program, error) {
+	rows, err := q.db.QueryContext(ctx, listProgramsByServiceFrom, arg.NetworkID, arg.ServiceID, arg.StartAt)
 	if err != nil {
 		return nil, err
 	}

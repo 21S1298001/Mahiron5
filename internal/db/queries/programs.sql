@@ -13,6 +13,20 @@ WHERE (sqlc.arg(id) IS NULL OR id = sqlc.arg(id))
   AND (sqlc.arg(event_id) IS NULL OR event_id = sqlc.arg(event_id))
 ORDER BY start_at, id;
 
+-- name: ListProgramsByIDs :many
+SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
+       name, description, genres, video, audios, extended, related_items, series
+FROM programs
+WHERE id IN (sqlc.slice('ids'))
+ORDER BY start_at, id;
+
+-- name: ListProgramsByServiceFrom :many
+SELECT id, event_id, service_id, network_id, start_at, duration, is_free,
+       name, description, genres, video, audios, extended, related_items, series
+FROM programs
+WHERE network_id = ? AND service_id = ? AND start_at >= ?
+ORDER BY start_at, id;
+
 -- name: UpsertProgram :exec
 INSERT INTO programs (id, event_id, service_id, network_id, start_at, duration, is_free,
                       name, description, genres, video, audios, extended, related_items, series)
@@ -38,6 +52,9 @@ DELETE FROM programs WHERE network_id = ? AND service_id = ? AND start_at + dura
 
 -- name: DeleteEndedAtBefore :exec
 DELETE FROM programs WHERE start_at + duration < ?;
+
+-- name: ListEndedProgramIDsBefore :many
+SELECT id FROM programs WHERE start_at + duration < ? ORDER BY id;
 
 -- name: CountPrograms :one
 SELECT COUNT(*) FROM programs;

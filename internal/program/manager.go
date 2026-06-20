@@ -43,18 +43,20 @@ func NewProgramManager(store ProgramStore, events ...eventPublisher) *ProgramMan
 }
 
 func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program) error {
-	before := make(map[int64]*Program, len(programs))
+	ids := make([]int64, 0, len(programs))
 	for _, p := range programs {
 		if p == nil {
 			continue
 		}
-		existing, ok, err := m.store.Get(ctx, p.ID)
-		if err != nil {
-			return err
-		}
-		if ok {
-			before[p.ID] = existing
-		}
+		ids = append(ids, p.ID)
+	}
+	existingPrograms, err := m.store.ListByIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	before := make(map[int64]*Program, len(existingPrograms))
+	for _, p := range existingPrograms {
+		before[p.ID] = p
 	}
 	if err := m.store.UpsertAll(ctx, programs); err != nil {
 		return err
@@ -83,15 +85,9 @@ func (m *ProgramManager) List(ctx context.Context, query Query) ([]*Program, err
 }
 
 func (m *ProgramManager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
-	programs, err := m.store.List(ctx, Query{})
+	removed, err := m.store.ListEndedIDsBefore(ctx, cutoff)
 	if err != nil {
 		return err
-	}
-	removed := make([]int64, 0)
-	for _, p := range programs {
-		if p.StartAt+int64(p.Duration) < cutoff {
-			removed = append(removed, p.ID)
-		}
 	}
 	if err := m.store.DeleteEndedBefore(ctx, cutoff); err != nil {
 		return err
@@ -103,15 +99,13 @@ func (m *ProgramManager) DeleteEndedBefore(ctx context.Context, cutoff int64) er
 }
 
 func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
-	beforeList, err := m.store.List(ctx, Query{NetworkID: &networkID, ServiceID: &serviceID})
+	beforeList, err := m.store.ListByServiceFrom(ctx, networkID, serviceID, from)
 	if err != nil {
 		return err
 	}
 	before := map[int64]*Program{}
 	for _, p := range beforeList {
-		if p.StartAt >= from {
-			before[p.ID] = p
-		}
+		before[p.ID] = p
 	}
 	if err := m.store.ReplaceServicePrograms(ctx, networkID, serviceID, from, programs); err != nil {
 		return err

@@ -108,6 +108,39 @@ func TestServiceManagerUpdateServicesAppendsAndUpdatesByID(t *testing.T) {
 	}
 }
 
+func TestServiceManagerGetServiceByIdPrefersExactIDOverItemID(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
+		{Id: "100101", ServiceId: 102, NetworkId: 1, Name: "exact", ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "item", ChannelType: "GR", ChannelId: "27"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	svc, err := manager.GetServiceById(ctx, "100101")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc == nil || svc.Name != "exact" {
+		t.Fatalf("service = %#v, want exact ID match", svc)
+	}
+
+	svc, err = manager.GetServiceById(ctx, "100102")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc == nil || svc.Name != "exact" {
+		t.Fatalf("service = %#v, want ItemId fallback match", svc)
+	}
+}
+
 func TestSQLiteStoreMovesServiceBetweenChannels(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
@@ -133,6 +166,44 @@ func TestSQLiteStoreMovesServiceBetweenChannels(t *testing.T) {
 	}
 	if len(old) != 0 || len(moved) != 1 {
 		t.Fatalf("old=%d moved=%d, want old=0 moved=1", len(old), len(moved))
+	}
+}
+
+func TestServiceManagerGetServiceByChannelAndIdPrefersExactIDOverItemID(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
+		{Id: "100101", ServiceId: 102, NetworkId: 1, Name: "exact", ChannelType: "GR", ChannelId: "27"},
+		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "item", ChannelType: "GR", ChannelId: "27"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReplaceChannelServices(ctx, "BS", "101", []*Service{
+		{Id: "bs", ServiceId: 101, NetworkId: 1, Name: "other channel", ChannelType: "BS", ChannelId: "101"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	svc, err := manager.GetServiceByChannelAndId(ctx, "GR", "27", "100101")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc == nil || svc.Name != "exact" {
+		t.Fatalf("service = %#v, want exact ID match", svc)
+	}
+
+	svc, err = manager.GetServiceByChannelAndId(ctx, "GR", "27", "100102")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc == nil || svc.Name != "exact" {
+		t.Fatalf("service = %#v, want ItemId fallback match in channel", svc)
 	}
 }
 
@@ -196,6 +267,13 @@ func TestServiceManagerEPGStatus(t *testing.T) {
 	}
 	if services[0].EPG.LastSuccessAt != nil {
 		t.Fatalf("LastSuccessAt = %v, want nil", services[0].EPG.LastSuccessAt)
+	}
+	svc, err := manager.GetServiceById(ctx, "0000100101")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc == nil || svc.EPG.LastError != "boom" || svc.EPG.LastAttemptAt == nil || *svc.EPG.LastAttemptAt != 1000 {
+		t.Fatalf("service by ID EPG = %#v, want joined EPG status", svc)
 	}
 	if err := manager.SetEPGSuccess(ctx, 1, 101, 2000); err != nil {
 		t.Fatal(err)
