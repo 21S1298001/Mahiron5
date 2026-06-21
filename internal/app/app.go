@@ -121,7 +121,7 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	streams := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:       cfg.Channels,
 		Remotes:        cfg.Remotes,
-		EITCollector:   epg.NewMirakcAribCollector(),
+		EITCollector:   ts.NewEITCollector(),
 		EITUpdater:     epgUpdater,
 		Filter:         filter.NewServiceFilter(),
 		ProgramUpdater: programs,
