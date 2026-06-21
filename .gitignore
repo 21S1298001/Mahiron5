@@ -28,4 +28,7 @@ go.work.sum
 *.db
 *.db-wal
 *.db-shm
+
+# Local broadcast specs and captured fixtures.
+/ts/docs/
 /ts/testdata/local/
