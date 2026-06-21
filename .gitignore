@@ -28,3 +28,4 @@ go.work.sum
 *.db
 *.db-wal
 *.db-shm
+/ts/testdata/local/
