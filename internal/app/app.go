@@ -62,6 +62,47 @@ func Run(ctx context.Context) int {
 		return 1
 	}
 
+	runtime, errMessage, err := buildRuntime(cfg, database, obs)
+	if err != nil {
+		slog.Error(errMessage, "err", err)
+		return 1
+	}
+
+	signalCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt)
+	defer stop()
+
+	runtime.jobs.Start()
+
+	if err := runStartupTasks(signalCtx, runtime.services, runtime.programs, runtime.jobs, runtime.database, cfg); err != nil {
+		slog.Error("startup tasks failed", "err", err)
+	}
+	if err := runtime.services.SeedEventLog(signalCtx); err != nil {
+		slog.Warn("failed to seed service events", "err", err)
+	}
+	runtime.tuners.SeedEventLog()
+
+	slog.Info("starting servers")
+	runtime.server.ListenAndServe()
+
+	<-signalCtx.Done()
+	runtime.shutdown()
+
+	slog.Info("exiting")
+	return 0
+}
+
+type applicationRuntime struct {
+	database *sql.DB
+	jobs     *job.JobManager
+	obs      observability.SetupResult
+	programs *program.ProgramManager
+	server   *server.Server
+	services *service.ServiceManager
+	streams  *stream.StreamManager
+	tuners   *tuner.TunerManager
+}
+
+func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupResult) (*applicationRuntime, string, error) {
 	serviceStore := service.NewSQLiteStore(database)
 	programStore := program.NewSQLiteStore(database)
 	events := event.New()
@@ -94,8 +135,7 @@ func Run(ctx context.Context) int {
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxRunning: cfg.System.JobMaxRunning})
 	if err != nil {
-		slog.Error("failed to create job manager", "err", err)
-		return 1
+		return nil, "failed to create job manager", err
 	}
 
 	job.RegisterServiceUpdater(jobs, scanService, epgService)
@@ -128,36 +168,30 @@ func Run(ctx context.Context) int {
 		TracerProvider: obs.TracerProvider,
 	})
 	if err != nil {
-		slog.Error("failed to create web handler", "err", err)
-		return 1
+		return nil, "failed to create web handler", err
 	}
 
+	return &applicationRuntime{
+		database: database,
+		jobs:     jobs,
+		obs:      obs,
+		programs: programs,
+		server:   server.NewServer(listenAddresses(cfg), handler),
+		services: services,
+		streams:  streams,
+		tuners:   tuners,
+	}, "", nil
+}
+
+func listenAddresses(cfg *config.Config) []server.ListenAddress {
 	addresses := make([]server.ListenAddress, len(cfg.System.Addresses))
 	for i, addr := range cfg.System.Addresses {
-		addresses[i] = server.ListenAddress{
-			Http: addr.Http,
-			Unix: addr.Unix,
-		}
+		addresses[i] = server.ListenAddress{Http: addr.Http, Unix: addr.Unix}
 	}
+	return addresses
+}
 
-	signalCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, os.Interrupt)
-	defer stop()
-
-	s := server.NewServer(addresses, handler)
-	jobs.Start()
-
-	if err := runStartupTasks(signalCtx, services, programs, jobs, database, cfg); err != nil {
-		slog.Error("startup tasks failed", "err", err)
-	}
-	if err := services.SeedEventLog(signalCtx); err != nil {
-		slog.Warn("failed to seed service events", "err", err)
-	}
-	tuners.SeedEventLog()
-
-	slog.Info("starting servers")
-	s.ListenAndServe()
-
-	<-signalCtx.Done()
+func (r *applicationRuntime) shutdown() {
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -166,7 +200,7 @@ func Run(ctx context.Context) int {
 	go func() {
 		defer wg.Done()
 		slog.Info("shutting down servers")
-		if err := s.Shutdown(timeoutCtx); err != nil {
+		if err := r.server.Shutdown(timeoutCtx); err != nil {
 			slog.Error("failed to shutdown servers", "err", err)
 		}
 		slog.Info("servers shut down")
@@ -174,12 +208,12 @@ func Run(ctx context.Context) int {
 	go func() {
 		defer wg.Done()
 		slog.Info("shutting down streams")
-		if err := streams.Shutdown(timeoutCtx); err != nil {
+		if err := r.streams.Shutdown(timeoutCtx); err != nil {
 			slog.Error("failed to shutdown streams", "err", err)
 		}
 		slog.Info("streams shut down")
 		slog.Info("shutting down tuner")
-		if err := tuners.Shutdown(timeoutCtx); err != nil {
+		if err := r.tuners.Shutdown(timeoutCtx); err != nil {
 			slog.Error("failed to shutdown tuner", "err", err)
 		}
 		slog.Info("tuner shut down")
@@ -187,7 +221,7 @@ func Run(ctx context.Context) int {
 	go func() {
 		defer wg.Done()
 		slog.Info("shutting down job manager")
-		if err := jobs.Shutdown(timeoutCtx); err != nil {
+		if err := r.jobs.Shutdown(timeoutCtx); err != nil {
 			slog.Error("failed to shutdown job manager", "err", err)
 		}
 		slog.Info("job manager shut down")
@@ -195,7 +229,7 @@ func Run(ctx context.Context) int {
 	wg.Wait()
 
 	slog.Info("closing database")
-	if err := database.Close(); err != nil {
+	if err := r.database.Close(); err != nil {
 		slog.Error("failed to close database", "err", err)
 	}
 	slog.Info("database closed")
@@ -203,13 +237,10 @@ func Run(ctx context.Context) int {
 	observabilityCtx, observabilityCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer observabilityCancel()
 	slog.Info("shutting down observability")
-	if err := obs.Shutdown(observabilityCtx); err != nil {
+	if err := r.obs.Shutdown(observabilityCtx); err != nil {
 		slog.Error("failed to shutdown observability", "err", err)
 	}
 	slog.Info("observability shut down")
-
-	slog.Info("exiting")
-	return 0
 }
 
 func runStartupTasks(ctx context.Context, services *service.ServiceManager, programs *program.ProgramManager, jobs *job.JobManager, database *sql.DB, cfg *config.Config) error {
