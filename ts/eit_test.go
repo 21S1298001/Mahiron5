@@ -89,6 +89,117 @@ func TestEITJSONDescriptorCompatibility(t *testing.T) {
 	}
 }
 
+func TestEITJSONMergesExtendedEventDescriptorsByLanguage(t *testing.T) {
+	descriptors := []Descriptor{
+		shortEventDescriptor("jpn", aribAlnum("NEWS"), aribAlnum("WEATHER")),
+		extendedEventDescriptorWithNumbers(1, 2, "jpn", [][2][]byte{{aribAlnum("B"), aribAlnum("TWO")}}, nil),
+		contentDescriptor(0, 1, 15, 15),
+		extendedEventDescriptorWithNumbers(0, 0, "eng", [][2][]byte{{aribAlnum("E"), aribAlnum("ENG")}}, nil),
+		extendedEventDescriptorWithNumbers(0, 2, "jpn", [][2][]byte{{aribAlnum("A"), aribAlnum("ONE")}}, nil),
+		extendedEventDescriptorWithNumbers(2, 2, "jpn", [][2][]byte{{nil, aribAlnum("CONT")}, {aribAlnum("C"), aribAlnum("THREE")}}, nil),
+	}
+
+	got := descriptorsToJSON(descriptors)
+	if len(got) != 4 {
+		t.Fatalf("descriptor count = %d, want 4: %#v", len(got), got)
+	}
+	if got[0].Type != "ShortEvent" || got[1].Type != "ExtendedEvent" || got[1].Lang != "jpn" || got[2].Type != "Content" || got[3].Type != "ExtendedEvent" || got[3].Lang != "eng" {
+		t.Fatalf("descriptor order = %#v", got)
+	}
+	items := got[1].Items
+	if len(items) != 3 || items[0][0] != "Ａ" || items[0][1] != "ＯＮＥ" || items[1][0] != "Ｂ" || items[1][1] != "ＴＷＯＣＯＮＴ" || items[2][0] != "Ｃ" || items[2][1] != "ＴＨＲＥＥ" {
+		t.Fatalf("merged jpn ExtendedEvent items = %#v", got[1])
+	}
+	if engItems := got[3].Items; len(engItems) != 1 || engItems[0][0] != "Ｅ" || engItems[0][1] != "ＥＮＧ" {
+		t.Fatalf("eng ExtendedEvent = %#v", got[3])
+	}
+}
+
+func TestEITJSONMergesTextOnlyExtendedEventForPrograms(t *testing.T) {
+	descriptors := []Descriptor{
+		extendedEventDescriptorWithNumbers(2, 2, "jpn", nil, aribAlnum("THREE")),
+		extendedEventDescriptorWithNumbers(0, 2, "jpn", nil, aribAlnum("ONE")),
+		extendedEventDescriptorWithNumbers(1, 2, "jpn", nil, aribAlnum("TWO")),
+	}
+
+	got := descriptorsToJSON(descriptors)
+	if len(got) != 1 {
+		t.Fatalf("descriptor count = %d, want 1: %#v", len(got), got)
+	}
+	if got[0].Text != "ＯＮＥＴＷＯＴＨＲＥＥ" {
+		t.Fatalf("merged text = %q", got[0].Text)
+	}
+	if items := got[0].Items; len(items) != 1 || items[0][0] != "" || items[0][1] != "ＯＮＥＴＷＯＴＨＲＥＥ" {
+		t.Fatalf("text-only compatibility items = %#v", got[0].Items)
+	}
+
+	data, err := json.Marshal(eitSectionJSON{
+		OriginalNetworkID: 1,
+		ServiceID:         2,
+		Events: []eitEventJSON{{
+			EventID:     3,
+			Descriptors: got,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	section, err := epg.DecodeSectionJSON(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	programs := section.Programs()
+	if len(programs) != 1 || programs[0].Extended[""] != "ＯＮＥＴＷＯＴＨＲＥＥ" {
+		t.Fatalf("decoded programs = %#v", programs)
+	}
+}
+
+func TestEITCollectorLocalFixtureMergesSplitExtendedEvent(t *testing.T) {
+	const inputPath = "testdata/local/test-gr-27.ts"
+	if !fileExists(inputPath) {
+		t.Skip("local TS fixture not found")
+	}
+
+	rawEvent := localFixtureEITEvent(t, inputPath, TableIDEITSStart+9, 0, 1024, 1711)
+	var rawExtendedParts int
+	for _, desc := range rawEvent.Descriptors {
+		if desc.Tag() == DescriptorTagExtendedEvent {
+			rawExtendedParts++
+		}
+	}
+	if rawExtendedParts < 2 {
+		t.Fatalf("raw ExtendedEvent parts = %d, want split descriptors", rawExtendedParts)
+	}
+
+	input, err := os.Open(inputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+
+	var out bytes.Buffer
+	if err := NewEITCollector().CollectEITS(context.Background(), input, &out); err != nil {
+		t.Fatal(err)
+	}
+	event := localFixtureJSONEvent(t, readEITSectionsJSONL(t, bytes.NewReader(out.Bytes())), TableIDEITSStart+9, 0, 1024, 1711)
+	var extended []eitDescriptorJSON
+	for _, desc := range event.Descriptors {
+		if desc.Type == "ExtendedEvent" {
+			extended = append(extended, desc)
+		}
+	}
+	if len(extended) != 1 {
+		t.Fatalf("merged ExtendedEvent count = %d, want 1: %#v", len(extended), event.Descriptors)
+	}
+	items := extended[0].Items
+	if len(items) != 2 || items[0][0] != "番組内容" || items[1][0] != "出演者" {
+		t.Fatalf("merged ExtendedEvent items = %#v", extended[0])
+	}
+	if len(items[0][1]) < 300 || len(items[1][1]) == 0 {
+		t.Fatalf("merged ExtendedEvent text = %#v", extended[0])
+	}
+}
+
 func TestEITCollectorWritesJSONLAndFiltersTables(t *testing.T) {
 	pf := buildEIT(t, TableIDEITPF0, 1024, 1, 2, 0, 0, 0, []eitEventSpec{{eventID: 1, start: time.Date(2026, 6, 21, 1, 2, 3, 0, jst), duration: time.Minute}})
 	schedule := buildEIT(t, TableIDEITSStart, 1024, 1, 2, 0, 0, 0, []eitEventSpec{{eventID: 2, start: time.Date(2026, 6, 21, 2, 3, 4, 0, jst), duration: 2 * time.Minute}})
@@ -279,6 +390,67 @@ func readEITSectionsJSONL(t *testing.T, r io.Reader) []eitSectionJSON {
 	return sections
 }
 
+func localFixtureEITEvent(t *testing.T, path string, tableID, sectionNumber byte, serviceID, eventID uint16) EITEvent {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	reader := NewPacketReader(file)
+	assembler := NewSectionAssembler(PIDEIT)
+	for {
+		packet, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			t.Fatalf("EIT event not found in %s: table=%d section=%d service=%d event=%d", path, tableID, sectionNumber, serviceID, eventID)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if packet.PID() != PIDEIT || packet.TransportErrorIndicator() || packet.IsNull() || !packet.ValidPayloadOffset() {
+			continue
+		}
+		sections, err := assembler.FeedAll(packet)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, section := range sections {
+			if section.TableID() != tableID {
+				continue
+			}
+			eit, err := ParseEIT(section)
+			if err != nil {
+				continue
+			}
+			if eit.SectionNumber != sectionNumber || eit.ServiceID != serviceID {
+				continue
+			}
+			for _, event := range eit.Events {
+				if event.EventID == eventID {
+					return event
+				}
+			}
+		}
+	}
+}
+
+func localFixtureJSONEvent(t *testing.T, sections []eitSectionJSON, tableID, sectionNumber byte, serviceID, eventID uint16) eitEventJSON {
+	t.Helper()
+	for _, section := range sections {
+		if section.TableID != tableID || section.SectionNumber != sectionNumber || section.ServiceID != serviceID {
+			continue
+		}
+		for _, event := range section.Events {
+			if event.EventID == eventID {
+				return event
+			}
+		}
+	}
+	t.Fatalf("EIT JSON event not found: table=%d section=%d service=%d event=%d", tableID, sectionNumber, serviceID, eventID)
+	return eitEventJSON{}
+}
+
 type eitEventSpec struct {
 	eventID           uint16
 	start             time.Time
@@ -413,7 +585,11 @@ func audioComponentDescriptor(streamContent, componentType, componentTag byte, m
 }
 
 func extendedEventDescriptor(lang string, items [][2][]byte, text []byte) Descriptor {
-	data := []byte{0x00}
+	return extendedEventDescriptorWithNumbers(0, 0, lang, items, text)
+}
+
+func extendedEventDescriptorWithNumbers(descriptorNumber, lastDescriptorNumber int, lang string, items [][2][]byte, text []byte) Descriptor {
+	data := []byte{byte(descriptorNumber&0x0f)<<4 | byte(lastDescriptorNumber&0x0f)}
 	data = append(data, []byte(lang)...)
 	var itemsData []byte
 	for _, item := range items {

@@ -2,6 +2,7 @@ package ts
 
 import (
 	"encoding/json"
+	"sort"
 	"time"
 )
 
@@ -98,11 +99,30 @@ func unixMilli(t time.Time) int64 {
 
 func descriptorsToJSON(descriptors []Descriptor) []eitDescriptorJSON {
 	out := make([]eitDescriptorJSON, 0, len(descriptors))
+	extended := map[string]*extendedEventGroup{}
 	for _, desc := range descriptors {
+		if desc.Tag() == DescriptorTagExtendedEvent {
+			part, ok := parseExtendedEventDescriptorPart(desc)
+			if !ok {
+				continue
+			}
+			group, ok := extended[part.lang]
+			if !ok {
+				out = append(out, eitDescriptorJSON{})
+				group = &extendedEventGroup{index: len(out) - 1}
+				extended[part.lang] = group
+			}
+			part.order = len(group.parts)
+			group.parts = append(group.parts, part)
+			continue
+		}
 		item, ok := descriptorToJSON(desc)
 		if ok {
 			out = append(out, item)
 		}
+	}
+	for _, group := range extended {
+		out[group.index] = mergeExtendedEventParts(group.parts)
 	}
 	return out
 }
@@ -158,63 +178,119 @@ func parseShortEventDescriptor(desc Descriptor) (eitDescriptorJSON, bool) {
 }
 
 func parseExtendedEventDescriptor(desc Descriptor) (eitDescriptorJSON, bool) {
-	data := desc.Data()
-	if len(data) < 6 {
+	part, ok := parseExtendedEventDescriptorPart(desc)
+	if !ok {
 		return eitDescriptorJSON{}, false
 	}
+	return mergeExtendedEventParts([]extendedEventDescriptorPart{part}), true
+}
+
+type extendedEventDescriptorPart struct {
+	descriptorNumber     int
+	lastDescriptorNumber int
+	lang                 string
+	text                 string
+	items                [][]string
+	order                int
+}
+
+type extendedEventGroup struct {
+	index int
+	parts []extendedEventDescriptorPart
+}
+
+func parseExtendedEventDescriptorPart(desc Descriptor) (extendedEventDescriptorPart, bool) {
+	data := desc.Data()
+	if len(data) < 6 {
+		return extendedEventDescriptorPart{}, false
+	}
+	descriptorNumber := int(data[0] >> 4)
+	lastDescriptorNumber := int(data[0] & 0x0f)
 	lang := string(data[1:4])
 	itemsLen := int(data[4])
 	off := 5
 	itemsEnd := off + itemsLen
 	if itemsEnd > len(data) {
-		return eitDescriptorJSON{}, false
+		return extendedEventDescriptorPart{}, false
 	}
 	var items [][]string
 	for off < itemsEnd {
 		if off >= itemsEnd {
-			return eitDescriptorJSON{}, false
+			return extendedEventDescriptorPart{}, false
 		}
 		descLen := int(data[off])
 		off++
 		if off+descLen > itemsEnd {
-			return eitDescriptorJSON{}, false
+			return extendedEventDescriptorPart{}, false
 		}
 		itemDescription, err := DecodeARIBString(data[off : off+descLen])
 		if err != nil {
-			return eitDescriptorJSON{}, false
+			return extendedEventDescriptorPart{}, false
 		}
 		off += descLen
 		if off >= itemsEnd {
-			return eitDescriptorJSON{}, false
+			return extendedEventDescriptorPart{}, false
 		}
 		itemLen := int(data[off])
 		off++
 		if off+itemLen > itemsEnd {
-			return eitDescriptorJSON{}, false
+			return extendedEventDescriptorPart{}, false
 		}
 		itemText, err := DecodeARIBString(data[off : off+itemLen])
 		if err != nil {
-			return eitDescriptorJSON{}, false
+			return extendedEventDescriptorPart{}, false
 		}
 		off += itemLen
 		items = append(items, []string{itemDescription, itemText})
 	}
 	if off >= len(data) {
-		return eitDescriptorJSON{}, false
+		return extendedEventDescriptorPart{}, false
 	}
 	textLen := int(data[off])
 	off++
 	if off+textLen > len(data) {
-		return eitDescriptorJSON{}, false
+		return extendedEventDescriptorPart{}, false
 	}
 	text, err := DecodeARIBString(data[off : off+textLen])
 	if err != nil {
-		return eitDescriptorJSON{}, false
+		return extendedEventDescriptorPart{}, false
+	}
+	return extendedEventDescriptorPart{
+		descriptorNumber:     descriptorNumber,
+		lastDescriptorNumber: lastDescriptorNumber,
+		lang:                 lang,
+		text:                 text,
+		items:                items,
+	}, true
+}
+
+func mergeExtendedEventParts(parts []extendedEventDescriptorPart) eitDescriptorJSON {
+	sort.SliceStable(parts, func(i, j int) bool {
+		if parts[i].descriptorNumber != parts[j].descriptorNumber {
+			return parts[i].descriptorNumber < parts[j].descriptorNumber
+		}
+		return parts[i].order < parts[j].order
+	})
+	var lang string
+	var text string
+	var items [][]string
+	for i, part := range parts {
+		if i == 0 {
+			lang = part.lang
+		}
+		text += part.text
+		for _, item := range part.items {
+			if len(item) >= 2 && item[0] == "" && len(items) > 0 && len(items[len(items)-1]) >= 2 {
+				items[len(items)-1][1] += item[1]
+				continue
+			}
+			items = append(items, item)
+		}
 	}
 	if text != "" && len(items) == 0 {
 		items = append(items, []string{"", text})
 	}
-	return eitDescriptorJSON{Type: "ExtendedEvent", Lang: lang, Text: text, Items: items}, true
+	return eitDescriptorJSON{Type: "ExtendedEvent", Lang: lang, Text: text, Items: items}
 }
 
 func parseContentDescriptor(desc Descriptor) (eitDescriptorJSON, bool) {
