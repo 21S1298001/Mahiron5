@@ -142,66 +142,11 @@ func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.Channel
 		var lastErr error
 		unavailable := false
 		for _, route := range routes {
-			routeChannel := channel.RouteChannelConfig(route)
-			routeCtx, routeSpan := observability.StartSpan(ctx, observability.SpanStreamSourceTryRoute,
-				observability.AttrChannelType.String(channel.Type),
-				observability.AttrChannelID.String(channel.Channel),
-				observability.AttrRouteType.String(route.Type),
-				observability.AttrRouteChannel.String(route.Channel),
-				observability.AttrRouteRemote.String(route.Remote),
-			)
-			slog.Debug("trying stream route", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote, "wait", wait)
-			key := newRouteSourceKey(route)
-			var finishCreate func()
-			if route.Remote == "" {
-				source, finish, err := p.beginRouteSourceCreate(routeCtx, key)
-				if err != nil {
-					observability.EndSpan(routeSpan, err)
-					return config.ChannelRouteConfig{}, config.ChannelConfig{}, nil, "", nil, err
-				}
-				if source != nil {
-					slog.Debug("reusing local stream route", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type)
-					observability.EndSpan(routeSpan, nil)
-					return route, routeChannel, nil, source.decoderCommand, source.broadcast, nil
-				}
-				finishCreate = finish
-			}
-			var device TunerDevice
-			var decoder string
-			var err error
-			if route.Remote != "" {
-				remote := p.remotes[route.Remote]
-				if remote == nil {
-					err = tuner.ErrTunerNotFound
-				} else if err = remote.CheckAvailableForRoute(routeCtx, route.Type, route.Channel); err == nil {
-					observability.EndSpan(routeSpan, nil)
-					return route, routeChannel, nil, "", nil, nil
-				} else {
-					err = tuner.ErrTunerUnavailable
-				}
-			} else if allocator, ok := p.tunerManager.(TunerAllocator); ok {
-				device, decoder, err = allocator.AcquireDevice(routeCtx, route.Type, channel, &routeChannel, false)
-			} else {
-				device, err = p.tunerManager.NewDeviceByType(route.Type, &routeChannel)
-			}
+			selected, err := p.tryRoute(ctx, channel, route, wait, hooks)
 			if err == nil {
-				var broadcast *Broadcast
-				if route.Remote == "" {
-					broadcast = p.commitRouteSource(key, hooks, &tunerLiveSource{
-						channel: &config.ChannelConfig{Type: channel.Type, Channel: channel.Channel},
-						device:  device,
-					}, decoder)
-					finishCreate()
-				}
-				slog.Debug("stream route acquired", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote)
-				observability.EndSpan(routeSpan, nil)
-				return route, routeChannel, device, decoder, broadcast, nil
-			}
-			if finishCreate != nil {
-				finishCreate()
+				return selected.route, selected.channel, selected.device, selected.decoder, selected.broadcast, nil
 			}
 			slog.Debug("stream route unavailable", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote, "err", err)
-			observability.EndSpan(routeSpan, err)
 			if errors.Is(err, tuner.ErrTunerUnavailable) {
 				unavailable = true
 			}
@@ -213,12 +158,92 @@ func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.Channel
 			}
 			return config.ChannelRouteConfig{}, config.ChannelConfig{}, nil, "", nil, ErrChannelNotFound
 		}
-		slog.Debug("waiting for stream route", "type", channel.Type, "channel", channel.Channel)
-		select {
-		case <-ctx.Done():
-			return config.ChannelRouteConfig{}, config.ChannelConfig{}, nil, "", nil, ctx.Err()
-		case <-time.After(100 * time.Millisecond):
+		if err := waitForRouteRetry(ctx, channel); err != nil {
+			return config.ChannelRouteConfig{}, config.ChannelConfig{}, nil, "", nil, err
 		}
+	}
+}
+
+type routeSelection struct {
+	route     config.ChannelRouteConfig
+	channel   config.ChannelConfig
+	device    TunerDevice
+	decoder   string
+	broadcast *Broadcast
+}
+
+func (p *SourcePool) tryRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, wait bool, hooks []BroadcastHook) (selected routeSelection, err error) {
+	routeChannel := channel.RouteChannelConfig(route)
+	routeCtx, routeSpan := observability.StartSpan(ctx, observability.SpanStreamSourceTryRoute,
+		observability.AttrChannelType.String(channel.Type),
+		observability.AttrChannelID.String(channel.Channel),
+		observability.AttrRouteType.String(route.Type),
+		observability.AttrRouteChannel.String(route.Channel),
+		observability.AttrRouteRemote.String(route.Remote),
+	)
+	defer func() { observability.EndSpan(routeSpan, err) }()
+
+	slog.Debug("trying stream route", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote, "wait", wait)
+	if route.Remote != "" {
+		selected, err = p.tryRemoteRoute(routeCtx, route, routeChannel)
+	} else {
+		selected, err = p.tryLocalRoute(routeCtx, channel, route, routeChannel, hooks)
+	}
+	if err != nil {
+		return routeSelection{}, err
+	}
+	slog.Debug("stream route acquired", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type, "remote", route.Remote)
+	return selected, nil
+}
+
+func (p *SourcePool) tryRemoteRoute(ctx context.Context, route config.ChannelRouteConfig, routeChannel config.ChannelConfig) (routeSelection, error) {
+	remote := p.remotes[route.Remote]
+	if remote == nil {
+		return routeSelection{}, tuner.ErrTunerNotFound
+	}
+	if err := remote.CheckAvailableForRoute(ctx, route.Type, route.Channel); err != nil {
+		return routeSelection{}, tuner.ErrTunerUnavailable
+	}
+	return routeSelection{route: route, channel: routeChannel}, nil
+}
+
+func (p *SourcePool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, routeChannel config.ChannelConfig, hooks []BroadcastHook) (routeSelection, error) {
+	key := newRouteSourceKey(route)
+	source, finishCreate, err := p.beginRouteSourceCreate(ctx, key)
+	if err != nil {
+		return routeSelection{}, err
+	}
+	if source != nil {
+		slog.Debug("reusing local stream route", "type", channel.Type, "channel", channel.Channel, "routeType", route.Type)
+		return routeSelection{route: route, channel: routeChannel, decoder: source.decoderCommand, broadcast: source.broadcast}, nil
+	}
+	defer finishCreate()
+
+	var device TunerDevice
+	var decoder string
+	if allocator, ok := p.tunerManager.(TunerAllocator); ok {
+		device, decoder, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, false)
+	} else {
+		device, err = p.tunerManager.NewDeviceByType(route.Type, &routeChannel)
+	}
+	if err != nil {
+		return routeSelection{}, err
+	}
+
+	broadcast := p.commitRouteSource(key, hooks, &tunerLiveSource{
+		channel: &config.ChannelConfig{Type: channel.Type, Channel: channel.Channel},
+		device:  device,
+	}, decoder)
+	return routeSelection{route: route, channel: routeChannel, device: device, decoder: decoder, broadcast: broadcast}, nil
+}
+
+func waitForRouteRetry(ctx context.Context, channel *config.ChannelConfig) error {
+	slog.Debug("waiting for stream route", "type", channel.Type, "channel", channel.Channel)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(100 * time.Millisecond):
+		return nil
 	}
 }
 
