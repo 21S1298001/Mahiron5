@@ -28,13 +28,15 @@ func ParseDescriptors(b []byte) []Descriptor {
 
 // ARIB descriptor tags.
 const (
-	DescriptorTagCA             = 0x09
-	DescriptorTagService        = 0x48
-	DescriptorTagShortEvent     = 0x4D
-	DescriptorTagExtendedEvent  = 0x4E
-	DescriptorTagComponent      = 0x50
-	DescriptorTagContent        = 0x54
-	DescriptorTagAudioComponent = 0xC4
-	DescriptorTagEventGroup     = 0xD6
-	DescriptorTagSeries         = 0xD5
+	DescriptorTagCA                        = 0x09
+	DescriptorTagService                   = 0x48
+	DescriptorTagServiceList               = 0x41
+	DescriptorTagShortEvent                = 0x4D
+	DescriptorTagExtendedEvent             = 0x4E
+	DescriptorTagComponent                 = 0x50
+	DescriptorTagContent                   = 0x54
+	DescriptorTagAudioComponent            = 0xC4
+	DescriptorTagTerrestrialDeliverySystem = 0xCD
+	DescriptorTagEventGroup                = 0xD6
+	DescriptorTagSeries                    = 0xD5
 )
