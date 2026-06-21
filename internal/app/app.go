@@ -247,62 +247,95 @@ func runStartupTasks(ctx context.Context, services *service.ServiceManager, prog
 	if err := services.ReconcileChannels(ctx); err != nil {
 		return fmt.Errorf("reconcile service channels: %w", err)
 	}
-	channelsHash := hashChannelConfig(cfg.Channels)
-	storedHash, err := readMetadata(ctx, database, "channels_hash")
-	if err != nil {
-		slog.Warn("failed to read channels hash", "err", err)
-	}
-	if storedHash == "" || storedHash != channelsHash {
-		slog.Info("channel config changed, will trigger service update")
-		if err := writeMetadata(ctx, database, "channels_hash", channelsHash); err != nil {
-			slog.Warn("failed to write channels hash", "err", err)
-		}
-	}
+	channelState := loadChannelConfigState(ctx, database, cfg.Channels)
 
 	count, err := services.CountServices(ctx)
 	if err != nil {
 		return fmt.Errorf("count services: %w", err)
 	}
 
-	if count == 0 {
-		slog.Info("no services cached, running initial service update")
-		if _, err := jobs.Enqueue(job.ServiceUpdaterKey); err != nil {
-			slog.Error("failed to enqueue initial service update", "err", err)
-		}
-	} else if storedHash != "" && storedHash != channelsHash {
-		slog.Info("channel config changed, enqueuing service update")
-		if _, err := jobs.Enqueue(job.ServiceUpdaterKey); err != nil {
-			slog.Warn("failed to enqueue service update", "err", err)
-		}
-	}
+	enqueueStartupServiceUpdate(jobs, count, channelState)
 
 	stale, _, _, err := services.EPGSummary(ctx, int64(cfg.System.EpgStaleAfter), time.Now().UnixMilli())
 	if err != nil {
 		return fmt.Errorf("read EPG status: %w", err)
 	}
+	enqueueStartupEPGGather(jobs, count, stale)
+	cleanupOldEPG(ctx, programs, cfg.System.EpgRetentionDays)
+
+	return nil
+}
+
+type channelConfigState struct {
+	currentHash string
+	storedHash  string
+}
+
+func (s channelConfigState) changed() bool {
+	return s.storedHash != s.currentHash
+}
+
+func (s channelConfigState) previouslyStored() bool {
+	return s.storedHash != ""
+}
+
+func loadChannelConfigState(ctx context.Context, database *sql.DB, channels config.ChannelsConfig) channelConfigState {
+	state := channelConfigState{currentHash: hashChannelConfig(channels)}
+	storedHash, err := readMetadata(ctx, database, "channels_hash")
+	if err != nil {
+		slog.Warn("failed to read channels hash", "err", err)
+	}
+	state.storedHash = storedHash
+	if state.changed() {
+		slog.Info("channel config changed, will trigger service update")
+		if err := writeMetadata(ctx, database, "channels_hash", state.currentHash); err != nil {
+			slog.Warn("failed to write channels hash", "err", err)
+		}
+	}
+	return state
+}
+
+func enqueueStartupServiceUpdate(jobs *job.JobManager, serviceCount int, channelState channelConfigState) {
+	if serviceCount == 0 {
+		slog.Info("no services cached, running initial service update")
+		if _, err := jobs.Enqueue(job.ServiceUpdaterKey); err != nil {
+			slog.Error("failed to enqueue initial service update", "err", err)
+		}
+		return
+	}
+	if channelState.previouslyStored() && channelState.changed() {
+		slog.Info("channel config changed, enqueuing service update")
+		if _, err := jobs.Enqueue(job.ServiceUpdaterKey); err != nil {
+			slog.Warn("failed to enqueue service update", "err", err)
+		}
+	}
+}
+
+func enqueueStartupEPGGather(jobs *job.JobManager, serviceCount int, staleServices int) {
 	// EPG gathering requires a non-empty service list. If we don't have one
 	// yet, the service updater above is responsible for populating it; each
 	// scan that discovers a new network will immediately enqueue an EPG
 	// gather, so we don't need to enqueue the gatherer here. For the stale
 	// case (services exist but EPG is outdated), enqueue the gatherer to
 	// refresh all networks.
-	if count > 0 && stale > 0 {
-		slog.Info("EPG is stale, enqueuing gatherer", "staleServices", stale)
+	if serviceCount > 0 && staleServices > 0 {
+		slog.Info("EPG is stale, enqueuing gatherer", "staleServices", staleServices)
 		if _, err := jobs.Enqueue(job.EPGGathererKey); err != nil && !errors.Is(err, job.ErrJobAlreadyRunning) {
 			slog.Warn("failed to enqueue startup EPG gathering", "err", err)
 		}
 	}
+}
 
-	if cfg.System.EpgRetentionDays > 0 {
-		cutoff := time.Now().Add(-time.Duration(cfg.System.EpgRetentionDays) * 24 * time.Hour).UnixMilli()
-		if err := programs.DeleteEndedBefore(ctx, cutoff); err != nil {
-			slog.Warn("failed to clean up old EPG data", "err", err)
-		} else {
-			slog.Info("cleaned up EPG data", "cutoffDays", cfg.System.EpgRetentionDays)
-		}
+func cleanupOldEPG(ctx context.Context, programs *program.ProgramManager, retentionDays int) {
+	if retentionDays <= 0 {
+		return
 	}
-
-	return nil
+	cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).UnixMilli()
+	if err := programs.DeleteEndedBefore(ctx, cutoff); err != nil {
+		slog.Warn("failed to clean up old EPG data", "err", err)
+	} else {
+		slog.Info("cleaned up EPG data", "cutoffDays", retentionDays)
+	}
 }
 
 func hashChannelConfig(channels config.ChannelsConfig) string {
