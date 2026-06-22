@@ -19,11 +19,12 @@ func TestBuildRuntimeWiresCurrentApplication(t *testing.T) {
 	}
 	obs := observability.Setup(t.Context(), config.ObservabilityConfig{}, nil)
 	cfg := &config.Config{System: &config.SystemConfig{
-		Addresses:         []config.ServerAddress{{Http: "127.0.0.1:0"}},
-		MaxConcurrentJobs: 1,
-		EpgRetrievalTime:  5_000,
-		EpgStaleAfter:     7_200_000,
-		LogoGatherTimeout: 1_200_000,
+		Addresses:          []config.ServerAddress{{Http: "127.0.0.1:0"}},
+		MaxConcurrentJobs:  1,
+		EpgRetrievalTime:   5_000,
+		EpgStaleAfter:      7_200_000,
+		LogoGatherTimeout:  1_200_000,
+		ServiceScanTimeout: 30_000,
 	}}
 
 	runtime, message, err := buildRuntime(cfg, database, obs)

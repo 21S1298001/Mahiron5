@@ -24,9 +24,10 @@ type StreamScanner interface {
 }
 
 type Service struct {
-	channels config.ChannelsConfig
-	scanner  StreamScanner
-	store    Store
+	channels    config.ChannelsConfig
+	scanTimeout time.Duration
+	scanner     StreamScanner
+	store       Store
 }
 
 type Channel struct {
@@ -34,11 +35,12 @@ type Channel struct {
 	ID   string
 }
 
-func NewService(store Store, scanner StreamScanner, channels config.ChannelsConfig) *Service {
+func NewService(store Store, scanner StreamScanner, channels config.ChannelsConfig, scanTimeout time.Duration) *Service {
 	return &Service{
-		channels: channels,
-		scanner:  scanner,
-		store:    store,
+		channels:    channels,
+		scanTimeout: scanTimeout,
+		scanner:     scanner,
+		store:       store,
 	}
 }
 
@@ -85,6 +87,11 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 		observability.AttrChannelType.String(channelType),
 		observability.AttrChannelID.String(channelID),
 	)
+	if s.scanTimeout > 0 {
+		var cancel context.CancelFunc
+		scanCtx, cancel = context.WithTimeout(scanCtx, s.scanTimeout)
+		defer cancel()
+	}
 	services, err := s.scanner.ScanServices(scanCtx, channelType, channelID, wait)
 	observability.EndSpan(scanSpan, err)
 	if err != nil {

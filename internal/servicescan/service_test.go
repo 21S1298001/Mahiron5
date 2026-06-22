@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
@@ -27,7 +28,7 @@ func TestServiceScanChannelStoresScannedServicesAndReturnsNewNetworks(t *testing
 		{Nid: 5, Tsid: 2, Sid: 201, Name: "BS 201", Type: 2, RemoteControlKeyId: uint8Ptr(3)},
 	}}
 
-	got, err := NewService(manager, scanner, nil).ScanChannel(ctx, "BS", "BS01", true)
+	got, err := NewService(manager, scanner, nil, time.Second).ScanChannel(ctx, "BS", "BS01", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func TestServiceScanChannelReturnsOnlyNewNetworks(t *testing.T) {
 		{Nid: 5, Tsid: 1, Sid: 202, Name: "new network duplicate", Type: 1},
 	}}
 
-	got, err := NewService(manager, scanner, nil).ScanChannel(ctx, "BS", "BS01", false)
+	got, err := NewService(manager, scanner, nil, time.Second).ScanChannel(ctx, "BS", "BS01", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +96,7 @@ func TestServiceScanChannelReturnsNoNetworksWhenAllServicesKnown(t *testing.T) {
 	}
 	scanner := &staticScanner{services: []ts.ServiceInfo{{Nid: 4, Tsid: 1, Sid: 101, Name: "known", Type: 1}}}
 
-	got, err := NewService(manager, scanner, nil).ScanChannel(ctx, "BS", "BS01", false)
+	got, err := NewService(manager, scanner, nil, time.Second).ScanChannel(ctx, "BS", "BS01", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,9 +116,39 @@ func TestServiceScanChannelReturnsScannerError(t *testing.T) {
 	manager := service.NewServiceManager(store, nil)
 	want := errors.New("scan failed")
 
-	_, err = NewService(manager, &staticScanner{err: want}, nil).ScanChannel(ctx, "BS", "BS01", false)
+	_, err = NewService(manager, &staticScanner{err: want}, nil, time.Second).ScanChannel(ctx, "BS", "BS01", false)
 	if !errors.Is(err, want) {
 		t.Fatalf("ScanChannel error = %v, want %v", err, want)
+	}
+}
+
+func TestServiceScanChannelTimesOutAndPreservesStoredServices(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := service.NewSQLiteStore(database)
+	manager := service.NewServiceManager(store, nil)
+	want := &service.Service{
+		Id: idFor(4, 101), NetworkId: 4, ServiceId: 101,
+		ChannelType: "BS", ChannelId: "BS01", Name: "stored",
+	}
+	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{want}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = NewService(manager, blockingScanner{}, nil, 10*time.Millisecond).ScanChannel(ctx, "BS", "BS01", true)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("ScanChannel error = %v, want context deadline exceeded", err)
+	}
+	got, err := store.GetByChannel(ctx, "BS", "BS01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Id != want.Id || got[0].Name != want.Name {
+		t.Fatalf("stored services after timeout = %#v, want preserved %#v", got, want)
 	}
 }
 
@@ -126,7 +157,7 @@ func TestServiceChannelsExcludesDisabledChannels(t *testing.T) {
 	channels := NewService(nil, nil, config.ChannelsConfig{
 		{Type: "GR", Channel: "27"},
 		{Type: "GR", Channel: "28", IsDisabled: &disabled},
-	}).Channels()
+	}, time.Second).Channels()
 
 	if len(channels) != 1 || channels[0] != (Channel{Type: "GR", ID: "27"}) {
 		t.Fatalf("channels = %#v, want only GR/27", channels)
@@ -150,6 +181,13 @@ type staticScanner struct {
 	err      error
 	services []ts.ServiceInfo
 	wait     bool
+}
+
+type blockingScanner struct{}
+
+func (blockingScanner) ScanServices(ctx context.Context, _, _ string, _ bool) ([]ts.ServiceInfo, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func (s *staticScanner) ScanServices(_ context.Context, _ string, _ string, wait bool) ([]ts.ServiceInfo, error) {

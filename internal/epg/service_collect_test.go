@@ -49,6 +49,39 @@ func TestCollectServiceSnapshotsContinuesEITSAfterEITPFFailure(t *testing.T) {
 	}
 }
 
+func TestGatherNetworkTimesOutWhileWaitingForSession(t *testing.T) {
+	streams := blockingEPGStreams{}
+	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	started := time.Now()
+	err := gatherNetwork(
+		context.Background(),
+		&collectProgramStore{},
+		newRemoteSyncServiceStore(),
+		streams,
+		key.NetworkID,
+		[]Candidate{{Type: "GR", Channel: "27"}},
+		[]ServiceKey{key},
+		20*time.Millisecond,
+	)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("gatherNetwork error = %v, want context deadline exceeded", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("gatherNetwork took %s, want session wait bounded by retrieval time", elapsed)
+	}
+}
+
+type blockingEPGStreams struct{}
+
+func (blockingEPGStreams) HasSession(string, string) bool { return false }
+
+func (blockingEPGStreams) GetOrCreateWait(ctx context.Context, _, _ string) (interface {
+	CollectEIT(context.Context, func(*ts.EIT) error) error
+}, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
 type collectEITSession struct {
 	sections     []*ts.EIT
 	collectCalls int

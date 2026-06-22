@@ -5,6 +5,7 @@ addresses:
 logLevel: debug
 maxConcurrentJobs: 1
 logoGatherTimeout: 1200000
+serviceScanTimeout: 30000
 
 jobs:
   - key: service-updater

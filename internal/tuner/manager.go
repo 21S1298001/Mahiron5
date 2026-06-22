@@ -265,9 +265,11 @@ func (tm *TunerManager) release(item *Tuner) {
 	if tm.inUse[item] {
 		delete(tm.inUse, item)
 		runtime := tm.runtime[item]
+		wasFaulted := runtime.fault
 		runtime.inUse = false
 		runtime.running = false
 		runtime.stopped = false
+		runtime.fault = false
 		runtime.reservationPriority = 0
 		runtime.device = nil
 		runtime.requested = nil
@@ -277,6 +279,9 @@ func (tm *TunerManager) release(item *Tuner) {
 		tm.changed = make(chan struct{})
 		status = tm.statusLockedByTuner(item)
 		publish = true
+		if wasFaulted {
+			slog.Info("tuner fault cleared", "name", item.Name())
+		}
 		slog.Info("tuner released", "name", item.Name())
 	}
 	tm.mu.Unlock()
@@ -329,20 +334,20 @@ func (d *managedDevice) Start(ctx context.Context, dst io.Writer) error {
 	err := d.Device.Start(ctx, dst)
 	if err != nil {
 		slog.Warn("failed to start tuner", "name", d.tuner.Name(), "err", err)
-		d.manager.markFault(d.tuner)
+		d.manager.markFault(d.tuner, d)
 		d.releaseOnce()
 		return err
 	}
 	slog.Info("tuner started", "name", d.tuner.Name())
-	d.manager.markRunning(d.tuner)
+	d.manager.markRunning(d.tuner, d)
 	go func() {
 		<-d.Device.Done()
 		if err := d.Device.Err(); err != nil {
 			slog.Warn("tuner stopped with error", "name", d.tuner.Name(), "err", err)
-			d.manager.markFault(d.tuner)
+			d.manager.markFault(d.tuner, d)
 		} else {
 			slog.Debug("tuner stopped", "name", d.tuner.Name())
-			d.manager.markStopped(d.tuner)
+			d.manager.markStopped(d.tuner, d)
 		}
 	}()
 	return nil
@@ -373,22 +378,29 @@ func (d *managedDevice) RemoveUser(id string) { d.manager.removeUser(d.tuner, id
 
 func (d *managedDevice) releaseOnce() { d.once.Do(func() { d.manager.release(d.tuner) }) }
 
-func (tm *TunerManager) markRunning(item *Tuner) {
-	var status Status
-	tm.mu.Lock()
-	tm.runtime[item].running = true
-	tm.runtime[item].stopped = false
-	status = tm.statusLockedByTuner(item)
-	tm.mu.Unlock()
-	tm.publishStatus(eventTypeUpdate, status)
-}
-
-func (tm *TunerManager) markStopped(item *Tuner) {
+func (tm *TunerManager) markRunning(item *Tuner, device *managedDevice) {
 	var status Status
 	publish := false
 	tm.mu.Lock()
 	runtime := tm.runtime[item]
-	if runtime.inUse {
+	if runtime.inUse && runtime.device == device {
+		runtime.running = true
+		runtime.stopped = false
+		status = tm.statusLockedByTuner(item)
+		publish = true
+	}
+	tm.mu.Unlock()
+	if publish {
+		tm.publishStatus(eventTypeUpdate, status)
+	}
+}
+
+func (tm *TunerManager) markStopped(item *Tuner, device *managedDevice) {
+	var status Status
+	publish := false
+	tm.mu.Lock()
+	runtime := tm.runtime[item]
+	if runtime.inUse && runtime.device == device {
 		runtime.running = false
 		runtime.stopped = true
 		status = tm.statusLockedByTuner(item)
@@ -400,12 +412,12 @@ func (tm *TunerManager) markStopped(item *Tuner) {
 	}
 }
 
-func (tm *TunerManager) markFault(item *Tuner) {
+func (tm *TunerManager) markFault(item *Tuner, device *managedDevice) {
 	var status Status
 	tm.mu.Lock()
 	runtime := tm.runtime[item]
 	marked := false
-	if runtime.inUse {
+	if runtime.inUse && runtime.device == device {
 		runtime.running = false
 		runtime.fault = true
 		marked = true

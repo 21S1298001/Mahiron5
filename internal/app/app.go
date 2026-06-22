@@ -128,7 +128,7 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	logoCollector := stream.NewLogoCollectorAdapter(streams)
 	epgStreams := stream.NewEPGCollectorAdapter(streams)
 	apiStreams := stream.NewAPIStreamAdapter(streams)
-	scanService := servicescan.NewService(services, serviceScanner, cfg.Channels)
+	scanService := servicescan.NewService(services, serviceScanner, cfg.Channels, time.Duration(cfg.System.ServiceScanTimeout)*time.Millisecond)
 	epgService := epg.NewService(programs, services, epgStreams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
 	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxConcurrentJobs: cfg.System.MaxConcurrentJobs})

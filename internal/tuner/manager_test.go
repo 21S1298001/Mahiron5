@@ -58,6 +58,60 @@ func TestTunerManagerWaitCanBeCancelled(t *testing.T) {
 	_ = device.Stop(context.Background())
 }
 
+func TestStaleDeviceCompletionDoesNotFaultNewReservation(t *testing.T) {
+	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "only", Types: []string{"GR"}, Command: "true"},
+	}})
+	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
+	first, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mgr.markFault(mgr.tuners[0], first.(*managedDevice))
+	status, _ := mgr.Status(0)
+	if status.IsFault || !status.IsAvailable {
+		t.Fatalf("stale completion changed new reservation status: %+v", status)
+	}
+	_ = second.Stop(context.Background())
+}
+
+func TestFaultClearsOnReleaseAndTunerCanBeReacquired(t *testing.T) {
+	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "only", Types: []string{"GR"}, Command: "true"},
+	}})
+	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
+	device, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed := device.(*managedDevice)
+	mgr.markFault(mgr.tuners[0], managed)
+	status, _ := mgr.Status(0)
+	if !status.IsFault || status.IsAvailable {
+		t.Fatalf("current device fault was not reported: %+v", status)
+	}
+	if err := device.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	status, _ = mgr.Status(0)
+	if status.IsFault || !status.IsFree {
+		t.Fatalf("fault was not cleared on release: %+v", status)
+	}
+	reused, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
+	if err != nil {
+		t.Fatalf("reacquire after fault: %v", err)
+	}
+	_ = reused.Stop(context.Background())
+}
+
 func TestTunerManagerSelectsTunersRoundRobin(t *testing.T) {
 	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "first", Types: []string{"GR"}, Command: "first", Decoder: "decode-first"},
