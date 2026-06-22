@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestParseSDTParsesServiceDescriptors(t *testing.T) {
@@ -102,6 +104,121 @@ func TestServiceScannerHonorsCanceledContext(t *testing.T) {
 	}
 }
 
+func TestServiceScannerCompletesWithoutSDTForEveryPATService(t *testing.T) {
+	state := newServiceScanState()
+	observeTable(t, state, PIDPAT, buildPAT(t, map[uint16]uint16{
+		100:    0x0100,
+		0xfff0: 0x0101,
+	}))
+	observeTable(t, state, PIDSDT, buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{{
+		serviceID:   100,
+		descriptors: serviceDescriptor(1, nil, []byte{0x0e, 'N', 'H', 'K'}),
+	}}))
+	observeTable(t, state, PIDNIT, buildNIT(t))
+
+	if !state.complete() {
+		t.Fatal("service scan did not complete after complete PAT, SDT, and NIT tables")
+	}
+	services := state.serviceList()
+	if len(services) != 1 || services[0].Sid != 100 {
+		t.Fatalf("service list = %#v, want only SID 100", services)
+	}
+}
+
+func TestServiceScannerWaitsForEveryTableSection(t *testing.T) {
+	state := newServiceScanState()
+	pat0 := withTableHeader(buildPAT(t, map[uint16]uint16{100: 0x0100}), TableIDPAT, 0, 0, 1)
+	pat1 := withTableHeader(buildPAT(t, map[uint16]uint16{101: 0x0101}), TableIDPAT, 0, 1, 1)
+	sdt0 := withTableHeader(buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{{
+		serviceID:   100,
+		descriptors: serviceDescriptor(1, nil, []byte{0x0e, 'A'}),
+	}}), TableIDSDT0, 0, 0, 1)
+	sdt1 := withTableHeader(buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{{
+		serviceID:   101,
+		descriptors: serviceDescriptor(1, nil, []byte{0x0e, 'B'}),
+	}}), TableIDSDT0, 0, 1, 1)
+	nit0 := withTableHeader(buildNIT(t), TableIDNIT0, 0, 0, 1)
+	nit1 := withTableHeader(buildNIT(t), TableIDNIT0, 0, 1, 1)
+
+	for _, table := range []struct {
+		pid     uint16
+		section Section
+	}{{PIDPAT, pat0}, {PIDSDT, sdt0}, {PIDNIT, nit0}, {PIDPAT, pat1}, {PIDSDT, sdt1}} {
+		observeTable(t, state, table.pid, table.section)
+		if state.complete() {
+			t.Fatal("service scan completed before all NIT sections arrived")
+		}
+	}
+	observeTable(t, state, PIDNIT, nit1)
+	if !state.complete() {
+		t.Fatal("service scan did not complete after all table sections arrived")
+	}
+	services := state.serviceList()
+	if len(services) != 2 || services[0].Sid != 100 || services[1].Sid != 101 {
+		t.Fatalf("service list = %#v, want SIDs 100 and 101", services)
+	}
+}
+
+func TestTableSectionSetResetsOnVersionChange(t *testing.T) {
+	var sections tableSectionSet
+	v0s0 := withTableHeader(buildNIT(t), TableIDNIT0, 0, 0, 1)
+	v1s1 := withTableHeader(buildNIT(t), TableIDNIT0, 1, 1, 1)
+	v1s0 := withTableHeader(buildNIT(t), TableIDNIT0, 1, 0, 1)
+
+	if _, ready := sections.add(v0s0); ready {
+		t.Fatal("table became ready with only version 0 section 0")
+	}
+	if reset, ready := sections.add(v1s1); !reset || ready {
+		t.Fatalf("version change = reset %v, ready %v; want true, false", reset, ready)
+	}
+	if _, ready := sections.add(v1s0); !ready {
+		t.Fatal("version 1 table did not become ready with both version 1 sections")
+	}
+}
+
+func TestServiceScannerIgnoresOtherTransportSDT(t *testing.T) {
+	state := newServiceScanState()
+	observeTable(t, state, PIDPAT, buildPAT(t, map[uint16]uint16{100: 0x0100}))
+	observeTable(t, state, PIDNIT, buildNIT(t))
+	other := withTableHeader(buildSDT(t, 0x9999, 0x5678, []sdtServiceSpec{{
+		serviceID:   100,
+		descriptors: serviceDescriptor(1, nil, []byte{0x0e, 'X'}),
+	}}), TableIDSDT1, 0, 0, 0)
+	observeTable(t, state, PIDSDT, other)
+	if state.complete() || len(state.services) != 0 {
+		t.Fatalf("other-TS SDT changed scan state: complete=%v services=%#v", state.complete(), state.services)
+	}
+
+	observeTable(t, state, PIDSDT, buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{{
+		serviceID:   100,
+		descriptors: serviceDescriptor(1, nil, []byte{0x0e, 'A'}),
+	}}))
+	if !state.complete() {
+		t.Fatal("actual-TS SDT did not complete service scan")
+	}
+}
+
+func TestServiceScannerReturnsCanceledWhenIncompleteInputCloses(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reader, writer := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		_, err := NewServiceScanner().ScanServices(ctx, reader)
+		done <- err
+	}()
+
+	cancel()
+	_ = writer.Close()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("ScanServices error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ScanServices did not return after cancellation and input close")
+	}
+}
+
 type sdtServiceSpec struct {
 	serviceID   uint16
 	descriptors []byte
@@ -136,6 +253,40 @@ func buildSDT(t *testing.T, tsid, onid uint16, services []sdtServiceSpec) Sectio
 	}
 	writeCRC(s)
 	return Section(s)
+}
+
+func buildNIT(t *testing.T) Section {
+	t.Helper()
+	const sectionLength = 13
+	s := make([]byte, 3+sectionLength)
+	s[0] = TableIDNIT0
+	s[1] = 0xf0 | byte(sectionLength>>8)
+	s[2] = byte(sectionLength)
+	s[3], s[4] = 0x56, 0x78
+	s[5], s[6], s[7] = 0xc1, 0, 0
+	s[8], s[9] = 0xf0, 0
+	s[10], s[11] = 0xf0, 0
+	writeCRC(s)
+	return Section(s)
+}
+
+func withTableHeader(section Section, tableID, version, number, last byte) Section {
+	section = append(Section(nil), section...)
+	section[0] = tableID
+	section[5] = 0xc1 | ((version & 0x1f) << 1)
+	section[6] = number
+	section[7] = last
+	writeCRC(section)
+	return section
+}
+
+func observeTable(t *testing.T, state *serviceScanState, pid uint16, section Section) {
+	t.Helper()
+	for _, packet := range readAllPackets(t, sectionPackets(pid, section, 0)) {
+		if err := state.observe(packet); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func serviceDescriptor(serviceType uint8, providerName, serviceName []byte) []byte {

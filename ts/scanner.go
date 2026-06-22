@@ -46,6 +46,9 @@ func (s *ServiceScanner) ScanServices(ctx context.Context, src io.Reader) ([]Ser
 
 		packet, err := reader.Next()
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			if errors.Is(err, io.EOF) {
 				return state.serviceList(), nil
 			}
@@ -65,20 +68,66 @@ func (s *ServiceScanner) ScanServices(ctx context.Context, src io.Reader) ([]Ser
 
 type serviceScanState struct {
 	pat         *PAT
-	nitSeen     bool
+	patSections tableSectionSet
+	nitReady    bool
+	nitSections tableSectionSet
+	sdtReady    bool
+	sdtSections tableSectionSet
 	assemblers  map[uint16]*SectionAssembler
 	services    map[uint16]ServiceInfo
 	remoteKeys  map[uint16]uint8
-	sdtServices map[uint16]struct{}
 }
 
 func newServiceScanState() *serviceScanState {
 	return &serviceScanState{
-		assemblers:  map[uint16]*SectionAssembler{},
-		services:    map[uint16]ServiceInfo{},
-		remoteKeys:  map[uint16]uint8{},
-		sdtServices: map[uint16]struct{}{},
+		assemblers: map[uint16]*SectionAssembler{},
+		services:   map[uint16]ServiceInfo{},
+		remoteKeys: map[uint16]uint8{},
 	}
+}
+
+// tableSectionSet collects all sections belonging to one version of a PSI/SI
+// table. A table is ready only after every section through last_section_number
+// has arrived.
+type tableSectionSet struct {
+	initialized bool
+	extension   uint16
+	version     byte
+	last        byte
+	sections    map[byte]Section
+}
+
+func (s *tableSectionSet) add(section Section) (reset bool, ready bool) {
+	header, err := ParseSectionHeader(section)
+	if err != nil || !header.CurrentNextIndicator || header.SectionNumber > header.LastSectionNumber {
+		return false, false
+	}
+	if !s.initialized || s.extension != header.TransportStreamID || s.version != header.VersionNumber || s.last != header.LastSectionNumber {
+		s.initialized = true
+		s.extension = header.TransportStreamID
+		s.version = header.VersionNumber
+		s.last = header.LastSectionNumber
+		s.sections = make(map[byte]Section, int(s.last)+1)
+		reset = true
+	}
+	s.sections[header.SectionNumber] = section
+	if len(s.sections) != int(s.last)+1 {
+		return reset, false
+	}
+	for number := 0; number <= int(s.last); number++ {
+		if _, ok := s.sections[byte(number)]; !ok {
+			return reset, false
+		}
+	}
+	return reset, true
+}
+
+func (s *tableSectionSet) ordered() []Section {
+	sections := make([]Section, 0, int(s.last)+1)
+	for number := 0; number <= int(s.last); number++ {
+		sections = append(sections, s.sections[byte(number)])
+	}
+	return sections
 }
 
 func (s *serviceScanState) observe(packet Packet) error {
@@ -101,56 +150,94 @@ func (s *serviceScanState) observe(packet Packet) error {
 			if pid != PIDPAT {
 				continue
 			}
-			pat, err := ParsePAT(section)
-			if err == nil {
-				s.pat = pat
+			reset, ready := s.patSections.add(section)
+			if reset {
+				s.pat = nil
 			}
-		case TableIDSDT0, TableIDSDT1:
+			if ready {
+				s.handlePAT()
+			}
+		case TableIDSDT0:
 			if pid != PIDSDT {
 				continue
 			}
-			s.handleSDT(section)
+			reset, ready := s.sdtSections.add(section)
+			if reset {
+				s.sdtReady = false
+				s.services = map[uint16]ServiceInfo{}
+			}
+			if ready {
+				s.handleSDT()
+			}
 		case TableIDNIT0:
 			if pid != PIDNIT {
 				continue
 			}
-			s.handleNIT(section)
+			reset, ready := s.nitSections.add(section)
+			if reset {
+				s.nitReady = false
+				s.remoteKeys = map[uint16]uint8{}
+				s.applyRemoteKeys()
+			}
+			if ready {
+				s.handleNIT()
+			}
 		}
 	}
 	return nil
 }
 
-func (s *serviceScanState) handleSDT(section Section) {
-	sdt, err := ParseSDT(section)
-	if err != nil {
-		return
-	}
-	for _, svc := range sdt.Services {
-		desc := serviceDescriptorFromDescriptors(svc.Descriptors)
-		if desc == nil {
+func (s *serviceScanState) handlePAT() {
+	var combined *PAT
+	for _, section := range s.patSections.ordered() {
+		pat, err := ParsePAT(section)
+		if err != nil {
+			return
+		}
+		if combined == nil {
+			combined = pat
 			continue
 		}
-		info := ServiceInfo{
-			Nid:    sdt.OriginalNetworkID,
-			Tsid:   sdt.TransportStreamID,
-			Sid:    svc.ServiceID,
-			Name:   desc.ServiceName,
-			Type:   desc.ServiceType,
-			LogoId: -1,
+		for serviceID, pmtPID := range pat.Programs {
+			combined.Programs[serviceID] = pmtPID
 		}
-		if logo := LogoDescriptorFromDescriptors(svc.Descriptors); logo != nil {
-			info.LogoId = int64(logo.LogoID)
-			if logo.TransmissionType == LogoTransmissionTypeCDTDirect {
-				info.LogoVersion = uint16Ptr(logo.LogoVersion)
-				info.LogoDownloadDataId = uint16Ptr(logo.DownloadDataID)
-			}
-		}
-		if key, ok := s.remoteKeys[sdt.TransportStreamID]; ok {
-			info.RemoteControlKeyId = uint8Ptr(key)
-		}
-		s.services[svc.ServiceID] = info
-		s.sdtServices[svc.ServiceID] = struct{}{}
 	}
+	s.pat = combined
+}
+
+func (s *serviceScanState) handleSDT() {
+	services := map[uint16]ServiceInfo{}
+	for _, section := range s.sdtSections.ordered() {
+		sdt, err := ParseSDT(section)
+		if err != nil {
+			return
+		}
+		for _, svc := range sdt.Services {
+			desc := serviceDescriptorFromDescriptors(svc.Descriptors)
+			if desc == nil {
+				continue
+			}
+			info := ServiceInfo{
+				Nid:    sdt.OriginalNetworkID,
+				Tsid:   sdt.TransportStreamID,
+				Sid:    svc.ServiceID,
+				Name:   desc.ServiceName,
+				Type:   desc.ServiceType,
+				LogoId: -1,
+			}
+			if logo := LogoDescriptorFromDescriptors(svc.Descriptors); logo != nil {
+				info.LogoId = int64(logo.LogoID)
+				if logo.TransmissionType == LogoTransmissionTypeCDTDirect {
+					info.LogoVersion = uint16Ptr(logo.LogoVersion)
+					info.LogoDownloadDataId = uint16Ptr(logo.DownloadDataID)
+				}
+			}
+			services[svc.ServiceID] = info
+		}
+	}
+	s.services = services
+	s.sdtReady = true
+	s.applyRemoteKeys()
 }
 
 func serviceDescriptorFromDescriptors(descriptors []Descriptor) *ServiceDescriptor {
@@ -166,21 +253,25 @@ func serviceDescriptorFromDescriptors(descriptors []Descriptor) *ServiceDescript
 	return nil
 }
 
-func (s *serviceScanState) handleNIT(section Section) {
-	keys := remoteKeysFromNIT(section)
-	if len(keys) == 0 && !section.ValidateCRC() {
-		return
-	}
-	s.nitSeen = true
-	for tsid, key := range keys {
-		s.remoteKeys[tsid] = key
-	}
-	for sid, info := range s.services {
-		key, ok := s.remoteKeys[info.Tsid]
-		if !ok {
-			continue
+func (s *serviceScanState) handleNIT() {
+	keys := map[uint16]uint8{}
+	for _, section := range s.nitSections.ordered() {
+		for tsid, key := range remoteKeysFromNIT(section) {
+			keys[tsid] = key
 		}
-		info.RemoteControlKeyId = uint8Ptr(key)
+	}
+	s.remoteKeys = keys
+	s.nitReady = true
+	s.applyRemoteKeys()
+}
+
+func (s *serviceScanState) applyRemoteKeys() {
+	for sid, info := range s.services {
+		info.RemoteControlKeyId = nil
+		key, ok := s.remoteKeys[info.Tsid]
+		if ok {
+			info.RemoteControlKeyId = uint8Ptr(key)
+		}
 		s.services[sid] = info
 	}
 }
@@ -221,15 +312,7 @@ func remoteKeysFromNIT(section Section) map[uint16]uint8 {
 }
 
 func (s *serviceScanState) complete() bool {
-	if s.pat == nil || !s.nitSeen {
-		return false
-	}
-	for serviceID := range s.pat.Programs {
-		if _, ok := s.sdtServices[serviceID]; !ok {
-			return false
-		}
-	}
-	return true
+	return s.pat != nil && s.nitReady && s.sdtReady
 }
 
 func (s *serviceScanState) serviceList() []ServiceInfo {
