@@ -1,111 +1,56 @@
 package epg
 
-import (
-	"encoding/json"
-
-	"github.com/21S1298001/Mahiron5/internal/program"
-)
+import "github.com/21S1298001/Mahiron5/internal/program"
 
 type EITSection struct {
-	OriginalNetworkID        uint16     `json:"originalNetworkId"`
-	TransportStreamID        uint16     `json:"transportStreamId"`
-	ServiceID                uint16     `json:"serviceId"`
-	TableID                  uint8      `json:"tableId"`
-	SectionNumber            uint8      `json:"sectionNumber"`
-	LastSectionNumber        uint8      `json:"lastSectionNumber"`
-	SegmentLastSectionNumber uint8      `json:"segmentLastSectionNumber"`
-	VersionNumber            uint8      `json:"versionNumber"`
-	Events                   []EITEvent `json:"events"`
+	OriginalNetworkID        uint16
+	TransportStreamID        uint16
+	ServiceID                uint16
+	TableID                  uint8
+	SectionNumber            uint8
+	LastSectionNumber        uint8
+	SegmentLastSectionNumber uint8
+	VersionNumber            uint8
+	Events                   []EITEvent
 }
 
 type EITEvent struct {
-	EventID     uint16          `json:"eventId"`
-	StartTime   int64           `json:"startTime"`
-	Duration    int             `json:"duration"`
-	Scrambled   bool            `json:"scrambled"`
-	Descriptors []EITDescriptor `json:"descriptors"`
+	EventID     uint16
+	StartTime   int64
+	Duration    int
+	Scrambled   bool
+	Descriptors []EITDescriptor
 }
 
 type EITDescriptor struct {
-	Type              string          `json:"$type"`
-	EventName         string          `json:"eventName"`
-	Text              string          `json:"text"`
-	StreamContent     *int            `json:"streamContent"`
-	ComponentType     *int            `json:"componentType"`
-	ComponentTag      *int            `json:"componentTag"`
-	MainComponent     *bool           `json:"mainComponent"`
-	SamplingRate      *int            `json:"samplingRate"`
-	Lang              string          `json:"lang"`
-	Lang2             string          `json:"lang2"`
-	Nibbles           [][]int         `json:"nibbles"`
-	Items             [][]string      `json:"items"`
-	GroupType         *int            `json:"groupType"`
-	Events            []RelatedEvent  `json:"events"`
-	SeriesID          *int            `json:"seriesId"`
-	RepeatLabel       *int            `json:"repeatLabel"`
-	ProgramPattern    *int            `json:"programPattern"`
-	ExpireDate        *int64          `json:"expireDate"`
-	EpisodeNumber     *int            `json:"episodeNumber"`
-	LastEpisodeNumber *int            `json:"lastEpisodeNumber"`
-	SeriesName        string          `json:"seriesName"`
-	Raw               json.RawMessage `json:"-"`
+	Type              string
+	EventName         string
+	Text              string
+	StreamContent     *int
+	ComponentType     *int
+	ComponentTag      *int
+	MainComponent     *bool
+	SamplingRate      *int
+	Lang              string
+	Lang2             string
+	Nibbles           [][]int
+	Items             [][]string
+	GroupType         *int
+	Events            []RelatedEvent
+	SeriesID          *int
+	RepeatLabel       *int
+	ProgramPattern    *int
+	ExpireDate        *int64
+	EpisodeNumber     *int
+	LastEpisodeNumber *int
+	SeriesName        string
 }
 
 type RelatedEvent struct {
-	OriginalNetworkID *uint16 `json:"originalNetworkId"`
-	TransportStreamID *uint16 `json:"transportStreamId"`
-	ServiceID         uint16  `json:"serviceId"`
-	EventID           uint16  `json:"eventId"`
-}
-
-func (d *EITDescriptor) UnmarshalJSON(data []byte) error {
-	type descriptor EITDescriptor
-	var decoded descriptor
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	*d = EITDescriptor(decoded)
-	var aliases struct {
-		LanguageCode      json.RawMessage `json:"languageCode"`
-		LanguageCode2     json.RawMessage `json:"languageCode2"`
-		MainComponentFlag *bool           `json:"mainComponentFlag"`
-	}
-	if err := json.Unmarshal(data, &aliases); err != nil {
-		return err
-	}
-	if d.Lang == "" {
-		if lang, ok := decodeLanguageCode(aliases.LanguageCode); ok {
-			d.Lang = lang
-		}
-	}
-	if d.Lang2 == "" {
-		if lang, ok := decodeLanguageCode(aliases.LanguageCode2); ok {
-			d.Lang2 = lang
-		}
-	}
-	if d.MainComponent == nil {
-		d.MainComponent = aliases.MainComponentFlag
-	}
-	d.Raw = append(d.Raw[:0], data...)
-	return nil
-}
-
-func decodeLanguageCode(raw json.RawMessage) (string, bool) {
-	if len(raw) == 0 {
-		return "", false
-	}
-	if raw[0] == '"' {
-		var s string
-		if err := json.Unmarshal(raw, &s); err != nil {
-			return "", false
-		}
-		return s, true
-	}
-	var n uint32
-	if err := json.Unmarshal(raw, &n); err != nil {
-		return "", false
-	}
-	return string([]byte{byte(n >> 16), byte(n >> 8), byte(n)}), true
+	OriginalNetworkID *uint16
+	TransportStreamID *uint16
+	ServiceID         uint16
+	EventID           uint16
 }
 
 func (s *EITSection) Programs() []*program.Program {

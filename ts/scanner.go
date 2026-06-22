@@ -2,7 +2,6 @@ package ts
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"sort"
@@ -27,37 +26,37 @@ func NewServiceScanner() *ServiceScanner {
 	return &ServiceScanner{}
 }
 
-// Scan reads TS from src and writes a JSON array of ServiceInfo to dst.
-func (s *ServiceScanner) Scan(ctx context.Context, src io.Reader, dst io.Writer) error {
-	return s.ScanServices(ctx, src, dst)
+// Scan reads TS from src and returns detected services.
+func (s *ServiceScanner) Scan(ctx context.Context, src io.Reader) ([]ServiceInfo, error) {
+	return s.ScanServices(ctx, src)
 }
 
-// ScanServices reads TS from src and writes a JSON array of ServiceInfo to dst.
-func (s *ServiceScanner) ScanServices(ctx context.Context, src io.Reader, dst io.Writer) error {
+// ScanServices reads TS from src and returns detected services.
+func (s *ServiceScanner) ScanServices(ctx context.Context, src io.Reader) ([]ServiceInfo, error) {
 	state := newServiceScanState()
 	reader := NewPacketReader(src)
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 
 		packet, err := reader.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return state.writeJSON(dst)
+				return state.serviceList(), nil
 			}
-			return err
+			return nil, err
 		}
 		if packet.TransportErrorIndicator() || packet.IsNull() || !packet.ValidPayloadOffset() {
 			continue
 		}
 		if err := state.observe(packet); err != nil {
-			return err
+			return nil, err
 		}
 		if state.complete() {
-			return state.writeJSON(dst)
+			return state.serviceList(), nil
 		}
 	}
 }
@@ -224,16 +223,6 @@ func (s *serviceScanState) complete() bool {
 		}
 	}
 	return true
-}
-
-func (s *serviceScanState) writeJSON(dst io.Writer) error {
-	services := s.serviceList()
-	data, err := json.Marshal(services)
-	if err != nil {
-		return err
-	}
-	_, err = dst.Write(data)
-	return err
 }
 
 func (s *serviceScanState) serviceList() []ServiceInfo {

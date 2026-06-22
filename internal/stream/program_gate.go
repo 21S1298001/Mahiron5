@@ -1,17 +1,15 @@
 package stream
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
-	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/util"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 var (
@@ -38,23 +36,18 @@ func (p programEventGateProcessor) Run(ctx context.Context, src io.Reader, dst i
 	defer cancel()
 
 	eitInR, eitInW := io.Pipe()
-	eitOutR, eitOutW := io.Pipe()
 	defer eitInW.Close()
-	defer eitOutR.Close()
 
 	gate := newProgramEventGate(p.networkID, p.serviceID, p.eventID, p.initialTimeout, cancel)
 
 	collectorDone := make(chan error, 1)
 	go func() {
-		err := p.collector.CollectEITPF(ctx, eitInR, eitOutW)
-		_ = eitOutW.Close()
+		err := p.collector.CollectEITPF(ctx, eitInR, func(eit *ts.EIT) error {
+			gate.observe(epg.EITSectionFromTS(eit))
+			return nil
+		})
 		_ = eitInR.Close()
 		collectorDone <- err
-	}()
-
-	scannerDone := make(chan error, 1)
-	go func() {
-		scannerDone <- p.scanEITPF(ctx, eitOutR, gate)
 	}()
 
 	copyDone := make(chan error, 1)
@@ -68,10 +61,6 @@ func (p programEventGateProcessor) Run(ctx context.Context, src io.Reader, dst i
 		case err := <-copyDone:
 			cancel()
 			_ = eitInW.Close()
-			result = errors.Join(result, expectedNil(err))
-		case err := <-scannerDone:
-			cancel()
-			_ = closeReader(src)
 			result = errors.Join(result, expectedNil(err))
 		case <-ctx.Done():
 			_ = closeReader(src)
@@ -87,23 +76,6 @@ func (p programEventGateProcessor) Run(ctx context.Context, src io.Reader, dst i
 		result = errors.Join(result, err)
 	}
 	return result
-}
-
-func (p programEventGateProcessor) scanEITPF(ctx context.Context, src io.Reader, gate *programEventGate) error {
-	scanner := bufio.NewScanner(src)
-	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
-	for scanner.Scan() {
-		var section epg.EITSection
-		if err := json.Unmarshal(scanner.Bytes(), &section); err != nil {
-			slog.Debug("failed to decode EITPF section for program gate", "err", err)
-			continue
-		}
-		gate.observe(section)
-	}
-	if err := scanner.Err(); err != nil && ctx.Err() == nil && !util.IsExpectedStreamCloseError(err) {
-		return err
-	}
-	return nil
 }
 
 type programEventGate struct {
@@ -131,7 +103,10 @@ func newProgramEventGate(networkID, serviceID, eventID uint16, initialTimeout ti
 	return g
 }
 
-func (g *programEventGate) observe(section epg.EITSection) {
+func (g *programEventGate) observe(section *epg.EITSection) {
+	if section == nil {
+		return
+	}
 	if section.TableID != 0x4e || section.SectionNumber != 0 || section.ServiceID != g.serviceID || section.OriginalNetworkID != g.networkID || len(section.Events) == 0 {
 		return
 	}

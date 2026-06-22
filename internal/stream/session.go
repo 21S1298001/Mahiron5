@@ -9,6 +9,7 @@ import (
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/program"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 type ChannelSession struct {
@@ -90,25 +91,35 @@ func (s *ChannelSession) ProgramStream(ctx context.Context, p *program.Program, 
 	return s.attachPipeline(ctx, key, dst)
 }
 
-func (s *ChannelSession) ScanServices(ctx context.Context, dst io.Writer) error {
+func (s *ChannelSession) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
 	if s.scanner == nil {
-		return ErrServiceScannerNotConfigured
+		return nil, ErrServiceScannerNotConfigured
 	}
-	return NewStreamTaskRunner(s.broadcast).Run(ctx, dst, s.scanner.ScanServices)
+	var services []ts.ServiceInfo
+	err := NewStreamTaskRunner(s.broadcast).RunTask(ctx, func(ctx context.Context, src io.Reader) error {
+		var err error
+		services, err = s.scanner.ScanServices(ctx, src)
+		return err
+	})
+	return services, err
 }
 
-func (s *ChannelSession) CollectEITS(ctx context.Context, dst io.Writer) error {
+func (s *ChannelSession) CollectEITS(ctx context.Context, observe func(*ts.EIT) error) error {
 	if s.eitCollector == nil {
 		return ErrEITCollectorNotConfigured
 	}
-	return NewStreamTaskRunner(s.broadcast).Run(ctx, dst, s.eitCollector.CollectEITS)
+	return NewStreamTaskRunner(s.broadcast).RunTask(ctx, func(ctx context.Context, src io.Reader) error {
+		return s.eitCollector.CollectEITS(ctx, src, observe)
+	})
 }
 
-func (s *ChannelSession) CollectEITPF(ctx context.Context, dst io.Writer) error {
+func (s *ChannelSession) CollectEITPF(ctx context.Context, observe func(*ts.EIT) error) error {
 	if s.eitCollector == nil {
 		return ErrEITCollectorNotConfigured
 	}
-	return NewStreamTaskRunner(s.broadcast).Run(ctx, dst, s.eitCollector.CollectEITPF)
+	return NewStreamTaskRunner(s.broadcast).RunTask(ctx, func(ctx context.Context, src io.Reader) error {
+		return s.eitCollector.CollectEITPF(ctx, src, observe)
+	})
 }
 
 func (s *ChannelSession) Stop(ctx context.Context) error {

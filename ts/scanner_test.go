@@ -10,28 +10,28 @@ import (
 	"testing"
 )
 
-func TestServiceScannerMatchesMirakcAribFixtures(t *testing.T) {
+func TestServiceScannerMatchesCompatibilityFixtures(t *testing.T) {
 	cases := []struct {
-		name       string
-		inputPath  string
-		mirakcPath string
+		name              string
+		inputPath         string
+		compatibilityPath string
 	}{
 		{
-			name:       "gr-27",
-			inputPath:  "testdata/local/test-gr-27.ts",
-			mirakcPath: "testdata/local/mirakc-arib-scan-services-gr-27.json",
+			name:              "gr-27",
+			inputPath:         "testdata/local/test-gr-27.ts",
+			compatibilityPath: "testdata/local/mirakc-arib-scan-services-gr-27.json",
 		},
 		{
-			name:       "bs-15",
-			inputPath:  "testdata/local/test-bs-15.ts",
-			mirakcPath: "testdata/local/mirakc-arib-scan-services-bs-15.json",
+			name:              "bs-15",
+			inputPath:         "testdata/local/test-bs-15.ts",
+			compatibilityPath: "testdata/local/mirakc-arib-scan-services-bs-15.json",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if !fileExists(tc.inputPath) || !fileExists(tc.mirakcPath) {
-				t.Skip("local TS fixture or mirakc-arib output fixture not found")
+			if !fileExists(tc.inputPath) || !fileExists(tc.compatibilityPath) {
+				t.Skip("local TS fixture or compatibility output fixture not found")
 			}
 			input, err := os.Open(tc.inputPath)
 			if err != nil {
@@ -39,19 +39,18 @@ func TestServiceScannerMatchesMirakcAribFixtures(t *testing.T) {
 			}
 			defer input.Close()
 
-			var out bytes.Buffer
-			if err := NewServiceScanner().ScanServices(context.Background(), input, &out); err != nil {
+			got, err := NewServiceScanner().ScanServices(context.Background(), input)
+			if err != nil {
 				t.Fatal(err)
 			}
 
-			got := decodeServiceInfoJSON(t, out.Bytes())
-			wantBytes, err := os.ReadFile(tc.mirakcPath)
+			wantBytes, err := os.ReadFile(tc.compatibilityPath)
 			if err != nil {
 				t.Fatal(err)
 			}
 			want := decodeServiceInfoJSON(t, wantBytes)
 			if !containsServices(got, want) {
-				t.Fatalf("ScanServices = %#v, want it to contain mirakc-arib services %#v", got, want)
+				t.Fatalf("ScanServices = %#v, want it to contain compatibility services %#v", got, want)
 			}
 		})
 	}
@@ -103,11 +102,11 @@ func TestServiceScannerSkipsBrokenServiceDescriptor(t *testing.T) {
 	})
 	input := append(sectionPackets(PIDPAT, buildPAT(t, map[uint16]uint16{100: 0x0100}), 0), sectionPackets(PIDSDT, section, 0)...)
 
-	var out bytes.Buffer
-	if err := NewServiceScanner().ScanServices(context.Background(), bytes.NewReader(input), &out); err != nil {
+	got, err := NewServiceScanner().ScanServices(context.Background(), bytes.NewReader(input))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := decodeServiceInfoJSON(t, out.Bytes()); len(got) != 0 {
+	if len(got) != 0 {
 		t.Fatalf("ScanServices returned %#v, want no services", got)
 	}
 }
@@ -129,11 +128,10 @@ func TestServiceScannerDoesNotFilterServiceTypes(t *testing.T) {
 		},
 	}), 0)...)
 
-	var out bytes.Buffer
-	if err := NewServiceScanner().ScanServices(context.Background(), bytes.NewReader(input), &out); err != nil {
+	got, err := NewServiceScanner().ScanServices(context.Background(), bytes.NewReader(input))
+	if err != nil {
 		t.Fatal(err)
 	}
-	got := decodeServiceInfoJSON(t, out.Bytes())
 	want := []ServiceInfo{
 		{Nid: 0x5678, Tsid: 0x1234, Sid: 100, Name: "４Ｋ", Type: 0xAD, LogoId: -1},
 		{Nid: 0x5678, Tsid: 0x1234, Sid: 101, Name: "ＤＡＴＡ", Type: 0xC0, LogoId: -1},
@@ -146,7 +144,7 @@ func TestServiceScannerDoesNotFilterServiceTypes(t *testing.T) {
 func TestServiceScannerHonorsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := NewServiceScanner().ScanServices(ctx, bytes.NewReader(nil), &bytes.Buffer{})
+	_, err := NewServiceScanner().ScanServices(ctx, bytes.NewReader(nil))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("ScanServices error = %v, want context.Canceled", err)
 	}

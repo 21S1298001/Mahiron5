@@ -11,6 +11,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 type StreamManager struct {
@@ -47,9 +48,9 @@ type Session interface {
 	ChannelStream(context.Context, bool, io.Writer) error
 	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ScanServices(context.Context, io.Writer) error
-	CollectEITS(context.Context, io.Writer) error
-	CollectEITPF(context.Context, io.Writer) error
+	ScanServices(context.Context) ([]ts.ServiceInfo, error)
+	CollectEITS(context.Context, func(*ts.EIT) error) error
+	CollectEITPF(context.Context, func(*ts.EIT) error) error
 	Stop(context.Context) error
 }
 
@@ -222,14 +223,14 @@ type ServiceFilter interface {
 }
 
 type ServiceScanner interface {
-	ScanServices(context.Context, io.Reader, io.Writer) error
+	ScanServices(context.Context, io.Reader) ([]ts.ServiceInfo, error)
 }
 
 type EITCollector interface {
-	CollectEITS(context.Context, io.Reader, io.Writer) error
-	CollectEITPF(context.Context, io.Reader, io.Writer) error
+	CollectEITS(context.Context, io.Reader, func(*ts.EIT) error) error
+	CollectEITPF(context.Context, io.Reader, func(*ts.EIT) error) error
 }
 
 type EITSectionUpdater interface {
-	UpsertEITSectionJSON(ctx context.Context, data []byte) error
+	UpsertEIT(ctx context.Context, eit *ts.EIT) error
 }

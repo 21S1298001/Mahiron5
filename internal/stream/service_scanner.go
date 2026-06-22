@@ -2,7 +2,8 @@ package stream
 
 import (
 	"context"
-	"io"
+
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 type ServiceScannerAdapter struct {
@@ -13,7 +14,7 @@ func NewServiceScannerAdapter(manager *StreamManager) *ServiceScannerAdapter {
 	return &ServiceScannerAdapter{manager: manager}
 }
 
-func (a *ServiceScannerAdapter) ScanServices(ctx context.Context, channelType, channelID string, wait bool, dst io.Writer) error {
+func (a *ServiceScannerAdapter) ScanServices(ctx context.Context, channelType, channelID string, wait bool) ([]ts.ServiceInfo, error) {
 	var (
 		session Session
 		err     error
@@ -24,7 +25,7 @@ func (a *ServiceScannerAdapter) ScanServices(ctx context.Context, channelType, c
 		session, err = a.manager.GetOrCreate(ctx, channelType, channelID)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return session.ScanServices(ctx, dst)
+	return session.ScanServices(ctx)
 }

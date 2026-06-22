@@ -3,13 +3,12 @@ package stream
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/epg"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 func TestProgramEventGateStartsAndStopsOnEITPF(t *testing.T) {
@@ -85,36 +84,35 @@ func restoreProgramGateTimings(t *testing.T) {
 	})
 }
 
-func gateSection(networkID, serviceID, eventID uint16) epg.EITSection {
-	return epg.EITSection{
+func gateSection(networkID, serviceID, eventID uint16) *ts.EIT {
+	return &ts.EIT{
 		OriginalNetworkID: networkID,
 		ServiceID:         serviceID,
 		TableID:           0x4e,
 		SectionNumber:     0,
-		Events:            []epg.EITEvent{{EventID: eventID}},
+		Events:            []ts.EITEvent{{EventID: eventID}},
 	}
 }
 
 type scriptedEITItem struct {
 	delay   time.Duration
-	section epg.EITSection
+	section *ts.EIT
 }
 
 type scriptedEITCollector struct {
 	items []scriptedEITItem
 }
 
-func (c *scriptedEITCollector) CollectEITS(context.Context, io.Reader, io.Writer) error {
+func (c *scriptedEITCollector) CollectEITS(context.Context, io.Reader, func(*ts.EIT) error) error {
 	return nil
 }
 
-func (c *scriptedEITCollector) CollectEITPF(ctx context.Context, src io.Reader, dst io.Writer) error {
+func (c *scriptedEITCollector) CollectEITPF(ctx context.Context, src io.Reader, observe func(*ts.EIT) error) error {
 	done := make(chan struct{})
 	go func() {
 		_, _ = io.Copy(io.Discard, src)
 		close(done)
 	}()
-	encoder := json.NewEncoder(dst)
 	for _, item := range c.items {
 		select {
 		case <-ctx.Done():
@@ -122,7 +120,7 @@ func (c *scriptedEITCollector) CollectEITPF(ctx context.Context, src io.Reader, 
 			return nil
 		case <-time.After(item.delay):
 		}
-		if err := encoder.Encode(item.section); err != nil {
+		if err := observe(item.section); err != nil {
 			return err
 		}
 	}

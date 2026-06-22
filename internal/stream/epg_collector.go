@@ -2,7 +2,8 @@ package stream
 
 import (
 	"context"
-	"io"
+
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 type EPGCollectorAdapter struct {
@@ -18,8 +19,8 @@ func (a *EPGCollectorAdapter) HasSession(channelType, channel string) bool {
 }
 
 func (a *EPGCollectorAdapter) GetOrCreate(ctx context.Context, channelType, channel string) (interface {
-	CollectEITS(context.Context, io.Writer) error
-	CollectEITPF(context.Context, io.Writer) error
+	CollectEITS(context.Context, func(*ts.EIT) error) error
+	CollectEITPF(context.Context, func(*ts.EIT) error) error
 }, error) {
 	return a.manager.GetOrCreate(ctx, channelType, channel)
 }

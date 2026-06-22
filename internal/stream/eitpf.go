@@ -1,12 +1,12 @@
 package stream
 
 import (
-	"bufio"
 	"context"
 	"io"
 	"log/slog"
 
 	"github.com/21S1298001/Mahiron5/internal/util"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 type EITPFPiggyback struct {
@@ -41,21 +41,15 @@ func (p *EITPFPiggyback) Hook(ctx context.Context, broadcast *Broadcast) {
 			done <- broadcast.Tap(ctx, w)
 		}()
 
-		pr, pw := io.Pipe()
 		collectDone := make(chan error, 1)
 		go func() {
-			collectDone <- p.collector.CollectEITPF(ctx, r, pw)
-			_ = pw.Close()
+			collectDone <- p.collector.CollectEITPF(ctx, r, func(eit *ts.EIT) error {
+				if err := p.updater.UpsertEIT(ctx, eit); err != nil {
+					slog.Error("failed to update EITPF", "type", p.channelType, "channel", p.channel, "err", err)
+				}
+				return nil
+			})
 		}()
-
-		scanner := bufio.NewScanner(pr)
-		scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
-		for scanner.Scan() {
-			if err := p.updater.UpsertEITSectionJSON(ctx, scanner.Bytes()); err != nil {
-				slog.Error("failed to update EITPF", "type", p.channelType, "channel", p.channel, "err", err)
-			}
-		}
-		_ = pr.Close()
 		if err := <-collectDone; err != nil && ctx.Err() == nil && !util.IsExpectedStreamCloseError(err) {
 			slog.Error("failed to collect EITPF", "type", p.channelType, "channel", p.channel, "err", err)
 		}

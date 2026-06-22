@@ -16,6 +16,7 @@ import (
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 func testManager(t *testing.T, devices *fakeTunerDeviceRecorder) *StreamManager {
@@ -570,7 +571,7 @@ func TestServiceStreamAndScanShareRunningSession(t *testing.T) {
 	}
 
 	var serviceOut bytes.Buffer
-	var scanOut bytes.Buffer
+	var scanServices []ts.ServiceInfo
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -581,7 +582,9 @@ func TestServiceStreamAndScanShareRunningSession(t *testing.T) {
 	}()
 	go func() {
 		defer wg.Done()
-		if err := session.ScanServices(context.Background(), &scanOut); err != nil {
+		var err error
+		scanServices, err = session.ScanServices(context.Background())
+		if err != nil {
 			t.Errorf("scan services: %v", err)
 		}
 	}()
@@ -593,8 +596,8 @@ func TestServiceStreamAndScanShareRunningSession(t *testing.T) {
 	if got, want := serviceOut.String(), "filtered:ts2"; got != want {
 		t.Fatalf("service stream = %q, want %q", got, want)
 	}
-	if got, want := scanOut.String(), "ts2"; got != want {
-		t.Fatalf("scan stream = %q, want %q", got, want)
+	if len(scanServices) != 1 || scanServices[0].Name != "ts2" {
+		t.Fatalf("scan services = %#v, want one service named ts2", scanServices)
 	}
 }
 
@@ -619,9 +622,11 @@ func TestScanServicesReturnsWhenScannerCompletesBeforeLiveTuner(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
-	var out bytes.Buffer
+	var services []ts.ServiceInfo
 	go func() {
-		done <- session.ScanServices(context.Background(), &out)
+		var err error
+		services, err = session.ScanServices(context.Background())
+		done <- err
 	}()
 
 	select {
@@ -633,8 +638,8 @@ func TestScanServicesReturnsWhenScannerCompletesBeforeLiveTuner(t *testing.T) {
 		t.Fatal("ScanServices did not return after scanner completed")
 	}
 
-	if got, want := out.String(), "scanned:ts"; got != want {
-		t.Fatalf("scan output = %q, want %q", got, want)
+	if len(services) != 1 || services[0].Name != "scanned:ts" {
+		t.Fatalf("scan services = %#v, want one service named scanned:ts", services)
 	}
 	if got := device.startCount(); got != 1 {
 		t.Fatalf("tuner device starts = %d, want 1", got)
@@ -963,20 +968,22 @@ func (serviceIDFilter) FilterService(_ context.Context, serviceID uint16, src io
 
 type fakeScanner struct{}
 
-func (fakeScanner) ScanServices(_ context.Context, src io.Reader, dst io.Writer) error {
-	_, err := io.Copy(dst, src)
-	return err
+func (fakeScanner) ScanServices(_ context.Context, src io.Reader) ([]ts.ServiceInfo, error) {
+	data, err := io.ReadAll(src)
+	if err != nil {
+		return nil, err
+	}
+	return []ts.ServiceInfo{{Name: string(data)}}, nil
 }
 
 type fakeShortScanner struct{}
 
-func (fakeShortScanner) ScanServices(_ context.Context, src io.Reader, dst io.Writer) error {
+func (fakeShortScanner) ScanServices(_ context.Context, src io.Reader) ([]ts.ServiceInfo, error) {
 	buf := make([]byte, 2)
 	if _, err := io.ReadFull(src, buf); err != nil {
-		return err
+		return nil, err
 	}
-	_, err := dst.Write([]byte("scanned:" + string(buf)))
-	return err
+	return []ts.ServiceInfo{{Name: "scanned:" + string(buf)}}, nil
 }
 
 type fakeLiveTunerManager struct {

@@ -52,14 +52,13 @@ ts/
 
 - `pat.go`, `pmt.go`: PAT/PMT パース
 - `filter.go`: 対象 service_id の PMT と関連 PID（PCR/映像/音声/字幕）を抽出し、それ以外を落とす
-- `internal/filter` から利用されるサービスフィルタ実装
 
 ### サービススキャナ
 
 - `sdt.go`: SDT パース
 - `descriptor_service.go`: Service 記述子からサービス名・サービスタイプを取得
 - `aribstr.go`, `aribstr/`: サービス名の ARIB STD-B24 文字列変換
-- `scanner.go`: PAT/PMT/SDT から `service.scanService` 相当の JSON 配列を出力
+- `scanner.go`: PAT/PMT/SDT から `ServiceInfo` の一覧を返す
 - `internal/servicescan` から利用されるサービススキャナ実装
 
 ### EITPF 収集

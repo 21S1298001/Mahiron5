@@ -1,11 +1,8 @@
 package servicescan
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"time"
 
@@ -13,6 +10,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
+	"github.com/21S1298001/Mahiron5/ts"
 	"github.com/google/uuid"
 )
 
@@ -22,7 +20,7 @@ type Store interface {
 }
 
 type StreamScanner interface {
-	ScanServices(context.Context, string, string, bool, io.Writer) error
+	ScanServices(context.Context, string, string, bool) ([]ts.ServiceInfo, error)
 }
 
 type Service struct {
@@ -34,16 +32,6 @@ type Service struct {
 type Channel struct {
 	Type string
 	ID   string
-}
-
-type scanService struct {
-	Nid                uint16 `json:"nid"`
-	Tsid               uint16 `json:"tsid"`
-	Sid                uint16 `json:"sid"`
-	Name               string `json:"name"`
-	Type               uint8  `json:"type"`
-	LogoId             uint64 `json:"logoId"`
-	RemoteControlKeyId uint8  `json:"remoteControlKeyId"`
 }
 
 func NewService(store Store, scanner StreamScanner, channels config.ChannelsConfig) *Service {
@@ -84,7 +72,6 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 		before[svc.Id] = struct{}{}
 	}
 
-	out := bytes.Buffer{}
 	yes := true
 	ctx = tuner.WithUser(ctx, tuner.User{
 		ID: uuid.NewString(), Priority: -1, Agent: "Mahiron Service Scanner",
@@ -98,21 +85,19 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 		observability.AttrChannelType.String(channelType),
 		observability.AttrChannelID.String(channelID),
 	)
-	err = s.scanner.ScanServices(scanCtx, channelType, channelID, wait, &out)
+	services, err := s.scanner.ScanServices(scanCtx, channelType, channelID, wait)
 	observability.EndSpan(scanSpan, err)
 	if err != nil {
 		slog.Warn("service scan failed", "type", channelType, "channel", channelID, "duration", time.Since(startedAt), "err", err)
 		return nil, err
 	}
 
-	var services []*scanService
-	if err := json.Unmarshal(out.Bytes(), &services); err != nil {
-		slog.Warn("failed to decode service scan result", "type", channelType, "channel", channelID, "bytes", out.Len(), "err", err)
-		return nil, err
-	}
-
 	scanned := make([]*service.Service, len(services))
 	for i, svc := range services {
+		var remoteControlKeyID uint8
+		if svc.RemoteControlKeyId != nil {
+			remoteControlKeyID = *svc.RemoteControlKeyId
+		}
 		scanned[i] = &service.Service{
 			Id:                 fmt.Sprintf("%05d%05d", svc.Nid, svc.Sid),
 			ServiceId:          svc.Sid,
@@ -120,7 +105,7 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 			TransportStreamId:  svc.Tsid,
 			Name:               svc.Name,
 			Type:               svc.Type,
-			RemoteControlKeyId: svc.RemoteControlKeyId,
+			RemoteControlKeyId: remoteControlKeyID,
 			ChannelType:        channelType,
 			ChannelId:          channelID,
 		}

@@ -19,7 +19,6 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/db/gen"
 	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/event"
-	"github.com/21S1298001/Mahiron5/internal/filter"
 	"github.com/21S1298001/Mahiron5/internal/job"
 	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
@@ -123,7 +122,7 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 		Remotes:        cfg.Remotes,
 		EITCollector:   ts.NewEITCollector(),
 		EITUpdater:     epgUpdater,
-		Filter:         filter.NewServiceFilter(),
+		Filter:         stream.NativeServiceFilter{},
 		ProgramUpdater: programs,
 		Scanner:        ts.NewServiceScanner(),
 		TunerManager:   tuners,

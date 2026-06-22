@@ -1,13 +1,9 @@
 package epg
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"time"
 
@@ -16,6 +12,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
+	"github.com/21S1298001/Mahiron5/ts"
 	"github.com/google/uuid"
 )
 
@@ -28,8 +25,8 @@ type ServiceStore interface {
 type StreamManager interface {
 	HasSession(string, string) bool
 	GetOrCreate(context.Context, string, string) (interface {
-		CollectEITS(context.Context, io.Writer) error
-		CollectEITPF(context.Context, io.Writer) error
+		CollectEITS(context.Context, func(*ts.EIT) error) error
+		CollectEITPF(context.Context, func(*ts.EIT) error) error
 	}, error)
 }
 
@@ -241,8 +238,8 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 }
 
 func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, session interface {
-	CollectEITS(context.Context, io.Writer) error
-	CollectEITPF(context.Context, io.Writer) error
+	CollectEITS(context.Context, func(*ts.EIT) error) error
+	CollectEITPF(context.Context, func(*ts.EIT) error) error
 }, expected []ServiceKey, retrievalTime time.Duration) (err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGCollectServiceSnapshots,
 		observability.AttrEPGServices.Int(len(expected)),
@@ -279,18 +276,7 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	collectCtx, cancel := context.WithTimeout(ctx, retrievalTime)
 	defer cancel()
 
-	eitsR, eitsW := io.Pipe()
-	pfR, pfW := io.Pipe()
-
 	collectErrCh := make(chan error, 2)
-	go func() {
-		collectErrCh <- session.CollectEITS(collectCtx, eitsW)
-		_ = eitsW.Close()
-	}()
-	go func() {
-		collectErrCh <- session.CollectEITPF(collectCtx, pfW)
-		_ = pfW.Close()
-	}()
 
 	type sectionResult struct {
 		section *EITSection
@@ -299,54 +285,38 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	sectionCh := make(chan sectionResult, 1)
 	go func() {
 		defer close(sectionCh)
-		scanner := bufio.NewScanner(eitsR)
-		scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
-		for scanner.Scan() {
-			line := bytes.TrimSpace(scanner.Bytes())
-			if len(line) == 0 {
-				continue
-			}
-			var section EITSection
-			if err := json.Unmarshal(line, &section); err != nil {
-				sectionCh <- sectionResult{err: err}
-				return
+		collectErrCh <- session.CollectEITS(collectCtx, func(eit *ts.EIT) error {
+			section := EITSectionFromTS(eit)
+			if section == nil {
+				return nil
 			}
 			select {
-			case sectionCh <- sectionResult{section: &section}:
+			case sectionCh <- sectionResult{section: section}:
 			case <-collectCtx.Done():
-				return
+				return collectCtx.Err()
 			}
-		}
-		if err := scanner.Err(); err != nil {
-			sectionCh <- sectionResult{err: err}
-		}
+			return nil
+		})
 	}()
 
 	pfErrCh := make(chan error, 1)
 	go func() {
 		defer close(pfErrCh)
-		scanner := bufio.NewScanner(pfR)
-		scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
-		for scanner.Scan() {
-			line := bytes.TrimSpace(scanner.Bytes())
-			if len(line) == 0 {
-				continue
+		err := session.CollectEITPF(collectCtx, func(eit *ts.EIT) error {
+			section := EITSectionFromTS(eit)
+			if section == nil {
+				return nil
 			}
-			var section EITSection
-			if err := json.Unmarshal(line, &section); err != nil {
-				pfErrCh <- err
-				return
-			}
-			if !matchesExpected(&section) {
-				continue
+			if !matchesExpected(section) {
+				return nil
 			}
 			slog.Debug("upserting EIT section", "source", "eitpf", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
 			if err := programStore.UpsertPrograms(collectCtx, section.Programs()); err != nil {
-				pfErrCh <- err
-				return
+				return err
 			}
-		}
-		if err := scanner.Err(); err != nil {
+			return nil
+		})
+		if err != nil {
 			pfErrCh <- err
 		}
 	}()
@@ -362,8 +332,6 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 			}
 			if result.err != nil {
 				cancel()
-				_ = eitsR.Close()
-				_ = pfR.Close()
 				now := time.Now().UnixMilli()
 				msg := result.err.Error()
 				for _, key := range expected {
@@ -381,20 +349,16 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 		}
 	}
 	cancel()
-	_ = eitsR.Close()
-	_ = pfR.Close()
-	for i := 0; i < 2; i++ {
-		select {
-		case err := <-collectErrCh:
-			if err != nil && !errors.Is(err, context.Canceled) {
-				slog.Debug("EPG collector finished with error", "err", err)
-			}
-		case <-time.After(2 * time.Second):
+	select {
+	case err := <-collectErrCh:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Debug("EPG collector finished with error", "err", err)
 		}
+	case <-time.After(2 * time.Second):
 	}
 	select {
 	case err := <-pfErrCh:
-		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.ErrClosedPipe) {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			slog.Debug("EITPF upsert finished with error", "err", err)
 		}
 	case <-time.After(2 * time.Second):

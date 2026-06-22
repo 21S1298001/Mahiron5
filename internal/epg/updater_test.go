@@ -2,15 +2,11 @@ package epg
 
 import (
 	"context"
-	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/internal/db"
 	"github.com/21S1298001/Mahiron5/internal/program"
 )
-
-const sampleEIT = `{"originalNetworkId":32736,"serviceId":1024,"events":[{"eventId":12250,"startTime":1570917180000,"duration":420000,"scrambled":false,"descriptors":[{"$type":"ShortEvent","eventName":"気象情報・ニュース","text":"説明"},{"$type":"Component","streamContent":1,"componentType":179},{"$type":"AudioComponent","componentType":1,"componentTag":16,"mainComponent":true,"samplingRate":7,"lang":"jpn"},{"$type":"Content","nibbles":[[0,1,15,15]]}]}]}`
 
 func newTestProgramManager(t *testing.T) *program.ProgramManager {
 	t.Helper()
@@ -22,12 +18,12 @@ func newTestProgramManager(t *testing.T) *program.ProgramManager {
 	return program.NewProgramManager(program.NewSQLiteStore(database))
 }
 
-func TestReadEITJSONLDecodesDescriptors(t *testing.T) {
+func TestUpsertEITSectionDecodesDescriptors(t *testing.T) {
 	ctx := context.Background()
 	manager := newTestProgramManager(t)
 	updater := NewUpdater(manager)
 
-	if err := updater.ReadEITJSONL(ctx, strings.NewReader(sampleEIT+"\n")); err != nil {
+	if err := updater.UpsertEITSection(ctx, sampleSection("気象情報・ニュース")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -62,12 +58,11 @@ func TestEITPFUpsertsExistingProgram(t *testing.T) {
 	ctx := context.Background()
 	manager := newTestProgramManager(t)
 	updater := NewUpdater(manager)
-	if err := updater.ReadEITJSONL(ctx, strings.NewReader(sampleEIT+"\n")); err != nil {
+	if err := updater.UpsertEITSection(ctx, sampleSection("気象情報・ニュース")); err != nil {
 		t.Fatal(err)
 	}
 
-	update := strings.Replace(sampleEIT, "気象情報・ニュース", "延長後ニュース", 1)
-	if err := updater.ReadEITJSONL(ctx, strings.NewReader(update+"\n")); err != nil {
+	if err := updater.UpsertEITSection(ctx, sampleSection("延長後ニュース")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -116,34 +111,25 @@ func TestApplyDescriptorHandlesExtendedAndSeriesAndEventGroup(t *testing.T) {
 	}
 }
 
-func TestEITDescriptorUnmarshalAcceptsLegacyAliases(t *testing.T) {
-	// mirakc-arib serializes the ARIB 24-bit language code as a JSON number
-	// (e.g. "jpn" -> 0x6A706E = 6975598 in decimal).
-	cases := []struct {
-		name      string
-		body      string
-		wantLang  string
-		wantLang2 string
-	}{
-		{"legacy-string-aliases", `{"$type":"AudioComponent","languageCode":"jpn","mainComponentFlag":true}`, "jpn", ""},
-		{"modern-fields", `{"$type":"AudioComponent","lang":"jpn","mainComponent":true}`, "jpn", ""},
-		{"numeric-languageCode", `{"$type":"AudioComponent","languageCode":6975598,"mainComponent":true}`, "jpn", ""},
-		{"numeric-languageCode2", `{"$type":"AudioComponent","lang":"jpn","languageCode2":6975598}`, "jpn", "jpn"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			var d EITDescriptor
-			if err := json.Unmarshal([]byte(c.body), &d); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			if d.Lang != c.wantLang {
-				t.Fatalf("Lang = %q, want %q", d.Lang, c.wantLang)
-			}
-			if d.Lang2 != c.wantLang2 {
-				t.Fatalf("Lang2 = %q, want %q", d.Lang2, c.wantLang2)
-			}
-		})
+func ptrInt(v int) *int { return &v }
+
+func sampleSection(name string) *EITSection {
+	return &EITSection{
+		OriginalNetworkID: 32736,
+		ServiceID:         1024,
+		Events: []EITEvent{{
+			EventID:   12250,
+			StartTime: 1570917180000,
+			Duration:  420000,
+			Scrambled: false,
+			Descriptors: []EITDescriptor{
+				{Type: "ShortEvent", EventName: name, Text: "説明"},
+				{Type: "Component", StreamContent: ptrInt(1), ComponentType: ptrInt(179)},
+				{Type: "AudioComponent", ComponentType: ptrInt(1), ComponentTag: ptrInt(16), MainComponent: ptrBool(true), SamplingRate: ptrInt(7), Lang: "jpn"},
+				{Type: "Content", Nibbles: [][]int{{0, 1, 15, 15}}},
+			},
+		}},
 	}
 }
 
-func ptrInt(v int) *int { return &v }
+func ptrBool(v bool) *bool { return &v }

@@ -4,13 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"strings"
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/db"
 	"github.com/21S1298001/Mahiron5/internal/service"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 func TestServiceScanChannelStoresScannedServicesAndReturnsNewNetworks(t *testing.T) {
@@ -22,11 +21,11 @@ func TestServiceScanChannelStoresScannedServicesAndReturnsNewNetworks(t *testing
 	defer database.Close()
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
-	scanner := &staticScanner{out: `[
-		{"nid":4,"tsid":1,"sid":101,"name":"BS 101","type":1,"remoteControlKeyId":1},
-		{"nid":4,"tsid":1,"sid":102,"name":"BS 102","type":1,"remoteControlKeyId":2},
-		{"nid":5,"tsid":2,"sid":201,"name":"BS 201","type":2,"remoteControlKeyId":3}
-	]`}
+	scanner := &staticScanner{services: []ts.ServiceInfo{
+		{Nid: 4, Tsid: 1, Sid: 101, Name: "BS 101", Type: 1, RemoteControlKeyId: uint8Ptr(1)},
+		{Nid: 4, Tsid: 1, Sid: 102, Name: "BS 102", Type: 1, RemoteControlKeyId: uint8Ptr(2)},
+		{Nid: 5, Tsid: 2, Sid: 201, Name: "BS 201", Type: 2, RemoteControlKeyId: uint8Ptr(3)},
+	}}
 
 	got, err := NewService(manager, scanner, nil).ScanChannel(ctx, "BS", "BS01", true)
 	if err != nil {
@@ -66,12 +65,12 @@ func TestServiceScanChannelReturnsOnlyNewNetworks(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	scanner := &staticScanner{out: `[
-		{"nid":4,"tsid":1,"sid":101,"name":"known","type":1},
-		{"nid":4,"tsid":1,"sid":102,"name":"new same network","type":1},
-		{"nid":5,"tsid":1,"sid":201,"name":"new network","type":1},
-		{"nid":5,"tsid":1,"sid":202,"name":"new network duplicate","type":1}
-	]`}
+	scanner := &staticScanner{services: []ts.ServiceInfo{
+		{Nid: 4, Tsid: 1, Sid: 101, Name: "known", Type: 1},
+		{Nid: 4, Tsid: 1, Sid: 102, Name: "new same network", Type: 1},
+		{Nid: 5, Tsid: 1, Sid: 201, Name: "new network", Type: 1},
+		{Nid: 5, Tsid: 1, Sid: 202, Name: "new network duplicate", Type: 1},
+	}}
 
 	got, err := NewService(manager, scanner, nil).ScanChannel(ctx, "BS", "BS01", false)
 	if err != nil {
@@ -94,7 +93,7 @@ func TestServiceScanChannelReturnsNoNetworksWhenAllServicesKnown(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	scanner := &staticScanner{out: `[{"nid":4,"tsid":1,"sid":101,"name":"known","type":1}]`}
+	scanner := &staticScanner{services: []ts.ServiceInfo{{Nid: 4, Tsid: 1, Sid: 101, Name: "known", Type: 1}}}
 
 	got, err := NewService(manager, scanner, nil).ScanChannel(ctx, "BS", "BS01", false)
 	if err != nil {
@@ -102,22 +101,6 @@ func TestServiceScanChannelReturnsNoNetworksWhenAllServicesKnown(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatalf("new networks = %v, want nil", got)
-	}
-}
-
-func TestServiceScanChannelReturnsInvalidJSON(t *testing.T) {
-	ctx := context.Background()
-	database, err := db.OpenInMemory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	store := service.NewSQLiteStore(database)
-	manager := service.NewServiceManager(store, nil)
-
-	_, err = NewService(manager, &staticScanner{out: `[`}, nil).ScanChannel(ctx, "BS", "BS01", false)
-	if err == nil {
-		t.Fatal("ScanChannel error = nil, want invalid JSON error")
 	}
 }
 
@@ -164,18 +147,17 @@ func TestNewNetworkIDsFromDiffEmptyInputs(t *testing.T) {
 }
 
 type staticScanner struct {
-	err  error
-	out  string
-	wait bool
+	err      error
+	services []ts.ServiceInfo
+	wait     bool
 }
 
-func (s *staticScanner) ScanServices(_ context.Context, _ string, _ string, wait bool, dst io.Writer) error {
+func (s *staticScanner) ScanServices(_ context.Context, _ string, _ string, wait bool) ([]ts.ServiceInfo, error) {
 	s.wait = wait
 	if s.err != nil {
-		return s.err
+		return nil, s.err
 	}
-	_, err := io.Copy(dst, strings.NewReader(s.out))
-	return err
+	return s.services, nil
 }
 
 func assertNIDs(t *testing.T, got []uint16, want map[uint16]bool) {
@@ -193,3 +175,5 @@ func assertNIDs(t *testing.T, got []uint16, want map[uint16]bool) {
 func idFor(nid, sid uint16) string {
 	return fmt.Sprintf("%05d%05d", nid, sid)
 }
+
+func uint8Ptr(v uint8) *uint8 { return &v }

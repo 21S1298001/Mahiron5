@@ -2,13 +2,13 @@ package job
 
 import (
 	"context"
-	"io"
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/internal/servicescan"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 // This package keeps job orchestration thin. Feature-specific details should
@@ -46,7 +46,7 @@ type EPGProgramStore interface {
 type EPGStreamManager interface {
 	HasSession(string, string) bool
 	GetOrCreate(context.Context, string, string) (interface {
-		CollectEITS(context.Context, io.Writer) error
-		CollectEITPF(context.Context, io.Writer) error
+		CollectEITS(context.Context, func(*ts.EIT) error) error
+		CollectEITPF(context.Context, func(*ts.EIT) error) error
 	}, error)
 }

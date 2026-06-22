@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -242,12 +241,8 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
 	})
 
-	var out bytes.Buffer
-	if err := session.ScanServices(context.Background(), &out); err != nil {
-		t.Fatal(err)
-	}
-	var got []remoteScanService
-	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+	got, err := session.ScanServices(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if path != "/api/channels/GR/27/services" {
@@ -257,7 +252,7 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 	if auth != wantAuth {
 		t.Fatalf("Authorization = %q, want %q", auth, wantAuth)
 	}
-	if len(got) != 1 || got[0].Nid != 32736 || got[0].Sid != 1024 || got[0].Tsid != 32736 || got[0].Name != "remote service" || got[0].RemoteControlKeyId != 5 {
+	if len(got) != 1 || got[0].Nid != 32736 || got[0].Sid != 1024 || got[0].Tsid != 32736 || got[0].Name != "remote service" || got[0].RemoteControlKeyId == nil || *got[0].RemoteControlKeyId != 5 {
 		t.Fatalf("services = %#v", got)
 	}
 }
@@ -267,7 +262,7 @@ func TestRemoteClientScanServicesReturnsStatusError(t *testing.T) {
 	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return stringResponse(http.StatusServiceUnavailable, ""), nil
 	})}
-	if err := client.ScanServices(context.Background(), "GR", "27", io.Discard); err == nil {
+	if _, err := client.ScanServices(context.Background(), "GR", "27"); err == nil {
 		t.Fatal("ScanServices error = nil, want status error")
 	}
 }

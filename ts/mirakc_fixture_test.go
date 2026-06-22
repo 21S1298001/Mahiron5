@@ -11,31 +11,31 @@ import (
 	"testing"
 )
 
-func TestServiceFilterMatchesMirakcAribPIDSet(t *testing.T) {
+func TestServiceFilterMatchesCompatibilityPIDSet(t *testing.T) {
 	cases := []struct {
-		name       string
-		inputPath  string
-		mirakcPath string
-		serviceID  uint16
+		name              string
+		inputPath         string
+		compatibilityPath string
+		serviceID         uint16
 	}{
 		{
-			name:       "gr-27-sid-1024",
-			inputPath:  "testdata/local/test-gr-27.ts",
-			mirakcPath: "testdata/local/mirakc-arib-filter-service-sid-1024-gr-27.ts",
-			serviceID:  1024,
+			name:              "gr-27-sid-1024",
+			inputPath:         "testdata/local/test-gr-27.ts",
+			compatibilityPath: "testdata/local/mirakc-arib-filter-service-sid-1024-gr-27.ts",
+			serviceID:         1024,
 		},
 		{
-			name:       "bs-15-sid-101",
-			inputPath:  "testdata/local/test-bs-15.ts",
-			mirakcPath: "testdata/local/mirakc-arib-filter-serivce-sid-101-bs-15.ts",
-			serviceID:  101,
+			name:              "bs-15-sid-101",
+			inputPath:         "testdata/local/test-bs-15.ts",
+			compatibilityPath: "testdata/local/mirakc-arib-filter-serivce-sid-101-bs-15.ts",
+			serviceID:         101,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if !fileExists(tc.inputPath) || !fileExists(tc.mirakcPath) {
-				t.Skip("local TS fixture or mirakc-arib output fixture not found")
+			if !fileExists(tc.inputPath) || !fileExists(tc.compatibilityPath) {
+				t.Skip("local TS fixture or compatibility output fixture not found")
 			}
 
 			input, err := os.Open(tc.inputPath)
@@ -51,11 +51,11 @@ func TestServiceFilterMatchesMirakcAribPIDSet(t *testing.T) {
 
 			inputPIDs := packetPIDsFromFile(t, tc.inputPath)
 			got := packetPIDsFromReader(t, bytes.NewReader(filtered.Bytes()))
-			want := packetPIDsFromFile(t, tc.mirakcPath)
+			want := packetPIDsFromFile(t, tc.compatibilityPath)
 			want = intersectPIDSet(want, inputPIDs)
 
 			if !reflect.DeepEqual(got, want) {
-				t.Fatalf("filtered PID set = %#v, want mirakc-arib PID set %#v", got, want)
+				t.Fatalf("filtered PID set = %#v, want compatibility PID set %#v", got, want)
 			}
 		})
 	}

@@ -20,6 +20,12 @@ func NewStreamTaskRunner(source interface {
 }
 
 func (r StreamTaskRunner) Run(ctx context.Context, dst io.Writer, task func(context.Context, io.Reader, io.Writer) error) error {
+	return r.RunTask(ctx, func(ctx context.Context, src io.Reader) error {
+		return task(ctx, src, dst)
+	})
+}
+
+func (r StreamTaskRunner) RunTask(ctx context.Context, task func(context.Context, io.Reader) error) error {
 	pr, pw := io.Pipe()
 	taskCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -28,7 +34,7 @@ func (r StreamTaskRunner) Run(ctx context.Context, dst io.Writer, task func(cont
 
 	taskDone := make(chan error, 1)
 	go func() {
-		taskDone <- task(taskCtx, pr, dst)
+		taskDone <- task(taskCtx, pr)
 	}()
 
 	sourceDone := make(chan error, 1)

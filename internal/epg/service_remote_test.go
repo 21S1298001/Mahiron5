@@ -3,12 +3,12 @@ package epg
 import (
 	"context"
 	"errors"
-	"io"
 	"testing"
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 func TestCollectServiceSnapshotsSyncsStoredRemotePrograms(t *testing.T) {
@@ -147,12 +147,12 @@ func (s *remoteSyncSession) ListServicePrograms(_ context.Context, networkID, se
 	return s.programs[key], nil
 }
 
-func (s *remoteSyncSession) CollectEITS(context.Context, io.Writer) error {
+func (s *remoteSyncSession) CollectEITS(context.Context, func(*ts.EIT) error) error {
 	s.collectEITSCalled = true
 	return nil
 }
 
-func (s *remoteSyncSession) CollectEITPF(context.Context, io.Writer) error {
+func (s *remoteSyncSession) CollectEITPF(context.Context, func(*ts.EIT) error) error {
 	s.collectEITPFCalled = true
 	return nil
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 const remoteAvailabilityTimeout = 3 * time.Second
@@ -104,7 +105,7 @@ func (c *RemoteClient) ProgramStream(ctx context.Context, programID int64, decod
 	return c.stream(ctx, decode, dst, "programs", fmt.Sprint(programID), "stream")
 }
 
-func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel string, dst io.Writer) (err error) {
+func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel string) (scanned []ts.ServiceInfo, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanRemoteScanServices,
 		observability.AttrRemoteURL.String(c.baseURL),
 		observability.AttrChannelType.String(channelType),
@@ -114,21 +115,21 @@ func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel st
 
 	var services []remoteService
 	if err := c.getJSON(ctx, &services, "channels", channelType, channel, "services"); err != nil {
-		return err
+		return nil, err
 	}
-	scanned := make([]remoteScanService, len(services))
+	scanned = make([]ts.ServiceInfo, len(services))
 	for i, svc := range services {
-		scanned[i] = remoteScanService{
+		scanned[i] = ts.ServiceInfo{
 			Nid:                svc.NetworkID,
 			Tsid:               svc.TransportStreamID,
 			Sid:                svc.ServiceID,
 			Name:               svc.Name,
 			Type:               uint8(svc.Type),
-			LogoId:             svc.LogoID,
-			RemoteControlKeyId: uint8(svc.RemoteControlKeyID),
+			LogoId:             int64(svc.LogoID),
+			RemoteControlKeyId: uint8Ptr(uint8(svc.RemoteControlKeyID)),
 		}
 	}
-	return json.NewEncoder(dst).Encode(scanned)
+	return scanned, nil
 }
 
 func (c *RemoteClient) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) (programs []*program.Program, err error) {
@@ -285,15 +286,7 @@ type remoteService struct {
 	RemoteControlKeyID int    `json:"remoteControlKeyId"`
 }
 
-type remoteScanService struct {
-	Nid                uint16 `json:"nid"`
-	Tsid               uint16 `json:"tsid"`
-	Sid                uint16 `json:"sid"`
-	Name               string `json:"name"`
-	Type               uint8  `json:"type"`
-	LogoId             uint64 `json:"logoId"`
-	RemoteControlKeyId uint8  `json:"remoteControlKeyId"`
-}
+func uint8Ptr(v uint8) *uint8 { return &v }
 
 type remoteProgram struct {
 	ID           int64               `json:"id"`
@@ -508,8 +501,8 @@ func (s *RemoteSession) ProgramStream(ctx context.Context, p *program.Program, d
 	return s.client.ProgramStream(ctx, p.ID, decode, dst)
 }
 
-func (s *RemoteSession) ScanServices(ctx context.Context, dst io.Writer) error {
-	return s.client.ScanServices(ctx, s.routeChannel.Type, s.routeChannel.Channel, dst)
+func (s *RemoteSession) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
+	return s.client.ScanServices(ctx, s.routeChannel.Type, s.routeChannel.Channel)
 }
 
 func (s *RemoteSession) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) ([]*program.Program, error) {
@@ -533,11 +526,11 @@ func (s *RemoteSession) StartProgramEventSync(updater ProgramUpdater) {
 	})
 }
 
-func (s *RemoteSession) CollectEITS(context.Context, io.Writer) error {
+func (s *RemoteSession) CollectEITS(context.Context, func(*ts.EIT) error) error {
 	return ErrEITCollectorNotConfigured
 }
 
-func (s *RemoteSession) CollectEITPF(context.Context, io.Writer) error {
+func (s *RemoteSession) CollectEITPF(context.Context, func(*ts.EIT) error) error {
 	return ErrEITCollectorNotConfigured
 }
 

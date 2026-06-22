@@ -2,9 +2,9 @@ package job
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +16,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/servicescan"
 	"github.com/21S1298001/Mahiron5/internal/stream"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
+	"github.com/21S1298001/Mahiron5/ts"
 )
 
 type noTunerManager struct{}
@@ -251,28 +252,12 @@ type fakeScanScanner struct {
 	services []*scanServiceJSON
 }
 
-func (f fakeScanScanner) ScanServices(_ context.Context, _ io.Reader, dst io.Writer) error {
-	return encodeScanJSON(f.services, dst)
-}
-
-func encodeScanJSON(services []*scanServiceJSON, dst io.Writer) error {
-	type entry struct {
-		Nid  uint16 `json:"nid"`
-		Tsid uint16 `json:"tsid"`
-		Sid  uint16 `json:"sid"`
-		Name string `json:"name"`
-		Type uint8  `json:"type"`
+func (f fakeScanScanner) ScanServices(_ context.Context, _ io.Reader) ([]ts.ServiceInfo, error) {
+	out := make([]ts.ServiceInfo, len(f.services))
+	for i, s := range f.services {
+		out[i] = ts.ServiceInfo{Nid: s.Nid, Tsid: 1, Sid: s.Sid, Name: "test", Type: 1}
 	}
-	out := make([]entry, len(services))
-	for i, s := range services {
-		out[i] = entry{Nid: s.Nid, Tsid: 1, Sid: s.Sid, Name: "test", Type: 1}
-	}
-	data, err := json.Marshal(out)
-	if err != nil {
-		return err
-	}
-	_, err = dst.Write(data)
-	return err
+	return out, nil
 }
 
 type fakeScanTunerManager struct{}
@@ -282,7 +267,8 @@ func (fakeScanTunerManager) NewDeviceByType(string, *config.ChannelConfig) (tune
 }
 
 type fakeScanDevice struct {
-	done chan struct{}
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func (d *fakeScanDevice) Start(_ context.Context, _ io.Writer) error {
@@ -292,9 +278,14 @@ func (d *fakeScanDevice) Start(_ context.Context, _ io.Writer) error {
 	return nil
 }
 
-func (d *fakeScanDevice) Stop(_ context.Context) error { return nil }
-func (d *fakeScanDevice) Done() <-chan struct{}        { return d.done }
-func (d *fakeScanDevice) Err() error                   { return nil }
+func (d *fakeScanDevice) Stop(_ context.Context) error {
+	if d.done != nil {
+		d.closeOnce.Do(func() { close(d.done) })
+	}
+	return nil
+}
+func (d *fakeScanDevice) Done() <-chan struct{} { return d.done }
+func (d *fakeScanDevice) Err() error            { return nil }
 
 func waitForJobKeys(t *testing.T, mgr *JobManager, expected map[string]bool) {
 	t.Helper()
