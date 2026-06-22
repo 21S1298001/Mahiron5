@@ -1,72 +1,44 @@
 package stream
 
 import (
-	"bytes"
 	"context"
-	"io"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/ts"
+	"github.com/21S1298001/Mahiron5/internal/epg"
 )
 
-func TestProgramEventGateStartsAndStopsOnEITPF(t *testing.T) {
+func TestProgramEventGateTracksTargetEvent(t *testing.T) {
 	restoreProgramGateTimings(t)
 	programEventEndGrace = 10 * time.Millisecond
-	programEventMissingFallback = 500 * time.Millisecond
+	programEventStaleAfter = 5 * time.Millisecond
 
-	collector := &scriptedEITCollector{items: []scriptedEITItem{
-		{delay: 5 * time.Millisecond, section: gateSection(1, 101, 9)},
-		{delay: 20 * time.Millisecond, section: gateSection(1, 101, 10)},
-		{delay: 55 * time.Millisecond, section: gateSection(1, 101, 11)},
-	}}
-	processor := programEventGateProcessor{
-		collector:      collector,
-		initialTimeout: 500 * time.Millisecond,
-		networkID:      1,
-		serviceID:      101,
-		eventID:        10,
+	ctx, cancel := context.WithCancel(context.Background())
+	gate := newProgramEventGate(1, 101, 10, time.Second, cancel)
+	gate.observe(gateSection(1, 101, 9))
+	if gate.isReady() {
+		t.Fatal("gate became ready for a different event")
 	}
-	src := &slowChunkReader{
-		delay:  8 * time.Millisecond,
-		chunks: [][]byte{[]byte("before-1|"), []byte("before-2|"), []byte("during-1|"), []byte("during-2|"), []byte("after|")},
+	gate.observe(gateSection(1, 101, 10))
+	if !gate.isReady() {
+		t.Fatal("gate did not become ready for the target event")
 	}
-
-	var out bytes.Buffer
-	if err := processor.Run(context.Background(), src, &out); err != nil {
-		t.Fatal(err)
-	}
-	if got := out.String(); got == "" || bytes.Contains([]byte(got), []byte("before")) {
-		t.Fatalf("gated output = %q, want no data before target event", got)
-	}
-	if !bytes.Contains(out.Bytes(), []byte("during")) {
-		t.Fatalf("gated output = %q, want target-event data", out.String())
+	gate.observe(gateSection(1, 101, 11))
+	select {
+	case <-ctx.Done():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("gate did not close after the target event ended")
 	}
 }
 
 func TestProgramEventGateClosesWhenEventNeverAppears(t *testing.T) {
 	restoreProgramGateTimings(t)
-	programEventMissingFallback = 20 * time.Millisecond
-
-	processor := programEventGateProcessor{
-		collector:      &scriptedEITCollector{},
-		initialTimeout: 20 * time.Millisecond,
-		networkID:      1,
-		serviceID:      101,
-		eventID:        10,
-	}
-	src := &slowChunkReader{
-		delay:  5 * time.Millisecond,
-		chunks: [][]byte{[]byte("a"), []byte("b"), []byte("c"), []byte("d"), []byte("e"), []byte("f")},
-	}
-
-	var out bytes.Buffer
-	if err := processor.Run(context.Background(), src, &out); err != nil {
-		t.Fatal(err)
-	}
-	if out.String() != "" {
-		t.Fatalf("gated output = %q, want empty", out.String())
+	ctx, cancel := context.WithCancel(context.Background())
+	_ = newProgramEventGate(1, 101, 10, 10*time.Millisecond, cancel)
+	select {
+	case <-ctx.Done():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("gate did not close after its initial timeout")
 	}
 }
 
@@ -84,72 +56,12 @@ func restoreProgramGateTimings(t *testing.T) {
 	})
 }
 
-func gateSection(networkID, serviceID, eventID uint16) *ts.EIT {
-	return &ts.EIT{
+func gateSection(networkID, serviceID, eventID uint16) *epg.EITSection {
+	return &epg.EITSection{
 		OriginalNetworkID: networkID,
 		ServiceID:         serviceID,
 		TableID:           0x4e,
 		SectionNumber:     0,
-		Events:            []ts.EITEvent{{EventID: eventID}},
+		Events:            []epg.EITEvent{{EventID: eventID}},
 	}
-}
-
-type scriptedEITItem struct {
-	delay   time.Duration
-	section *ts.EIT
-}
-
-type scriptedEITCollector struct {
-	items []scriptedEITItem
-}
-
-func (c *scriptedEITCollector) CollectEITS(context.Context, io.Reader, func(*ts.EIT) error) error {
-	return nil
-}
-
-func (c *scriptedEITCollector) CollectEITPF(ctx context.Context, src io.Reader, observe func(*ts.EIT) error) error {
-	done := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(io.Discard, src)
-		close(done)
-	}()
-	for _, item := range c.items {
-		select {
-		case <-ctx.Done():
-			<-done
-			return nil
-		case <-time.After(item.delay):
-		}
-		if err := observe(item.section); err != nil {
-			return err
-		}
-	}
-	<-done
-	return nil
-}
-
-type slowChunkReader struct {
-	delay  time.Duration
-	chunks [][]byte
-	index  int
-	mu     sync.Mutex
-}
-
-func (r *slowChunkReader) Read(p []byte) (int, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.index >= len(r.chunks) {
-		return 0, io.EOF
-	}
-	time.Sleep(r.delay)
-	chunk := r.chunks[r.index]
-	r.index++
-	return copy(p, chunk), nil
-}
-
-func (r *slowChunkReader) Close() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.index = len(r.chunks)
-	return nil
 }

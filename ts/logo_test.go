@@ -5,7 +5,6 @@ package ts
 
 import (
 	"bytes"
-	"context"
 	"testing"
 )
 
@@ -21,7 +20,7 @@ func TestParseLogoTransmissionDescriptorType1(t *testing.T) {
 	}
 }
 
-func TestServiceScannerUsesLogoTransmissionDescriptor(t *testing.T) {
+func TestServiceScanUsesLogoTransmissionDescriptor(t *testing.T) {
 	section := buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{{
 		serviceID: 100,
 		descriptors: append(
@@ -29,12 +28,10 @@ func TestServiceScannerUsesLogoTransmissionDescriptor(t *testing.T) {
 			DescriptorTagLogoTransmission, 7, 0x01, 0xff, 0x2a, 0xf0, 0x01, 0x12, 0x34,
 		),
 	}})
-	input := append(sectionPackets(PIDPAT, buildPAT(t, map[uint16]uint16{100: 0x0100}), 0), sectionPackets(PIDSDT, section, 0)...)
-
-	got, err := NewServiceScanner().ScanServices(context.Background(), bytes.NewReader(input))
-	if err != nil {
-		t.Fatal(err)
-	}
+	scan := NewServiceScan()
+	scan.Observe(buildPAT(t, map[uint16]uint16{100: 0x0100}))
+	scan.Observe(section)
+	got := scan.Services()
 	if len(got) != 1 || got[0].LogoId != 0x12a {
 		t.Fatalf("services = %#v", got)
 	}

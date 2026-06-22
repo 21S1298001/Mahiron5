@@ -28,7 +28,6 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/stream"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 	"github.com/21S1298001/Mahiron5/internal/web"
-	"github.com/21S1298001/Mahiron5/ts"
 )
 
 func Run(ctx context.Context) int {
@@ -120,15 +119,10 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	streams := stream.NewStreamManager(stream.StreamManagerConfig{
 		Channels:       cfg.Channels,
 		Remotes:        cfg.Remotes,
-		EITCollector:   ts.NewEITCollector(),
 		EITUpdater:     epgUpdater,
-		Filter:         stream.NativeServiceFilter{},
-		LogoCollector:  ts.NewLogoCollector(),
 		LogoUpdater:    services,
 		ProgramUpdater: programs,
-		Scanner:        ts.NewServiceScanner(),
 		TunerManager:   tuners,
-		SharedTSEngine: true,
 	})
 	serviceScanner := stream.NewServiceScannerAdapter(streams)
 	logoCollector := stream.NewLogoCollectorAdapter(streams)

@@ -16,6 +16,8 @@ const (
 
 var ErrSubscriberOverflow = errors.New("ts subscriber buffer overflow")
 
+type sourceSubscriber func(context.Context, io.Writer) error
+
 type packetEngine struct {
 	cancel     context.CancelFunc
 	demux      *ts.Demuxer

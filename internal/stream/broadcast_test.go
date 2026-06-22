@@ -7,12 +7,11 @@ import (
 	"slices"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestBroadcastStopsSourceAfterLastSubscriberDetaches(t *testing.T) {
 	source := newFakeLiveSource()
-	broadcast := NewBroadcast(source, nil, nil)
+	broadcast := NewBroadcast(source, nil)
 
 	var first bytes.Buffer
 	var second bytes.Buffer
@@ -42,7 +41,7 @@ func TestBroadcastRunsAllStopCallbacks(t *testing.T) {
 	source := newFakeLiveSource()
 	var mu sync.Mutex
 	var calls []string
-	broadcast := NewBroadcast(source, nil, func() {
+	broadcast := NewBroadcast(source, func() {
 		mu.Lock()
 		calls = append(calls, "initial")
 		mu.Unlock()
@@ -70,50 +69,6 @@ func TestBroadcastRunsAllStopCallbacks(t *testing.T) {
 	defer mu.Unlock()
 	if got, want := calls, []string{"initial", "added"}; !slices.Equal(got, want) {
 		t.Fatalf("stop callbacks = %v, want %v", got, want)
-	}
-}
-
-func TestBroadcastTapDoesNotKeepSourceAlive(t *testing.T) {
-	source := newFakeLiveSource()
-	broadcast := NewBroadcast(source, nil, nil)
-
-	var subscriber bytes.Buffer
-	if err := broadcast.attach(&subscriber); err != nil {
-		t.Fatal(err)
-	}
-
-	tapDone := make(chan error, 1)
-	tapCtx, cancelTap := context.WithCancel(context.Background())
-	defer cancelTap()
-	go func() {
-		tapDone <- broadcast.Tap(tapCtx, io.Discard)
-	}()
-
-	deadline := time.Now().Add(time.Second)
-	for broadcast.hub.Count() < 2 {
-		select {
-		case err := <-tapDone:
-			t.Fatalf("tap finished before attaching: %v", err)
-		default:
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("tap did not attach")
-		}
-		time.Sleep(time.Millisecond)
-	}
-
-	broadcast.detach(&subscriber)
-	if got := source.stops(); got != 1 {
-		t.Fatalf("source stops after subscriber detach with tap = %d, want 1", got)
-	}
-
-	select {
-	case err := <-tapDone:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("tap did not finish after source stopped")
 	}
 }
 

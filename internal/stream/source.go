@@ -27,7 +27,6 @@ type LiveSource interface {
 
 type SourceLease struct {
 	Broadcast   *Broadcast
-	Channel     *config.ChannelConfig
 	Descrambler Descrambler
 	RouteType   string
 	Session     Session
@@ -55,7 +54,7 @@ func NewSourcePool(channels config.ChannelsConfig, tunerManager TunerManager, de
 	}
 }
 
-func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, wait bool, hooks []BroadcastHook) (lease *SourceLease, err error) {
+func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, wait bool) (lease *SourceLease, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanStreamSourceAcquire,
 		observability.AttrChannelType.String(channelType),
 		observability.AttrChannelID.String(channel),
@@ -71,7 +70,7 @@ func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, w
 		return nil, ErrChannelNotFound
 	}
 
-	route, routeChannelConfig, device, decoderCommand, broadcast, err := p.newRouteDevice(ctx, channelConfig, wait, hooks)
+	route, routeChannelConfig, device, decoderCommand, broadcast, err := p.newRouteDevice(ctx, channelConfig, wait)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +81,6 @@ func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, w
 		}
 		slog.Debug("selected remote stream route", "type", channelType, "channel", channel, "routeType", route.Type, "remote", route.Remote)
 		return &SourceLease{
-			Channel:   &routeChannelConfig,
 			RouteType: route.Type,
 			Session: NewRemoteSession(RemoteSessionConfig{
 				Client: remote,
@@ -109,7 +107,6 @@ func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, w
 	slog.Debug("selected local stream route", "type", channelType, "channel", channel, "routeType", route.Type, "decoder", decoderCommand != "")
 	return &SourceLease{
 		Broadcast:   broadcast,
-		Channel:     &routeChannelConfig,
 		Descrambler: descrambler,
 		RouteType:   route.Type,
 		Source: &tunerLiveSource{
@@ -128,7 +125,7 @@ func (p *SourcePool) findChannel(channelType, channel string) *config.ChannelCon
 	return nil
 }
 
-func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.ChannelConfig, wait bool, hooks []BroadcastHook) (selectedRoute config.ChannelRouteConfig, selectedChannel config.ChannelConfig, selectedDevice TunerDevice, selectedDecoder string, selectedBroadcast *Broadcast, err error) {
+func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.ChannelConfig, wait bool) (selectedRoute config.ChannelRouteConfig, selectedChannel config.ChannelConfig, selectedDevice TunerDevice, selectedDecoder string, selectedBroadcast *Broadcast, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanStreamSourceSelectRoute,
 		observability.AttrChannelType.String(channel.Type),
 		observability.AttrChannelID.String(channel.Channel),
@@ -142,7 +139,7 @@ func (p *SourcePool) newRouteDevice(ctx context.Context, channel *config.Channel
 		var lastErr error
 		unavailable := false
 		for _, route := range routes {
-			selected, err := p.tryRoute(ctx, channel, route, wait, hooks)
+			selected, err := p.tryRoute(ctx, channel, route, wait)
 			if err == nil {
 				return selected.route, selected.channel, selected.device, selected.decoder, selected.broadcast, nil
 			}
@@ -172,7 +169,7 @@ type routeSelection struct {
 	broadcast *Broadcast
 }
 
-func (p *SourcePool) tryRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, wait bool, hooks []BroadcastHook) (selected routeSelection, err error) {
+func (p *SourcePool) tryRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, wait bool) (selected routeSelection, err error) {
 	routeChannel := channel.RouteChannelConfig(route)
 	routeCtx, routeSpan := observability.StartSpan(ctx, observability.SpanStreamSourceTryRoute,
 		observability.AttrChannelType.String(channel.Type),
@@ -187,7 +184,7 @@ func (p *SourcePool) tryRoute(ctx context.Context, channel *config.ChannelConfig
 	if route.Remote != "" {
 		selected, err = p.tryRemoteRoute(routeCtx, route, routeChannel)
 	} else {
-		selected, err = p.tryLocalRoute(routeCtx, channel, route, routeChannel, wait, hooks)
+		selected, err = p.tryLocalRoute(routeCtx, channel, route, routeChannel, wait)
 	}
 	if err != nil {
 		return routeSelection{}, err
@@ -207,7 +204,7 @@ func (p *SourcePool) tryRemoteRoute(ctx context.Context, route config.ChannelRou
 	return routeSelection{route: route, channel: routeChannel}, nil
 }
 
-func (p *SourcePool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, routeChannel config.ChannelConfig, wait bool, hooks []BroadcastHook) (routeSelection, error) {
+func (p *SourcePool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, routeChannel config.ChannelConfig, wait bool) (routeSelection, error) {
 	key := newRouteSourceKey(route)
 	source, finishCreate, err := p.beginRouteSourceCreate(ctx, key)
 	if err != nil {
@@ -230,7 +227,7 @@ func (p *SourcePool) tryLocalRoute(ctx context.Context, channel *config.ChannelC
 		return routeSelection{}, err
 	}
 
-	broadcast := p.commitRouteSource(key, hooks, &tunerLiveSource{
+	broadcast := p.commitRouteSource(key, &tunerLiveSource{
 		channel: &config.ChannelConfig{Type: channel.Type, Channel: channel.Channel},
 		device:  device,
 	}, decoder)
@@ -312,13 +309,13 @@ func (p *SourcePool) beginRouteSourceCreate(ctx context.Context, key routeSource
 	}
 }
 
-func (p *SourcePool) commitRouteSource(key routeSourceKey, hooks []BroadcastHook, source LiveSource, decoderCommand string) *Broadcast {
+func (p *SourcePool) commitRouteSource(key routeSourceKey, source LiveSource, decoderCommand string) *Broadcast {
 	p.mu.Lock()
 	if shared := p.routeSources[key]; shared != nil {
 		p.mu.Unlock()
 		return shared.broadcast
 	}
-	broadcast := NewBroadcast(source, hooks, func() { p.removeRouteSource(key) })
+	broadcast := NewBroadcast(source, func() { p.removeRouteSource(key) })
 	p.routeSources[key] = &sharedRouteSource{broadcast: broadcast, decoderCommand: decoderCommand}
 	p.mu.Unlock()
 	return broadcast

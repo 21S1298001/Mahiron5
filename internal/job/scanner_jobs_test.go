@@ -3,8 +3,6 @@ package job
 import (
 	"context"
 	"errors"
-	"io"
-	"sync"
 	"testing"
 	"time"
 
@@ -260,14 +258,13 @@ func TestServiceUpdaterTriggersEPGGatherForNewNetworks(t *testing.T) {
 	defer database.Close()
 	serviceStore := service.NewSQLiteStore(database)
 	sm := service.NewServiceManager(serviceStore, channels)
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{
-		Channels:     channels,
-		TunerManager: fakeScanTunerManager{},
-		Scanner:      fakeScanScanner{services: []*scanServiceJSON{{Nid: 4, Sid: 101}, {Nid: 4, Sid: 102}}},
-	})
 	mgr := newTestManager(t)
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	scanService := servicescan.NewService(sm, stream.NewServiceScannerAdapter(stm), channels)
+	scanService := servicescan.NewService(sm, fakeScanScanner{services: []ts.ServiceInfo{
+		{Nid: 4, Tsid: 1, Sid: 101, Name: "test", Type: 1},
+		{Nid: 4, Tsid: 1, Sid: 102, Name: "test", Type: 1},
+	}}, channels)
+	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
 	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
 	RegisterServiceUpdater(mgr, scanService, epgService)
 
@@ -323,24 +320,13 @@ func TestServiceUpdaterTriggersEPGGatherForNewNetworks(t *testing.T) {
 	}
 }
 
-type scanServiceJSON struct {
-	Nid uint16 `json:"nid"`
-	Sid uint16 `json:"sid"`
-}
-
 type fakeScanScanner struct {
-	services []*scanServiceJSON
+	services []ts.ServiceInfo
 }
 
-func (f fakeScanScanner) ScanServices(_ context.Context, _ io.Reader) ([]ts.ServiceInfo, error) {
-	out := make([]ts.ServiceInfo, len(f.services))
-	for i, s := range f.services {
-		out[i] = ts.ServiceInfo{Nid: s.Nid, Tsid: 1, Sid: s.Sid, Name: "test", Type: 1}
-	}
-	return out, nil
+func (f fakeScanScanner) ScanServices(context.Context, string, string, bool) ([]ts.ServiceInfo, error) {
+	return append([]ts.ServiceInfo(nil), f.services...), nil
 }
-
-type fakeScanTunerManager struct{}
 
 type fakeLogoTargetStore struct {
 	targets []service.LogoTarget
@@ -364,31 +350,6 @@ func (f *fakeLogoObserver) ObserveLogos(ctx context.Context, _, _ string, observ
 	}
 	return observe(f.image)
 }
-
-func (fakeScanTunerManager) NewDeviceByType(string, *config.ChannelConfig) (tuner.Device, error) {
-	return &fakeScanDevice{}, nil
-}
-
-type fakeScanDevice struct {
-	done      chan struct{}
-	closeOnce sync.Once
-}
-
-func (d *fakeScanDevice) Start(_ context.Context, _ io.Writer) error {
-	if d.done == nil {
-		d.done = make(chan struct{})
-	}
-	return nil
-}
-
-func (d *fakeScanDevice) Stop(_ context.Context) error {
-	if d.done != nil {
-		d.closeOnce.Do(func() { close(d.done) })
-	}
-	return nil
-}
-func (d *fakeScanDevice) Done() <-chan struct{} { return d.done }
-func (d *fakeScanDevice) Err() error            { return nil }
 
 func waitForJobKeys(t *testing.T, mgr *JobManager, expected map[string]bool) {
 	t.Helper()

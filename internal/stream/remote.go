@@ -527,15 +527,15 @@ func (s *RemoteSession) StartProgramEventSync(updater ProgramUpdater) {
 }
 
 func (s *RemoteSession) CollectEITS(context.Context, func(*ts.EIT) error) error {
-	return ErrEITCollectorNotConfigured
+	return ErrEITObservationUnsupported
 }
 
 func (s *RemoteSession) CollectEITPF(context.Context, func(*ts.EIT) error) error {
-	return ErrEITCollectorNotConfigured
+	return ErrEITObservationUnsupported
 }
 
 func (s *RemoteSession) ObserveLogos(context.Context, func(*ts.LogoImage) error) error {
-	return ErrLogoCollectorNotConfigured
+	return ErrLogoObservationUnsupported
 }
 
 func (s *RemoteSession) Stop(context.Context) error {

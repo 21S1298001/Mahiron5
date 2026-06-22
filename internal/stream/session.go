@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/epg"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/util"
@@ -16,67 +15,45 @@ import (
 )
 
 type ChannelSession struct {
-	broadcast      *Broadcast
-	channel        string
-	descrambler    Descrambler
-	eitCollector   EITCollector
-	filter         ServiceFilter
-	flows          *FlowRegistry
-	logoPiggyback  *LogoPiggyback
-	mu             sync.Mutex
-	scanner        ServiceScanner
-	stopped        bool
-	typ            string
-	sharedTSEngine bool
-	rawEngine      *packetEngine
-	decodedEngine  *packetEngine
-	eitUpdater     EITSectionUpdater
-	logoUpdater    LogoUpdater
-	sectionCancel  context.CancelFunc
-	sectionQueue   chan ts.Section
+	broadcast     *Broadcast
+	channel       string
+	descrambler   Descrambler
+	mu            sync.Mutex
+	stopped       bool
+	typ           string
+	rawEngine     *packetEngine
+	decodedEngine *packetEngine
+	eitUpdater    EITSectionUpdater
+	logoUpdater   LogoUpdater
+	sectionCancel context.CancelFunc
+	sectionQueue  chan ts.Section
 }
 
 type ChannelSessionConfig struct {
-	Channel        string
-	ChannelConfig  *config.ChannelConfig
-	Broadcast      *Broadcast
-	Descrambler    Descrambler
-	EITCollector   EITCollector
-	EITUpdater     EITSectionUpdater
-	Filter         ServiceFilter
-	LogoPiggyback  *LogoPiggyback
-	LogoUpdater    LogoUpdater
-	OnStop         func()
-	Scanner        ServiceScanner
-	Type           string
-	SharedTSEngine bool
+	Channel     string
+	Broadcast   *Broadcast
+	Descrambler Descrambler
+	EITUpdater  EITSectionUpdater
+	LogoUpdater LogoUpdater
+	OnStop      func()
+	Type        string
 }
 
 func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
 	session := &ChannelSession{
-		broadcast:      config.Broadcast,
-		channel:        config.Channel,
-		descrambler:    config.Descrambler,
-		eitCollector:   config.EITCollector,
-		filter:         config.Filter,
-		logoPiggyback:  config.LogoPiggyback,
-		scanner:        config.Scanner,
-		typ:            config.Type,
-		sharedTSEngine: config.SharedTSEngine,
-		eitUpdater:     config.EITUpdater,
-		logoUpdater:    config.LogoUpdater,
+		broadcast:   config.Broadcast,
+		channel:     config.Channel,
+		descrambler: config.Descrambler,
+		typ:         config.Type,
+		eitUpdater:  config.EITUpdater,
+		logoUpdater: config.LogoUpdater,
 	}
-	if config.SharedTSEngine {
-		sectionCtx, sectionCancel := context.WithCancel(context.Background())
-		session.sectionCancel = sectionCancel
-		session.sectionQueue = make(chan ts.Section, sectionSubscriberBuffer)
-		go session.runSharedSectionUpdates(sectionCtx)
-		session.rawEngine = newPacketEngine(config.Broadcast.SubscribeRaw, config.OnStop, session.observeSharedSection)
-		session.decodedEngine = newPacketEngine(session.subscribeDecodedMux, nil)
-	}
-	if !config.SharedTSEngine {
-		session.flows = NewFlowRegistry(session.broadcast.SubscribeRaw, session.pipelineProcessors, config.OnStop)
-	}
+	sectionCtx, sectionCancel := context.WithCancel(context.Background())
+	session.sectionCancel = sectionCancel
+	session.sectionQueue = make(chan ts.Section, sectionSubscriberBuffer)
+	go session.runSectionUpdates(sectionCtx)
+	session.rawEngine = newPacketEngine(config.Broadcast.SubscribeRaw, config.OnStop, session.observeSection)
+	session.decodedEngine = newPacketEngine(session.subscribeDecodedMux, nil)
 	return session
 }
 
@@ -85,131 +62,65 @@ func (s *ChannelSession) RawStream(ctx context.Context, dst io.Writer) error {
 }
 
 func (s *ChannelSession) ChannelStream(ctx context.Context, decode bool, dst io.Writer) error {
-	if s.sharedTSEngine {
-		return s.attachEngine(ctx, decode, 0, false, dst)
-	}
-	key := PipelineKey{
-		ChannelType: s.typ,
-		ChannelID:   s.channel,
-		Kind:        PipelineChannelStream,
-		Decode:      decode,
-	}
-	return s.attachPipeline(ctx, key, dst)
+	return s.attachEngine(ctx, decode, 0, false, dst)
 }
 
 func (s *ChannelSession) ServiceStream(ctx context.Context, serviceID uint16, decode bool, dst io.Writer) error {
-	if s.sharedTSEngine {
-		return s.attachEngine(ctx, decode, serviceID, true, dst)
-	}
-	key := PipelineKey{
-		ChannelType: s.typ,
-		ChannelID:   s.channel,
-		Kind:        PipelineServiceStream,
-		ServiceID:   serviceID,
-		Decode:      decode,
-	}
-	return s.attachPipeline(ctx, key, dst)
+	return s.attachEngine(ctx, decode, serviceID, true, dst)
 }
 
 func (s *ChannelSession) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
-	if s.sharedTSEngine {
-		return s.programStreamShared(ctx, p, decode, dst)
-	}
-	key := PipelineKey{
-		ChannelType:  s.typ,
-		ChannelID:    s.channel,
-		Kind:         PipelineProgramStream,
-		NetworkID:    p.NetworkID,
-		ServiceID:    p.ServiceID,
-		EventID:      p.EventID,
-		EventTimeout: programEventTimeout(p.StartAt, p.Duration),
-		Decode:       decode,
-	}
-	return s.attachPipeline(ctx, key, dst)
+	return s.programStream(ctx, p, decode, dst)
 }
 
 func (s *ChannelSession) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
-	if s.sharedTSEngine {
-		scan := ts.NewServiceScan()
-		err := s.broadcast.WithUser(ctx, func() error {
-			return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
-				switch section.TableID() {
-				case ts.TableIDPAT, ts.TableIDSDT0, ts.TableIDNIT0:
-					return true
-				default:
-					return false
-				}
-			}, func(section ts.Section) error {
-				scan.Observe(section)
-				if scan.Complete() {
-					return errScanComplete
-				}
-				return nil
-			})
+	scan := ts.NewServiceScan()
+	err := s.broadcast.WithUser(ctx, func() error {
+		return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
+			switch section.TableID() {
+			case ts.TableIDPAT, ts.TableIDSDT0, ts.TableIDNIT0:
+				return true
+			default:
+				return false
+			}
+		}, func(section ts.Section) error {
+			scan.Observe(section)
+			if scan.Complete() {
+				return errScanComplete
+			}
+			return nil
 		})
-		if errors.Is(err, errScanComplete) {
-			return scan.Services(), nil
-		}
-		return scan.Services(), err
-	}
-	if s.scanner == nil {
-		return nil, ErrServiceScannerNotConfigured
-	}
-	var services []ts.ServiceInfo
-	err := NewStreamTaskRunner(s.broadcast).RunTask(ctx, func(ctx context.Context, src io.Reader) error {
-		var err error
-		services, err = s.scanner.ScanServices(ctx, src)
-		return err
 	})
-	return services, err
+	if errors.Is(err, errScanComplete) {
+		return scan.Services(), nil
+	}
+	return scan.Services(), err
 }
 
 func (s *ChannelSession) CollectEITS(ctx context.Context, observe func(*ts.EIT) error) error {
-	if s.sharedTSEngine {
-		return s.broadcast.WithUser(ctx, func() error { return s.observeEIT(ctx, ts.IsEITS, observe) })
-	}
-	if s.eitCollector == nil {
-		return ErrEITCollectorNotConfigured
-	}
-	return NewStreamTaskRunner(s.broadcast).RunTask(ctx, func(ctx context.Context, src io.Reader) error {
-		return s.eitCollector.CollectEITS(ctx, src, observe)
-	})
+	return s.broadcast.WithUser(ctx, func() error { return s.observeEIT(ctx, ts.IsEITS, observe) })
 }
 
 func (s *ChannelSession) CollectEITPF(ctx context.Context, observe func(*ts.EIT) error) error {
-	if s.sharedTSEngine {
-		return s.broadcast.WithUser(ctx, func() error { return s.observeEIT(ctx, ts.IsEITPF, observe) })
-	}
-	if s.eitCollector == nil {
-		return ErrEITCollectorNotConfigured
-	}
-	return NewStreamTaskRunner(s.broadcast).RunTask(ctx, func(ctx context.Context, src io.Reader) error {
-		return s.eitCollector.CollectEITPF(ctx, src, observe)
-	})
+	return s.broadcast.WithUser(ctx, func() error { return s.observeEIT(ctx, ts.IsEITPF, observe) })
 }
 
 func (s *ChannelSession) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
-	if s.sharedTSEngine {
-		return s.broadcast.WithUser(ctx, func() error {
-			return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
-				return section.TableID() == ts.TableIDCDT
-			}, func(section ts.Section) error {
-				cdt, err := ts.ParseCDT(section)
-				if err != nil {
-					return nil
-				}
-				image, err := ts.ParseCDTLogoImage(cdt)
-				if err != nil {
-					return nil
-				}
-				return observe(image)
-			})
+	return s.broadcast.WithUser(ctx, func() error {
+		return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
+			return section.TableID() == ts.TableIDCDT
+		}, func(section ts.Section) error {
+			cdt, err := ts.ParseCDT(section)
+			if err != nil {
+				return nil
+			}
+			image, err := ts.ParseCDTLogoImage(cdt)
+			if err != nil {
+				return nil
+			}
+			return observe(image)
 		})
-	}
-	if s.logoPiggyback == nil {
-		return ErrLogoCollectorNotConfigured
-	}
-	return s.logoPiggyback.Observe(ctx, s.broadcast, observe)
+	})
 }
 
 func (s *ChannelSession) Stop(ctx context.Context) error {
@@ -219,16 +130,12 @@ func (s *ChannelSession) Stop(ctx context.Context) error {
 		return nil
 	}
 	s.stopped = true
-	flows := s.flows
 	broadcast := s.broadcast
 	rawEngine := s.rawEngine
 	decodedEngine := s.decodedEngine
 	sectionCancel := s.sectionCancel
 	s.mu.Unlock()
 
-	if flows != nil {
-		flows.Stop()
-	}
 	if decodedEngine != nil {
 		decodedEngine.Stop()
 	}
@@ -292,7 +199,7 @@ func (s *ChannelSession) subscribeDecodedMux(ctx context.Context, dst io.Writer)
 	return errors.Join(err, rawErr)
 }
 
-func (s *ChannelSession) programStreamShared(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
+func (s *ChannelSession) programStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	gate := newProgramEventGate(p.NetworkID, p.ServiceID, p.EventID, programEventTimeout(p.StartAt, p.Duration), cancel)
@@ -323,7 +230,7 @@ func (s *ChannelSession) programStreamShared(ctx context.Context, p *program.Pro
 		sourceDone <- s.attachEngine(ctx, decode, p.ServiceID, true, w)
 		_ = w.Close()
 	}()
-	err := runSharedProgramGate(r, dst, gate)
+	err := runProgramGate(r, dst, gate)
 	_ = r.Close()
 	cancel()
 	sourceErr := <-sourceDone
@@ -331,7 +238,7 @@ func (s *ChannelSession) programStreamShared(ctx context.Context, p *program.Pro
 	return errors.Join(expectedNil(err), expectedNil(sourceErr), expectedNil(observeErr))
 }
 
-func runSharedProgramGate(src io.Reader, dst io.Writer, gate *programEventGate) error {
+func runProgramGate(src io.Reader, dst io.Writer, gate *programEventGate) error {
 	packet := make([]byte, ts.PacketSize)
 	var result error
 	for {
@@ -366,30 +273,30 @@ func (s *ChannelSession) observeEIT(ctx context.Context, accept func(byte) bool,
 	})
 }
 
-func (s *ChannelSession) observeSharedSection(section ts.Section) {
+func (s *ChannelSession) observeSection(section ts.Section) {
 	select {
 	case s.sectionQueue <- section:
 	default:
-		slog.Warn("shared TS section updater overflow", "type", s.typ, "channel", s.channel)
+		slog.Warn("TS section updater overflow", "type", s.typ, "channel", s.channel)
 	}
 }
 
-func (s *ChannelSession) runSharedSectionUpdates(ctx context.Context) {
+func (s *ChannelSession) runSectionUpdates(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case section := <-s.sectionQueue:
-			s.updateSharedSection(ctx, section)
+			s.updateSection(ctx, section)
 		}
 	}
 }
 
-func (s *ChannelSession) updateSharedSection(ctx context.Context, section ts.Section) {
+func (s *ChannelSession) updateSection(ctx context.Context, section ts.Section) {
 	if ts.IsEITPF(section.TableID()) && s.eitUpdater != nil {
 		if eit, err := ts.ParseEIT(section); err == nil {
 			if err := s.eitUpdater.UpsertEIT(ctx, eit); err != nil {
-				slog.Error("failed to update shared EITPF", "type", s.typ, "channel", s.channel, "err", err)
+				slog.Error("failed to update EITPF", "type", s.typ, "channel", s.channel, "err", err)
 			}
 		}
 	}
@@ -397,51 +304,11 @@ func (s *ChannelSession) updateSharedSection(ctx context.Context, section ts.Sec
 		if cdt, err := ts.ParseCDT(section); err == nil {
 			if image, err := ts.ParseCDTLogoImage(cdt); err == nil {
 				if err := s.logoUpdater.UpsertLogoImage(ctx, image); err != nil {
-					slog.Error("failed to update shared logo", "type", s.typ, "channel", s.channel, "err", err)
+					slog.Error("failed to update logo", "type", s.typ, "channel", s.channel, "err", err)
 				}
 			}
 		}
 	}
-}
-
-func (s *ChannelSession) attachPipeline(ctx context.Context, key PipelineKey, dst io.Writer) error {
-	s.mu.Lock()
-	stopped := s.stopped
-	flows := s.flows
-	s.mu.Unlock()
-	if stopped {
-		return errors.New("channel session stopped")
-	}
-	return s.broadcast.WithUser(ctx, func() error {
-		return flows.Attach(ctx, key, dst)
-	})
-}
-
-func (s *ChannelSession) pipelineProcessors(key PipelineKey) []Processor {
-	processors := []Processor{}
-	if key.Decode && s.descrambler != nil {
-		processors = append(processors, descramblerProcessor{descrambler: s.descrambler})
-	}
-	if key.Kind == PipelineServiceStream || key.Kind == PipelineProgramStream {
-		if s.filter == nil {
-			processors = append(processors, errorProcessor{err: ErrServiceFilterNotConfigured})
-			return processors
-		}
-		processors = append(processors, serviceFilterProcessor{
-			filter:    s.filter,
-			serviceID: key.ServiceID,
-		})
-	}
-	if key.Kind == PipelineProgramStream {
-		processors = append(processors, programEventGateProcessor{
-			collector:      s.eitCollector,
-			eventID:        key.EventID,
-			initialTimeout: key.EventTimeout,
-			networkID:      key.NetworkID,
-			serviceID:      key.ServiceID,
-		})
-	}
-	return processors
 }
 
 func programEventTimeout(startAt int64, duration int) time.Duration {

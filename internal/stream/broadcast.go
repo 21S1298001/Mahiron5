@@ -11,13 +11,10 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/util"
 )
 
-type BroadcastHook func(context.Context, *Broadcast)
-
 type Broadcast struct {
 	cancel  context.CancelFunc
 	done    <-chan struct{}
 	err     error
-	hooks   []BroadcastHook
 	hub     *util.DynamicMultiWriter
 	mu      sync.Mutex
 	onStops []func()
@@ -27,9 +24,8 @@ type Broadcast struct {
 	stopped bool
 }
 
-func NewBroadcast(source LiveSource, hooks []BroadcastHook, onStop func()) *Broadcast {
+func NewBroadcast(source LiveSource, onStop func()) *Broadcast {
 	broadcast := &Broadcast{
-		hooks:  hooks,
 		hub:    util.NewDynamicMultiWriter(),
 		source: source,
 	}
@@ -68,23 +64,6 @@ func (b *Broadcast) SubscribeRaw(ctx context.Context, dst io.Writer) error {
 
 func (b *Broadcast) WithUser(ctx context.Context, run func() error) error {
 	return b.source.WithUser(ctx, run)
-}
-
-func (b *Broadcast) Tap(ctx context.Context, dst io.Writer) error {
-	b.mu.Lock()
-	if b.stopped {
-		b.mu.Unlock()
-		return errors.New("broadcast stopped")
-	}
-	if !b.started {
-		b.mu.Unlock()
-		return errors.New("broadcast not started")
-	}
-	b.hub.Attach(dst)
-	b.mu.Unlock()
-	defer b.hub.Detach(dst)
-
-	return b.wait(ctx)
 }
 
 func (b *Broadcast) Stop(ctx context.Context) error {
@@ -179,9 +158,6 @@ func (b *Broadcast) startLocked() error {
 	b.done = b.source.Done()
 	b.started = true
 	slog.Info("broadcast started")
-	for _, hook := range b.hooks {
-		hook(ctx, b)
-	}
 	return nil
 }
 

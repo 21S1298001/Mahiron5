@@ -124,12 +124,11 @@ func TestSharedSessionUsesOneDescramblerForDecodedSubscribers(t *testing.T) {
 	source := &finitePacketSource{data: bytes.Repeat(packet, 4), start: start, done: make(chan struct{})}
 	descrambler := &passthroughDescrambler{}
 	session := NewChannelSession(ChannelSessionConfig{
-		Broadcast:      NewBroadcast(source, nil, nil),
-		Channel:        "27",
-		Descrambler:    descrambler,
-		OnStop:         func() {},
-		SharedTSEngine: true,
-		Type:           "GR",
+		Broadcast:   NewBroadcast(source, nil),
+		Channel:     "27",
+		Descrambler: descrambler,
+		OnStop:      func() {},
+		Type:        "GR",
 	})
 
 	var first, second bytes.Buffer

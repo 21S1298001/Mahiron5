@@ -1,9 +1,6 @@
 package ts
 
 import (
-	"context"
-	"errors"
-	"io"
 	"sort"
 )
 
@@ -19,9 +16,6 @@ type ServiceInfo struct {
 	LogoDownloadDataId *uint16 `json:"logoDownloadDataId,omitempty"`
 	RemoteControlKeyId *uint8  `json:"remoteControlKeyId,omitempty"`
 }
-
-// ServiceScanner reads a TS stream and outputs a list of services.
-type ServiceScanner struct{}
 
 // ServiceScan incrementally builds the service list from PAT, SDT and NIT
 // sections supplied by a shared Demuxer.
@@ -50,54 +44,6 @@ func (s *ServiceScan) Services() []ServiceInfo {
 	return s.state.serviceList()
 }
 
-// NewServiceScanner creates a new ServiceScanner.
-func NewServiceScanner() *ServiceScanner {
-	return &ServiceScanner{}
-}
-
-// Scan reads TS from src and returns detected services.
-func (s *ServiceScanner) Scan(ctx context.Context, src io.Reader) ([]ServiceInfo, error) {
-	return s.ScanServices(ctx, src)
-}
-
-// ScanServices reads TS from src and returns detected services.
-func (s *ServiceScanner) ScanServices(ctx context.Context, src io.Reader) ([]ServiceInfo, error) {
-	state := newServiceScanState()
-	reader := NewPacketReader(src)
-	demuxer := NewDemuxer()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		packet, err := reader.Next()
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			if errors.Is(err, io.EOF) {
-				return state.serviceList(), nil
-			}
-			return nil, err
-		}
-		if packet.TransportErrorIndicator() || packet.IsNull() || !packet.ValidPayloadOffset() {
-			continue
-		}
-		sections, err := demuxer.Feed(packet)
-		if err != nil {
-			return nil, err
-		}
-		for _, section := range sections {
-			state.observeSection(section)
-		}
-		if state.complete() {
-			return state.serviceList(), nil
-		}
-	}
-}
-
 type serviceScanState struct {
 	pat         *PAT
 	patSections tableSectionSet
@@ -105,14 +51,12 @@ type serviceScanState struct {
 	nitSections tableSectionSet
 	sdtReady    bool
 	sdtSections tableSectionSet
-	assemblers  map[uint16]*SectionAssembler
 	services    map[uint16]ServiceInfo
 	remoteKeys  map[uint16]uint8
 }
 
 func newServiceScanState() *serviceScanState {
 	return &serviceScanState{
-		assemblers: map[uint16]*SectionAssembler{},
 		services:   map[uint16]ServiceInfo{},
 		remoteKeys: map[uint16]uint8{},
 	}
@@ -160,26 +104,6 @@ func (s *tableSectionSet) ordered() []Section {
 		sections = append(sections, s.sections[byte(number)])
 	}
 	return sections
-}
-
-func (s *serviceScanState) observe(packet Packet) error {
-	pid := packet.PID()
-	if pid != PIDPAT && pid != PIDSDT && pid != PIDNIT {
-		return nil
-	}
-	assembler := s.assemblers[pid]
-	if assembler == nil {
-		assembler = NewSectionAssembler(pid)
-		s.assemblers[pid] = assembler
-	}
-	sections, err := assembler.FeedAll(packet)
-	if err != nil {
-		return err
-	}
-	for _, section := range sections {
-		s.observeSection(section)
-	}
-	return nil
 }
 
 func (s *serviceScanState) observeSection(section Section) {

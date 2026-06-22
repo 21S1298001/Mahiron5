@@ -16,15 +16,10 @@ import (
 
 type StreamManager struct {
 	mu             sync.Mutex
-	eitCollector   EITCollector
 	eitUpdater     EITSectionUpdater
-	filter         ServiceFilter
-	logoCollector  LogoCollector
 	logoUpdater    LogoUpdater
 	programUpdater ProgramUpdater
 	remotes        map[string]*RemoteClient
-	scanner        ServiceScanner
-	sharedTSEngine bool
 	sessions       map[sessionKey]Session
 	sessionTypes   map[sessionKey]string
 	sources        *SourcePool
@@ -33,16 +28,11 @@ type StreamManager struct {
 type StreamManagerConfig struct {
 	Channels           config.ChannelsConfig
 	DescramblerFactory DescramblerFactory
-	Filter             ServiceFilter
-	EITCollector       EITCollector
 	EITUpdater         EITSectionUpdater
 	Remotes            config.RemotesConfig
-	LogoCollector      LogoCollector
 	LogoUpdater        LogoUpdater
 	ProgramUpdater     ProgramUpdater
-	Scanner            ServiceScanner
 	TunerManager       TunerManager
-	SharedTSEngine     bool
 }
 
 type sessionKey struct {
@@ -71,15 +61,10 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		remotes[remote.Name] = newRemoteClient(remote)
 	}
 	return &StreamManager{
-		eitCollector:   cfg.EITCollector,
 		eitUpdater:     cfg.EITUpdater,
-		filter:         cfg.Filter,
-		logoCollector:  cfg.LogoCollector,
 		logoUpdater:    cfg.LogoUpdater,
 		programUpdater: cfg.ProgramUpdater,
 		remotes:        remotes,
-		scanner:        cfg.Scanner,
-		sharedTSEngine: cfg.SharedTSEngine,
 		sessions:       map[sessionKey]Session{},
 		sessionTypes:   map[sessionKey]string{},
 		sources:        NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
@@ -112,19 +97,8 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		return session, nil
 	}
 
-	hooks := []BroadcastHook{}
-	var logoPiggyback *LogoPiggyback
-	if !m.sharedTSEngine {
-		if piggyback := NewEITPFPiggyback(channelType, channel, m.eitCollector, m.eitUpdater); piggyback != nil {
-			hooks = append(hooks, piggyback.Hook)
-		}
-		logoPiggyback = NewLogoPiggyback(channelType, channel, m.logoCollector, m.logoUpdater)
-		if logoPiggyback != nil {
-			hooks = append(hooks, logoPiggyback.Hook)
-		}
-	}
 	slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
-	lease, err := m.sources.Acquire(ctx, channelType, channel, wait, hooks)
+	lease, err := m.sources.Acquire(ctx, channelType, channel, wait)
 	if err != nil {
 		slog.Debug("failed to acquire stream source", "type", channelType, "channel", channel, "wait", wait, "err", err)
 		return nil, err
@@ -140,7 +114,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	}
 	broadcast := lease.Broadcast
 	if broadcast == nil {
-		broadcast = NewBroadcast(lease.Source, hooks, func() { m.remove(key) })
+		broadcast = NewBroadcast(lease.Source, func() { m.remove(key) })
 	} else {
 		if !broadcast.AddOnStop(func() { m.remove(key) }) {
 			return nil, errors.New("broadcast stopped")
@@ -148,19 +122,13 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	}
 
 	session = NewChannelSession(ChannelSessionConfig{
-		Channel:        channel,
-		ChannelConfig:  lease.Channel,
-		Broadcast:      broadcast,
-		Descrambler:    lease.Descrambler,
-		EITCollector:   m.eitCollector,
-		EITUpdater:     m.eitUpdater,
-		Filter:         m.filter,
-		LogoPiggyback:  logoPiggyback,
-		LogoUpdater:    m.logoUpdater,
-		OnStop:         func() { m.remove(key) },
-		Scanner:        m.scanner,
-		Type:           channelType,
-		SharedTSEngine: m.sharedTSEngine,
+		Channel:     channel,
+		Broadcast:   broadcast,
+		Descrambler: lease.Descrambler,
+		EITUpdater:  m.eitUpdater,
+		LogoUpdater: m.logoUpdater,
+		OnStop:      func() { m.remove(key) },
+		Type:        channelType,
 	})
 	m.sessions[key] = session
 	m.sessionTypes[key] = lease.RouteType
@@ -219,14 +187,12 @@ func (m *StreamManager) remove(key sessionKey) {
 }
 
 var (
-	ErrChannelNotFound             = errors.New("channel not found")
-	ErrEITCollectorNotConfigured   = errors.New("EIT collector not configured")
-	ErrServiceFilterNotConfigured  = errors.New("service filter not configured")
-	ErrServiceScannerNotConfigured = errors.New("service scanner not configured")
-	ErrLogoCollectorNotConfigured  = errors.New("logo collector not configured")
-	ErrTunerNotFound               = tuner.ErrTunerNotFound
-	ErrUnsupportedTuner            = tuner.ErrUnsupportedTuner
-	ErrTunerUnavailable            = tuner.ErrTunerUnavailable
+	ErrChannelNotFound            = errors.New("channel not found")
+	ErrEITObservationUnsupported  = errors.New("EIT observation is not supported by remote sessions")
+	ErrLogoObservationUnsupported = errors.New("logo observation is not supported by remote sessions")
+	ErrTunerNotFound              = tuner.ErrTunerNotFound
+	ErrUnsupportedTuner           = tuner.ErrUnsupportedTuner
+	ErrTunerUnavailable           = tuner.ErrTunerUnavailable
 )
 
 type TunerManager interface {
@@ -243,25 +209,8 @@ type DecoderCommandProvider interface {
 
 type TunerDevice = tuner.Device
 
-type ServiceFilter interface {
-	FilterService(context.Context, uint16, io.Reader, io.Writer) error
-}
-
-type ServiceScanner interface {
-	ScanServices(context.Context, io.Reader) ([]ts.ServiceInfo, error)
-}
-
-type EITCollector interface {
-	CollectEITS(context.Context, io.Reader, func(*ts.EIT) error) error
-	CollectEITPF(context.Context, io.Reader, func(*ts.EIT) error) error
-}
-
 type EITSectionUpdater interface {
 	UpsertEIT(ctx context.Context, eit *ts.EIT) error
-}
-
-type LogoCollector interface {
-	Collect(context.Context, io.Reader, func(*ts.LogoImage) error) error
 }
 
 type LogoUpdater interface {

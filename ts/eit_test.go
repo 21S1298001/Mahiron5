@@ -4,8 +4,6 @@ package ts
 // information contract defined by ARIB STD-B10.
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -45,34 +43,6 @@ func TestParseEITParsesHeaderEventsAndDescriptors(t *testing.T) {
 	}
 }
 
-func TestEITCollectorFiltersTables(t *testing.T) {
-	pf := buildEIT(t, TableIDEITPF0, 1024, 1, 2, 0, 0, 0, []eitEventSpec{{eventID: 1, start: time.Date(2026, 6, 21, 1, 2, 3, 0, jst), duration: time.Minute}})
-	schedule := buildEIT(t, TableIDEITSStart, 1024, 1, 2, 0, 0, 0, []eitEventSpec{{eventID: 2, start: time.Date(2026, 6, 21, 2, 3, 4, 0, jst), duration: 2 * time.Minute}})
-	input := append(sectionPackets(PIDEIT, pf, 0), sectionPackets(PIDEIT, schedule, 1)...)
-
-	var pfSections []*EIT
-	if err := NewEITCollector().CollectEITPF(context.Background(), bytes.NewReader(input), func(eit *EIT) error {
-		pfSections = append(pfSections, eit)
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if len(pfSections) != 1 || pfSections[0].TableID != TableIDEITPF0 || len(pfSections[0].Events) != 1 || pfSections[0].Events[0].EventID != 1 {
-		t.Fatalf("PF sections = %#v", pfSections)
-	}
-
-	var scheduleSections []*EIT
-	if err := NewEITCollector().CollectEITS(context.Background(), bytes.NewReader(input), func(eit *EIT) error {
-		scheduleSections = append(scheduleSections, eit)
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if len(scheduleSections) != 1 || scheduleSections[0].TableID != TableIDEITSStart || len(scheduleSections[0].Events) != 1 || scheduleSections[0].Events[0].EventID != 2 {
-		t.Fatalf("schedule sections = %#v", scheduleSections)
-	}
-}
-
 func TestParseEITRejectsInvalidSectionsAndUndefinedTimes(t *testing.T) {
 	section := buildEIT(t, TableIDEITPF0, 1024, 1, 2, 0, 0, 0, []eitEventSpec{{eventID: 1, undefinedStart: true, undefinedDuration: true}})
 	eit, err := ParseEIT(section)
@@ -92,15 +62,6 @@ func TestParseEITRejectsInvalidSectionsAndUndefinedTimes(t *testing.T) {
 	brokenBCD := buildEIT(t, TableIDEITPF0, 1024, 1, 2, 0, 0, 0, []eitEventSpec{{eventID: 1, rawStart: []byte{0xef, 0x00, 0x2a, 0x00, 0x00}}})
 	if _, err := ParseEIT(brokenBCD); !errors.Is(err, ErrInvalidSection) {
 		t.Fatalf("broken BCD error = %v, want ErrInvalidSection", err)
-	}
-}
-
-func TestEITCollectorHonorsCanceledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	err := NewEITCollector().CollectEITPF(ctx, bytes.NewReader(nil), func(*EIT) error { return nil })
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("CollectEITPF error = %v, want context.Canceled", err)
 	}
 }
 

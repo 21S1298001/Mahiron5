@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -47,8 +46,6 @@ func testManagerWithDescrambler(t *testing.T, devices *fakeTunerDeviceRecorder, 
 			},
 		},
 		DescramblerFactory: factory,
-		Filter:             fakeFilter{},
-		Scanner:            fakeScanner{},
 		TunerManager: fakeTunerManager{
 			decoderCommand: "descrambler",
 			devices:        devices,
@@ -134,8 +131,6 @@ func TestManagerSharesLocalRouteAcrossLogicalChannels(t *testing.T) {
 				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
 			},
 		},
-		Filter:       fakeFilter{},
-		Scanner:      fakeScanner{},
 		TunerManager: fakeTunerManager{devices: devices},
 	})
 
@@ -221,62 +216,6 @@ func TestManagerCoalescesConcurrentLocalRouteCreation(t *testing.T) {
 	}
 	if got := tuners.acquires(); got != 1 {
 		t.Fatalf("tuner acquires = %d, want 1", got)
-	}
-}
-
-func TestManagerSharesLocalRouteButFiltersPerLogicalSession(t *testing.T) {
-	no := false
-	devices := &fakeTunerDeviceRecorder{}
-	manager := NewStreamManager(StreamManagerConfig{
-		Channels: config.ChannelsConfig{
-			{
-				Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no,
-				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
-			},
-			{
-				Name: "NHK 2", Type: "GR", Channel: "28", IsDisabled: &no,
-				Routes: []config.ChannelRouteConfig{{Id: "catv-27", Type: "CATV", Channel: "C27", IsDisabled: &no}},
-			},
-		},
-		Filter:       serviceIDFilter{},
-		TunerManager: fakeTunerManager{devices: devices},
-	})
-
-	first, err := manager.GetOrCreate(context.Background(), "GR", "27")
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := manager.GetOrCreate(context.Background(), "GR", "28")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var firstOut bytes.Buffer
-	var secondOut bytes.Buffer
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		if err := first.ServiceStream(context.Background(), 1024, false, &firstOut); err != nil {
-			t.Errorf("first service stream: %v", err)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		if err := second.ServiceStream(context.Background(), 2048, false, &secondOut); err != nil {
-			t.Errorf("second service stream: %v", err)
-		}
-	}()
-	wg.Wait()
-
-	if got := devices.starts(); got != 1 {
-		t.Fatalf("tuner device starts = %d, want 1", got)
-	}
-	if got, want := firstOut.String(), "service:1024:ts2"; got != want {
-		t.Fatalf("first service stream = %q, want %q", got, want)
-	}
-	if got, want := secondOut.String(), "service:2048:ts2"; got != want {
-		t.Fatalf("second service stream = %q, want %q", got, want)
 	}
 }
 
@@ -535,8 +474,8 @@ func TestRawStream(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, want := out.String(), "ts2"; got != want {
-		t.Fatalf("raw stream = %q, want %q", got, want)
+	if got, want := out.Len(), 2*ts.PacketSize; got != want {
+		t.Fatalf("raw stream bytes = %d, want %d", got, want)
 	}
 	if got := devices.starts(); got != 1 {
 		t.Fatalf("tuner device starts = %d, want 1", got)
@@ -577,108 +516,7 @@ func TestConcurrentRawStreamsStartOneTunerDevice(t *testing.T) {
 	}
 }
 
-func TestServiceStreamAndScanShareRunningSession(t *testing.T) {
-	devices := &fakeTunerDeviceRecorder{}
-	manager := testManager(t, devices)
-	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var serviceOut bytes.Buffer
-	var scanServices []ts.ServiceInfo
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		if err := session.ServiceStream(context.Background(), 1024, false, &serviceOut); err != nil {
-			t.Errorf("service stream: %v", err)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		var err error
-		scanServices, err = session.ScanServices(context.Background())
-		if err != nil {
-			t.Errorf("scan services: %v", err)
-		}
-	}()
-	wg.Wait()
-
-	if got := devices.starts(); got != 1 {
-		t.Fatalf("tuner device starts = %d, want 1", got)
-	}
-	if got, want := serviceOut.String(), "filtered:ts2"; got != want {
-		t.Fatalf("service stream = %q, want %q", got, want)
-	}
-	if len(scanServices) != 1 || scanServices[0].Name != "ts2" {
-		t.Fatalf("scan services = %#v, want one service named ts2", scanServices)
-	}
-}
-
-func TestScanServicesReturnsWhenScannerCompletesBeforeLiveTuner(t *testing.T) {
-	device := &fakeLiveTunerDevice{}
-	manager := NewStreamManager(StreamManagerConfig{
-		Channels: config.ChannelsConfig{
-			{
-				Name:    "NHK",
-				Type:    "GR",
-				Channel: "27",
-			},
-		},
-		Scanner: fakeShortScanner{},
-		TunerManager: fakeLiveTunerManager{
-			device: device,
-		},
-	})
-	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	done := make(chan error, 1)
-	var services []ts.ServiceInfo
-	go func() {
-		var err error
-		services, err = session.ScanServices(context.Background())
-		done <- err
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("ScanServices did not return after scanner completed")
-	}
-
-	if len(services) != 1 || services[0].Name != "scanned:ts" {
-		t.Fatalf("scan services = %#v, want one service named scanned:ts", services)
-	}
-	if got := device.startCount(); got != 1 {
-		t.Fatalf("tuner device starts = %d, want 1", got)
-	}
-	if manager.HasSession("GR", "27") {
-		t.Fatal("completed scan left a stopped session cached")
-	}
-
-	replacement, err := manager.GetOrCreate(context.Background(), "GR", "27")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if replacement == session {
-		t.Fatal("GetOrCreate reused the stopped scan session")
-	}
-	if _, err := replacement.ScanServices(context.Background()); err != nil {
-		t.Fatalf("replacement session scan: %v", err)
-	}
-	if got := device.startCount(); got != 2 {
-		t.Fatalf("tuner device starts after replacement = %d, want 2", got)
-	}
-}
-
-func TestDecodePipelinesShareOneTunerDevice(t *testing.T) {
+func TestDecodedStreamSharesOneTunerDevice(t *testing.T) {
 	devices := &fakeTunerDeviceRecorder{}
 	descramblers := &fakeDescramblerRecorder{}
 	manager := testManagerWithDescrambler(t, devices, descramblers)
@@ -708,94 +546,14 @@ func TestDecodePipelinesShareOneTunerDevice(t *testing.T) {
 	if got := devices.starts(); got != 1 {
 		t.Fatalf("tuner device starts = %d, want 1", got)
 	}
-	if got, want := rawOut.String(), "ts2"; got != want {
-		t.Fatalf("raw stream = %q, want %q", got, want)
+	if got, want := rawOut.Len(), 2*ts.PacketSize; got != want {
+		t.Fatalf("raw stream bytes = %d, want %d", got, want)
 	}
-	if got, want := decodedOut.String(), "decoded:ts2"; got != want {
-		t.Fatalf("decoded stream = %q, want %q", got, want)
-	}
-	if got := descramblers.starts(); got != 1 {
-		t.Fatalf("descrambler starts = %d, want 1", got)
-	}
-}
-
-func TestServiceDecodePipelineOrder(t *testing.T) {
-	devices := &fakeTunerDeviceRecorder{}
-	descramblers := &fakeDescramblerRecorder{}
-	manager := testManagerWithDescrambler(t, devices, descramblers)
-	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var out bytes.Buffer
-	if err := session.ServiceStream(context.Background(), 1024, true, &out); err != nil {
-		t.Fatal(err)
-	}
-
-	if got, want := out.String(), "filtered:decoded:ts2"; got != want {
-		t.Fatalf("service stream = %q, want %q", got, want)
+	if !bytes.Equal(decodedOut.Bytes(), rawOut.Bytes()) {
+		t.Fatal("decoded stream does not match passthrough descrambler output")
 	}
 	if got := descramblers.starts(); got != 1 {
 		t.Fatalf("descrambler starts = %d, want 1", got)
-	}
-}
-
-func TestSharedServicePipelineStartsOneDescrambler(t *testing.T) {
-	devices := &fakeTunerDeviceRecorder{}
-	descramblers := &fakeDescramblerRecorder{}
-	manager := testManagerWithDescrambler(t, devices, descramblers)
-	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var first bytes.Buffer
-	var second bytes.Buffer
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		if err := session.ServiceStream(context.Background(), 1024, true, &first); err != nil {
-			t.Errorf("first service stream: %v", err)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		if err := session.ServiceStream(context.Background(), 1024, true, &second); err != nil {
-			t.Errorf("second service stream: %v", err)
-		}
-	}()
-	wg.Wait()
-
-	if got := devices.starts(); got != 1 {
-		t.Fatalf("tuner device starts = %d, want 1", got)
-	}
-	if got := descramblers.starts(); got != 1 {
-		t.Fatalf("descrambler starts = %d, want 1", got)
-	}
-	if first.String() == "" || second.String() == "" {
-		t.Fatalf("both subscribers should receive data: first=%q second=%q", first.String(), second.String())
-	}
-}
-
-func TestPipelineConvertsProcessorPanicToError(t *testing.T) {
-	pipeline := newStreamPipeline(
-		PipelineKey{ChannelType: "GR", ChannelID: "27", Kind: PipelineChannelStream, Decode: true},
-		[]Processor{panicProcessor{}},
-		func(ctx context.Context, w io.Writer) error {
-			_, err := w.Write([]byte("ts"))
-			if errors.Is(err, io.ErrClosedPipe) {
-				return nil
-			}
-			return err
-		},
-		func() {},
-	)
-
-	err := pipeline.Attach(context.Background(), io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "stream processor panic") {
-		t.Fatalf("pipeline error = %v, want processor panic", err)
 	}
 }
 
@@ -818,7 +576,7 @@ func TestDetachRawDoesNotLogExpectedClosedFileStopError(t *testing.T) {
 				done:    done,
 				stopErr: &os.PathError{Op: "read", Path: "|0", Err: os.ErrClosed},
 			},
-		}, nil, nil),
+		}, nil),
 	})
 
 	var dst bytes.Buffer
@@ -945,10 +703,10 @@ func (d *fakeTunerDevice) Start(_ context.Context, dst io.Writer) error {
 	d.mu.Unlock()
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		_, err := dst.Write([]byte("ts"))
+		_, err := dst.Write(engineTestPacket(0x0100, 0))
 		if err == nil {
 			time.Sleep(20 * time.Millisecond)
-			_, err = dst.Write([]byte("2"))
+			_, err = dst.Write(engineTestPacket(0x0100, 1))
 		}
 		d.mu.Lock()
 		d.err = err
@@ -976,48 +734,6 @@ func (d *fakeTunerDevice) startCount() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.starts
-}
-
-type fakeFilter struct{}
-
-func (fakeFilter) FilterService(_ context.Context, _ uint16, src io.Reader, dst io.Writer) error {
-	data, err := io.ReadAll(src)
-	if err != nil {
-		return err
-	}
-	_, err = dst.Write([]byte("filtered:" + string(data)))
-	return err
-}
-
-type serviceIDFilter struct{}
-
-func (serviceIDFilter) FilterService(_ context.Context, serviceID uint16, src io.Reader, dst io.Writer) error {
-	data, err := io.ReadAll(src)
-	if err != nil {
-		return err
-	}
-	_, err = dst.Write([]byte(fmt.Sprintf("service:%d:%s", serviceID, string(data))))
-	return err
-}
-
-type fakeScanner struct{}
-
-func (fakeScanner) ScanServices(_ context.Context, src io.Reader) ([]ts.ServiceInfo, error) {
-	data, err := io.ReadAll(src)
-	if err != nil {
-		return nil, err
-	}
-	return []ts.ServiceInfo{{Name: string(data)}}, nil
-}
-
-type fakeShortScanner struct{}
-
-func (fakeShortScanner) ScanServices(_ context.Context, src io.Reader) ([]ts.ServiceInfo, error) {
-	buf := make([]byte, 2)
-	if _, err := io.ReadFull(src, buf); err != nil {
-		return nil, err
-	}
-	return []ts.ServiceInfo{{Name: "scanned:" + string(buf)}}, nil
 }
 
 type fakeLiveTunerManager struct {
@@ -1100,12 +816,6 @@ func (d *fakeLiveTunerDevice) stopCount() int {
 	return d.stops
 }
 
-type panicProcessor struct{}
-
-func (panicProcessor) Run(context.Context, io.Reader, io.Writer) error {
-	panic("boom")
-}
-
 type fakeStopErrorDevice struct {
 	done    <-chan struct{}
 	stopErr error
@@ -1151,10 +861,6 @@ func (d fakeDescrambler) Descramble(_ context.Context, src io.Reader, dst io.Wri
 	d.recorder.startCount++
 	d.recorder.mu.Unlock()
 
-	data, err := io.ReadAll(src)
-	if err != nil {
-		return err
-	}
-	_, err = dst.Write([]byte("decoded:" + string(data)))
+	_, err := io.Copy(dst, src)
 	return err
 }

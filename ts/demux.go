@@ -1,6 +1,26 @@
 package ts
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+const (
+	PIDPAT  = 0x0000
+	PIDCAT  = 0x0001
+	PIDNIT  = 0x0010
+	PIDSDT  = 0x0011
+	PIDEIT  = 0x0012
+	PIDRST  = 0x0013
+	PIDTOT  = 0x0014
+	PIDDIT  = 0x001e
+	PIDSIT  = 0x001f
+	PIDBIT  = 0x0024
+	PIDCDT  = 0x0029
+	PIDNull = 0x1fff
+)
+
+var ErrServiceNotFound = errors.New("ts: service not found")
 
 // Demuxer incrementally parses one transport stream and keeps the shared
 // program/PID state required to produce service streams. It is intentionally
@@ -320,4 +340,43 @@ func commonServicePID(pid uint16) bool {
 	default:
 		return false
 	}
+}
+
+func caPID(desc Descriptor) (uint16, bool) {
+	data := desc.Data()
+	if len(data) < 4 {
+		return 0, false
+	}
+	return uint16(data[2]&0x1f)<<8 | uint16(data[3]), true
+}
+
+func packetizeSection(pid uint16, section Section, counter *byte) []Packet {
+	var packets []Packet
+	remaining := []byte(section)
+	first := true
+	for first || len(remaining) > 0 {
+		packet := make([]byte, PacketSize)
+		for i := range packet {
+			packet[i] = 0xff
+		}
+		packet[0] = SyncByte
+		packet[1] = byte(pid >> 8)
+		if first {
+			packet[1] |= 0x40
+		}
+		packet[2] = byte(pid)
+		packet[3] = 0x10 | (*counter & 0x0f)
+		*counter = (*counter + 1) & 0x0f
+
+		offset := 4
+		if first {
+			packet[offset] = 0
+			offset++
+		}
+		n := copy(packet[offset:], remaining)
+		remaining = remaining[n:]
+		packets = append(packets, Packet(packet))
+		first = false
+	}
+	return packets
 }

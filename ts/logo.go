@@ -2,9 +2,7 @@ package ts
 
 import (
 	"bytes"
-	"context"
 	"errors"
-	"io"
 )
 
 const (
@@ -128,49 +126,4 @@ func ParseCDTLogoImage(cdt *CDT) (*LogoImage, error) {
 		Data:              append([]byte(nil), image...),
 		IsDeleted:         size == 0,
 	}, nil
-}
-
-type LogoCollector struct{}
-
-func NewLogoCollector() *LogoCollector {
-	return &LogoCollector{}
-}
-
-func (c *LogoCollector) Collect(ctx context.Context, src io.Reader, observe func(*LogoImage) error) error {
-	reader := NewPacketReader(src)
-	demuxer := NewDemuxer()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		packet, err := reader.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return err
-		}
-		sections, err := demuxer.Feed(packet)
-		if err != nil {
-			return err
-		}
-		for _, section := range sections {
-			if section.TableID() != TableIDCDT {
-				continue
-			}
-			cdt, err := ParseCDT(section)
-			if err != nil {
-				continue
-			}
-			image, err := ParseCDTLogoImage(cdt)
-			if err != nil {
-				continue
-			}
-			if err := observe(image); err != nil {
-				return err
-			}
-		}
-	}
 }

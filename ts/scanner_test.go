@@ -4,13 +4,9 @@ package ts
 // and satellite operational constraints in TR-B14/TR-B15.
 
 import (
-	"bytes"
-	"context"
 	"errors"
-	"io"
 	"reflect"
 	"testing"
-	"time"
 )
 
 func TestParseSDTParsesServiceDescriptors(t *testing.T) {
@@ -50,31 +46,29 @@ func TestParseSDTRejectsBrokenCRC(t *testing.T) {
 	}
 }
 
-func TestServiceScannerSkipsBrokenServiceDescriptor(t *testing.T) {
+func TestServiceScanSkipsBrokenServiceDescriptor(t *testing.T) {
 	section := buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{
 		{
 			serviceID:   100,
 			descriptors: []byte{DescriptorTagService, 2, 1, 5},
 		},
 	})
-	input := append(sectionPackets(PIDPAT, buildPAT(t, map[uint16]uint16{100: 0x0100}), 0), sectionPackets(PIDSDT, section, 0)...)
-
-	got, err := NewServiceScanner().ScanServices(context.Background(), bytes.NewReader(input))
-	if err != nil {
-		t.Fatal(err)
-	}
+	scan := NewServiceScan()
+	scan.Observe(buildPAT(t, map[uint16]uint16{100: 0x0100}))
+	scan.Observe(section)
+	got := scan.Services()
 	if len(got) != 0 {
-		t.Fatalf("ScanServices returned %#v, want no services", got)
+		t.Fatalf("Services returned %#v, want no services", got)
 	}
 }
 
-func TestServiceScannerDoesNotFilterServiceTypes(t *testing.T) {
-	var input []byte
-	input = append(input, sectionPackets(PIDPAT, buildPAT(t, map[uint16]uint16{
+func TestServiceScanDoesNotFilterServiceTypes(t *testing.T) {
+	scan := NewServiceScan()
+	scan.Observe(buildPAT(t, map[uint16]uint16{
 		100: 0x0100,
 		101: 0x0101,
-	}), 0)...)
-	input = append(input, sectionPackets(PIDSDT, buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{
+	}))
+	scan.Observe(buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{
 		{
 			serviceID:   100,
 			descriptors: serviceDescriptor(0xAD, nil, []byte{0x0e, '4', 'K'}),
@@ -83,31 +77,18 @@ func TestServiceScannerDoesNotFilterServiceTypes(t *testing.T) {
 			serviceID:   101,
 			descriptors: serviceDescriptor(0xC0, nil, []byte{0x0e, 'D', 'A', 'T', 'A'}),
 		},
-	}), 0)...)
-
-	got, err := NewServiceScanner().ScanServices(context.Background(), bytes.NewReader(input))
-	if err != nil {
-		t.Fatal(err)
-	}
+	}))
+	got := scan.Services()
 	want := []ServiceInfo{
 		{Nid: 0x5678, Tsid: 0x1234, Sid: 100, Name: "４Ｋ", Type: 0xAD, LogoId: -1},
 		{Nid: 0x5678, Tsid: 0x1234, Sid: 101, Name: "ＤＡＴＡ", Type: 0xC0, LogoId: -1},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("ScanServices returned %#v, want %#v", got, want)
+		t.Fatalf("Services returned %#v, want %#v", got, want)
 	}
 }
 
-func TestServiceScannerHonorsCanceledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := NewServiceScanner().ScanServices(ctx, bytes.NewReader(nil))
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("ScanServices error = %v, want context.Canceled", err)
-	}
-}
-
-func TestServiceScannerCompletesWithoutSDTForEveryPATService(t *testing.T) {
+func TestServiceScanCompletesWithoutSDTForEveryPATService(t *testing.T) {
 	state := newServiceScanState()
 	observeTable(t, state, PIDPAT, buildPAT(t, map[uint16]uint16{
 		100:    0x0100,
@@ -128,7 +109,7 @@ func TestServiceScannerCompletesWithoutSDTForEveryPATService(t *testing.T) {
 	}
 }
 
-func TestServiceScannerWaitsForEveryTableSection(t *testing.T) {
+func TestServiceScanWaitsForEveryTableSection(t *testing.T) {
 	state := newServiceScanState()
 	pat0 := withTableHeader(buildPAT(t, map[uint16]uint16{100: 0x0100}), TableIDPAT, 0, 0, 1)
 	pat1 := withTableHeader(buildPAT(t, map[uint16]uint16{101: 0x0101}), TableIDPAT, 0, 1, 1)
@@ -179,7 +160,7 @@ func TestTableSectionSetResetsOnVersionChange(t *testing.T) {
 	}
 }
 
-func TestServiceScannerIgnoresOtherTransportSDT(t *testing.T) {
+func TestServiceScanIgnoresOtherTransportSDT(t *testing.T) {
 	state := newServiceScanState()
 	observeTable(t, state, PIDPAT, buildPAT(t, map[uint16]uint16{100: 0x0100}))
 	observeTable(t, state, PIDNIT, buildNIT(t))
@@ -198,27 +179,6 @@ func TestServiceScannerIgnoresOtherTransportSDT(t *testing.T) {
 	}}))
 	if !state.complete() {
 		t.Fatal("actual-TS SDT did not complete service scan")
-	}
-}
-
-func TestServiceScannerReturnsCanceledWhenIncompleteInputCloses(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	reader, writer := io.Pipe()
-	done := make(chan error, 1)
-	go func() {
-		_, err := NewServiceScanner().ScanServices(ctx, reader)
-		done <- err
-	}()
-
-	cancel()
-	_ = writer.Close()
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("ScanServices error = %v, want context.Canceled", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("ScanServices did not return after cancellation and input close")
 	}
 }
 
@@ -285,11 +245,8 @@ func withTableHeader(section Section, tableID, version, number, last byte) Secti
 
 func observeTable(t *testing.T, state *serviceScanState, pid uint16, section Section) {
 	t.Helper()
-	for _, packet := range readAllPackets(t, sectionPackets(pid, section, 0)) {
-		if err := state.observe(packet); err != nil {
-			t.Fatal(err)
-		}
-	}
+	_ = pid
+	state.observeSection(section)
 }
 
 func serviceDescriptor(serviceType uint8, providerName, serviceName []byte) []byte {
