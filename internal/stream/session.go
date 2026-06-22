@@ -97,12 +97,8 @@ func (s *ChannelSession) ScanServices(ctx context.Context) ([]ts.ServiceInfo, er
 	return scan.Services(), err
 }
 
-func (s *ChannelSession) CollectEITS(ctx context.Context, observe func(*ts.EIT) error) error {
-	return s.broadcast.WithUser(ctx, func() error { return s.observeEIT(ctx, ts.IsEITS, observe) })
-}
-
-func (s *ChannelSession) CollectEITPF(ctx context.Context, observe func(*ts.EIT) error) error {
-	return s.broadcast.WithUser(ctx, func() error { return s.observeEIT(ctx, ts.IsEITPF, observe) })
+func (s *ChannelSession) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
+	return s.broadcast.WithUser(ctx, func() error { return s.observeEIT(ctx, observe) })
 }
 
 func (s *ChannelSession) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
@@ -261,9 +257,9 @@ func runProgramGate(src io.Reader, dst io.Writer, gate *programEventGate) error 
 	return result
 }
 
-func (s *ChannelSession) observeEIT(ctx context.Context, accept func(byte) bool, observe func(*ts.EIT) error) error {
+func (s *ChannelSession) observeEIT(ctx context.Context, observe func(*ts.EIT) error) error {
 	return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
-		return accept(section.TableID())
+		return ts.IsEITS(section.TableID()) || ts.IsEITPF(section.TableID())
 	}, func(section ts.Section) error {
 		eit, err := ts.ParseEIT(section)
 		if err != nil {

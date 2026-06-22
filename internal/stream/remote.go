@@ -526,11 +526,7 @@ func (s *RemoteSession) StartProgramEventSync(updater ProgramUpdater) {
 	})
 }
 
-func (s *RemoteSession) CollectEITS(context.Context, func(*ts.EIT) error) error {
-	return ErrEITObservationUnsupported
-}
-
-func (s *RemoteSession) CollectEITPF(context.Context, func(*ts.EIT) error) error {
+func (s *RemoteSession) CollectEIT(context.Context, func(*ts.EIT) error) error {
 	return ErrEITObservationUnsupported
 }
 

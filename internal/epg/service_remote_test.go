@@ -25,7 +25,7 @@ func TestCollectServiceSnapshotsSyncsStoredRemotePrograms(t *testing.T) {
 	if err := CollectServiceSnapshots(ctx, store, status, session, []ServiceKey{key}, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if session.collectEITSCalled || session.collectEITPFCalled {
+	if session.collectEITCalled {
 		t.Fatal("remote stored-program sync should not call EIT collectors")
 	}
 	if len(store.replaced[key]) != 1 || store.replaced[key][0].EventID != 1 {
@@ -133,10 +133,9 @@ func (s *remoteSyncServiceStore) SetEPGSuccess(_ context.Context, networkID, ser
 }
 
 type remoteSyncSession struct {
-	programs           map[ServiceKey][]*program.Program
-	errs               map[ServiceKey]error
-	collectEITSCalled  bool
-	collectEITPFCalled bool
+	programs         map[ServiceKey][]*program.Program
+	errs             map[ServiceKey]error
+	collectEITCalled bool
 }
 
 func (s *remoteSyncSession) ListServicePrograms(_ context.Context, networkID, serviceID uint16) ([]*program.Program, error) {
@@ -147,12 +146,7 @@ func (s *remoteSyncSession) ListServicePrograms(_ context.Context, networkID, se
 	return s.programs[key], nil
 }
 
-func (s *remoteSyncSession) CollectEITS(context.Context, func(*ts.EIT) error) error {
-	s.collectEITSCalled = true
-	return nil
-}
-
-func (s *remoteSyncSession) CollectEITPF(context.Context, func(*ts.EIT) error) error {
-	s.collectEITPFCalled = true
+func (s *remoteSyncSession) CollectEIT(context.Context, func(*ts.EIT) error) error {
+	s.collectEITCalled = true
 	return nil
 }

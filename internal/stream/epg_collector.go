@@ -19,8 +19,7 @@ func (a *EPGCollectorAdapter) HasSession(channelType, channel string) bool {
 }
 
 func (a *EPGCollectorAdapter) GetOrCreateWait(ctx context.Context, channelType, channel string) (interface {
-	CollectEITS(context.Context, func(*ts.EIT) error) error
-	CollectEITPF(context.Context, func(*ts.EIT) error) error
+	CollectEIT(context.Context, func(*ts.EIT) error) error
 }, error) {
 	return a.manager.GetOrCreateWait(ctx, channelType, channel)
 }

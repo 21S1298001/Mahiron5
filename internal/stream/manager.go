@@ -45,8 +45,7 @@ type Session interface {
 	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
 	ServiceStream(context.Context, uint16, bool, io.Writer) error
 	ScanServices(context.Context) ([]ts.ServiceInfo, error)
-	CollectEITS(context.Context, func(*ts.EIT) error) error
-	CollectEITPF(context.Context, func(*ts.EIT) error) error
+	CollectEIT(context.Context, func(*ts.EIT) error) error
 	ObserveLogos(context.Context, func(*ts.LogoImage) error) error
 	Stop(context.Context) error
 }

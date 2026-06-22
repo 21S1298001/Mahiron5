@@ -25,8 +25,7 @@ type ServiceStore interface {
 type StreamManager interface {
 	HasSession(string, string) bool
 	GetOrCreateWait(context.Context, string, string) (interface {
-		CollectEITS(context.Context, func(*ts.EIT) error) error
-		CollectEITPF(context.Context, func(*ts.EIT) error) error
+		CollectEIT(context.Context, func(*ts.EIT) error) error
 	}, error)
 }
 
@@ -238,8 +237,7 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 }
 
 func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, session interface {
-	CollectEITS(context.Context, func(*ts.EIT) error) error
-	CollectEITPF(context.Context, func(*ts.EIT) error) error
+	CollectEIT(context.Context, func(*ts.EIT) error) error
 }, expected []ServiceKey, retrievalTime time.Duration) (err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanEPGCollectServiceSnapshots,
 		observability.AttrEPGServices.Int(len(expected)),
@@ -276,90 +274,67 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	collectCtx, cancel := context.WithTimeout(ctx, retrievalTime)
 	defer cancel()
 
-	collectErrCh := make(chan error, 2)
-
-	type sectionResult struct {
-		section *EITSection
-		err     error
+	type collectionResult struct {
+		collectErr error
+		pfErr      error
 	}
-	sectionCh := make(chan sectionResult, 1)
+	collectDone := make(chan collectionResult, 1)
+
+	sectionCh := make(chan *EITSection, 1)
 	go func() {
 		defer close(sectionCh)
-		collectErrCh <- session.CollectEITS(collectCtx, func(eit *ts.EIT) error {
+		var pfErr error
+		collectErr := session.CollectEIT(collectCtx, func(eit *ts.EIT) error {
 			section := EITSectionFromTS(eit)
-			if section == nil {
+			if section == nil || !matchesExpected(section) {
+				return nil
+			}
+			if ts.IsEITPF(section.TableID) {
+				if pfErr != nil {
+					return nil
+				}
+				slog.Debug("upserting EIT section", "source", "eitpf", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
+				if err := programStore.UpsertPrograms(collectCtx, section.Programs()); err != nil {
+					pfErr = err
+				}
 				return nil
 			}
 			select {
-			case sectionCh <- sectionResult{section: section}:
+			case sectionCh <- section:
 			case <-collectCtx.Done():
 				return collectCtx.Err()
 			}
 			return nil
 		})
-	}()
-
-	pfErrCh := make(chan error, 1)
-	go func() {
-		defer close(pfErrCh)
-		err := session.CollectEITPF(collectCtx, func(eit *ts.EIT) error {
-			section := EITSectionFromTS(eit)
-			if section == nil {
-				return nil
-			}
-			if !matchesExpected(section) {
-				return nil
-			}
-			slog.Debug("upserting EIT section", "source", "eitpf", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
-			if err := programStore.UpsertPrograms(collectCtx, section.Programs()); err != nil {
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			pfErrCh <- err
-		}
+		collectDone <- collectionResult{collectErr: collectErr, pfErr: pfErr}
 	}()
 
 	snapshot := NewSnapshot()
 	finished := false
 	for !finished {
 		select {
-		case result, ok := <-sectionCh:
+		case section, ok := <-sectionCh:
 			if !ok {
 				finished = true
 				break
 			}
-			if result.err != nil {
-				cancel()
-				now := time.Now().UnixMilli()
-				msg := result.err.Error()
-				for _, key := range expected {
-					_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, msg)
-				}
-				return result.err
-			}
-			if result.section == nil || !matchesExpected(result.section) {
+			if section == nil || !matchesExpected(section) {
 				continue
 			}
-			slog.Debug("observed EIT section", "source", "eits", "networkId", result.section.OriginalNetworkID, "serviceId", result.section.ServiceID, "tableId", result.section.TableID, "sectionNumber", result.section.SectionNumber, "lastSectionNumber", result.section.LastSectionNumber, "version", result.section.VersionNumber, "events", len(result.section.Events))
-			snapshot.Observe(result.section, time.Now())
+			slog.Debug("observed EIT section", "source", "eits", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
+			snapshot.Observe(section, time.Now())
 		case <-collectCtx.Done():
 			finished = true
 		}
 	}
 	cancel()
 	select {
-	case err := <-collectErrCh:
-		if err != nil && !errors.Is(err, context.Canceled) {
-			slog.Debug("EPG collector finished with error", "err", err)
+	case result := <-collectDone:
+		if result.collectErr != nil && !errors.Is(result.collectErr, context.Canceled) {
+			slog.Debug("EPG collector finished with error", "err", result.collectErr)
 		}
-	case <-time.After(2 * time.Second):
-	}
-	select {
-	case err := <-pfErrCh:
-		if err != nil && !errors.Is(err, context.Canceled) {
-			slog.Debug("EITPF upsert finished with error", "err", err)
+		if result.pfErr != nil {
+			slog.Debug("EITPF upsert finished with error", "err", result.pfErr)
 		}
 	case <-time.After(2 * time.Second):
 	}

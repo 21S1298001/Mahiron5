@@ -54,7 +54,6 @@ type EPGProgramStore interface {
 type EPGStreamManager interface {
 	HasSession(string, string) bool
 	GetOrCreateWait(context.Context, string, string) (interface {
-		CollectEITS(context.Context, func(*ts.EIT) error) error
-		CollectEITPF(context.Context, func(*ts.EIT) error) error
+		CollectEIT(context.Context, func(*ts.EIT) error) error
 	}, error)
 }
