@@ -379,7 +379,7 @@ func TestEnqueueSingleton(t *testing.T) {
 }
 
 func TestJobsRunIndependently(t *testing.T) {
-	mgr, err := NewManager(Config{MaxHistory: 10})
+	mgr, err := NewManager(Config{MaxHistory: 10, MaxConcurrentJobs: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,6 +404,154 @@ func TestJobsRunIndependently(t *testing.T) {
 		}
 	}
 	close(release)
+}
+
+func TestMaxConcurrentJobsQueuesExcessHandlers(t *testing.T) {
+	mgr, err := NewManager(Config{MaxHistory: 10, MaxConcurrentJobs: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan string, 3)
+	release := make(chan struct{}, 3)
+	for _, key := range []string{"one", "two", "three"} {
+		key := key
+		mgr.Register(JobDefinition{Key: key, Handler: func(context.Context) error {
+			started <- key
+			<-release
+			return nil
+		}})
+		if _, err := mgr.Enqueue(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("first two jobs did not start")
+		}
+	}
+	select {
+	case key := <-started:
+		t.Fatalf("job %q started above the concurrency limit", key)
+	case <-time.After(50 * time.Millisecond):
+	}
+	release <- struct{}{}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("queued job did not start after a slot was released")
+	}
+	release <- struct{}{}
+	release <- struct{}{}
+}
+
+func TestRetryStandbyReleasesConcurrencySlot(t *testing.T) {
+	mgr, err := NewManager(Config{MaxHistory: 10, MaxConcurrentJobs: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstAttempt := make(chan struct{})
+	retryStarted := make(chan struct{})
+	attempts := 0
+	mgr.Register(JobDefinition{
+		Key: "retry", RetryDelays: []time.Duration{200 * time.Millisecond},
+		Handler: func(context.Context) error {
+			attempts++
+			if attempts == 1 {
+				close(firstAttempt)
+				return errors.New("retry me")
+			}
+			close(retryStarted)
+			return nil
+		},
+	})
+	otherStarted := make(chan struct{})
+	releaseOther := make(chan struct{})
+	mgr.Register(JobDefinition{Key: "other", Handler: func(context.Context) error {
+		close(otherStarted)
+		<-releaseOther
+		return nil
+	}})
+	if _, err := mgr.Enqueue("retry"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mgr.Enqueue("other"); err != nil {
+		t.Fatal(err)
+	}
+	<-firstAttempt
+	select {
+	case <-otherStarted:
+	case <-time.After(time.Second):
+		t.Fatal("standby retry retained the concurrency slot")
+	}
+	select {
+	case <-retryStarted:
+		t.Fatal("retry started while the only slot was occupied")
+	case <-time.After(250 * time.Millisecond):
+	}
+	close(releaseOther)
+	select {
+	case <-retryStarted:
+	case <-time.After(time.Second):
+		t.Fatal("retry did not start after the slot was released")
+	}
+}
+
+func TestShutdownFinishesQueuedRunningAndStandbyJobs(t *testing.T) {
+	mgr, err := NewManager(Config{MaxHistory: 10, MaxConcurrentJobs: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	standbyID, err := mgr.EnqueueDefinition(JobDefinition{
+		Key: "standby", RetryDelays: []time.Duration{time.Hour},
+		Handler: func(context.Context) error { return errors.New("retry later") },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		jobs := mgr.GetJobs()
+		if len(jobs) == 1 && jobs[0].Status == StatusStandby {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	runningStarted := make(chan struct{})
+	runningID, err := mgr.EnqueueDefinition(JobDefinition{Key: "running", Handler: func(ctx context.Context) error {
+		close(runningStarted)
+		<-ctx.Done()
+		return ctx.Err()
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-runningStarted
+	queuedID, err := mgr.EnqueueDefinition(JobDefinition{Key: "queued", Handler: func(context.Context) error {
+		t.Fatal("queued handler ran during shutdown")
+		return nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := mgr.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{standbyID, runningID, queuedID} {
+		job := waitJob(t, mgr, id)
+		if job.Status != StatusFinished || job.HasFailed {
+			t.Fatalf("job %q after shutdown = %#v", id, job)
+		}
+	}
+	for _, id := range []string{standbyID, queuedID} {
+		job := waitJob(t, mgr, id)
+		if !job.HasAborted {
+			t.Fatalf("non-running job %q was not aborted during shutdown: %#v", id, job)
+		}
+	}
 }
 
 func TestGetActiveJobKeysByPrefix(t *testing.T) {

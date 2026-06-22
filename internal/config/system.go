@@ -11,6 +11,7 @@ type SystemConfig struct {
 	Addresses         []ServerAddress     `json:"addresses"`
 	LogLevel          string              `json:"logLevel,omitempty"`
 	Observability     ObservabilityConfig `json:"observability,omitempty"`
+	MaxConcurrentJobs int                 `json:"maxConcurrentJobs,omitempty"`
 	Jobs              []JobScheduleConfig `json:"jobs,omitempty"`
 	DatabasePath      string              `json:"databasePath,omitempty"`
 	EpgRetentionDays  int                 `json:"epgRetentionDays,omitempty"`
@@ -51,6 +52,7 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 
 	config := SystemConfig{
 		DatabasePath:      "./mahiron.db",
+		MaxConcurrentJobs: 1,
 		EpgRetentionDays:  3,
 		EpgRetrievalTime:  600000,
 		EpgStaleAfter:     7200000,
@@ -89,6 +91,9 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	case "debug", "info", "warn", "error":
 	default:
 		return nil, errors.New("invalid log level")
+	}
+	if config.MaxConcurrentJobs < 1 || config.MaxConcurrentJobs > 100 {
+		return nil, errors.New("maxConcurrentJobs must be between 1 and 100")
 	}
 	if config.EpgRetentionDays < 0 {
 		return nil, errors.New("epgRetentionDays must be >= 0 (0 = unlimited)")
