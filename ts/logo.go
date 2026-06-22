@@ -138,30 +138,39 @@ func NewLogoCollector() *LogoCollector {
 
 func (c *LogoCollector) Collect(ctx context.Context, src io.Reader, observe func(*LogoImage) error) error {
 	reader := NewPacketReader(src)
-	scanner := NewSectionScanner(reader, PIDCDT)
+	demuxer := NewDemuxer()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 		}
-		section, err := scanner.Next()
+		packet, err := reader.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
 		}
-		cdt, err := ParseCDT(section)
+		sections, err := demuxer.Feed(packet)
 		if err != nil {
-			continue
-		}
-		image, err := ParseCDTLogoImage(cdt)
-		if err != nil {
-			continue
-		}
-		if err := observe(image); err != nil {
 			return err
+		}
+		for _, section := range sections {
+			if section.TableID() != TableIDCDT {
+				continue
+			}
+			cdt, err := ParseCDT(section)
+			if err != nil {
+				continue
+			}
+			image, err := ParseCDTLogoImage(cdt)
+			if err != nil {
+				continue
+			}
+			if err := observe(image); err != nil {
+				return err
+			}
 		}
 	}
 }

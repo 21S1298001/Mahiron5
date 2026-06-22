@@ -23,6 +23,33 @@ type ServiceInfo struct {
 // ServiceScanner reads a TS stream and outputs a list of services.
 type ServiceScanner struct{}
 
+// ServiceScan incrementally builds the service list from PAT, SDT and NIT
+// sections supplied by a shared Demuxer.
+type ServiceScan struct {
+	state *serviceScanState
+}
+
+// NewServiceScan creates an incremental service scan.
+func NewServiceScan() *ServiceScan { return &ServiceScan{state: newServiceScanState()} }
+
+// Observe adds one complete section to the scan state.
+func (s *ServiceScan) Observe(section Section) {
+	if s != nil && s.state != nil {
+		s.state.observeSection(section)
+	}
+}
+
+// Complete reports whether complete current PAT, SDT and NIT tables arrived.
+func (s *ServiceScan) Complete() bool { return s != nil && s.state != nil && s.state.complete() }
+
+// Services returns the currently assembled service list.
+func (s *ServiceScan) Services() []ServiceInfo {
+	if s == nil || s.state == nil {
+		return nil
+	}
+	return s.state.serviceList()
+}
+
 // NewServiceScanner creates a new ServiceScanner.
 func NewServiceScanner() *ServiceScanner {
 	return &ServiceScanner{}
@@ -37,6 +64,7 @@ func (s *ServiceScanner) Scan(ctx context.Context, src io.Reader) ([]ServiceInfo
 func (s *ServiceScanner) ScanServices(ctx context.Context, src io.Reader) ([]ServiceInfo, error) {
 	state := newServiceScanState()
 	reader := NewPacketReader(src)
+	demuxer := NewDemuxer()
 	for {
 		select {
 		case <-ctx.Done():
@@ -57,8 +85,12 @@ func (s *ServiceScanner) ScanServices(ctx context.Context, src io.Reader) ([]Ser
 		if packet.TransportErrorIndicator() || packet.IsNull() || !packet.ValidPayloadOffset() {
 			continue
 		}
-		if err := state.observe(packet); err != nil {
+		sections, err := demuxer.Feed(packet)
+		if err != nil {
 			return nil, err
+		}
+		for _, section := range sections {
+			state.observeSection(section)
 		}
 		if state.complete() {
 			return state.serviceList(), nil
@@ -145,46 +177,41 @@ func (s *serviceScanState) observe(packet Packet) error {
 		return err
 	}
 	for _, section := range sections {
-		switch section.TableID() {
-		case TableIDPAT:
-			if pid != PIDPAT {
-				continue
-			}
-			reset, ready := s.patSections.add(section)
-			if reset {
-				s.pat = nil
-			}
-			if ready {
-				s.handlePAT()
-			}
-		case TableIDSDT0:
-			if pid != PIDSDT {
-				continue
-			}
-			reset, ready := s.sdtSections.add(section)
-			if reset {
-				s.sdtReady = false
-				s.services = map[uint16]ServiceInfo{}
-			}
-			if ready {
-				s.handleSDT()
-			}
-		case TableIDNIT0:
-			if pid != PIDNIT {
-				continue
-			}
-			reset, ready := s.nitSections.add(section)
-			if reset {
-				s.nitReady = false
-				s.remoteKeys = map[uint16]uint8{}
-				s.applyRemoteKeys()
-			}
-			if ready {
-				s.handleNIT()
-			}
-		}
+		s.observeSection(section)
 	}
 	return nil
+}
+
+func (s *serviceScanState) observeSection(section Section) {
+	switch section.TableID() {
+	case TableIDPAT:
+		reset, ready := s.patSections.add(section)
+		if reset {
+			s.pat = nil
+		}
+		if ready {
+			s.handlePAT()
+		}
+	case TableIDSDT0:
+		reset, ready := s.sdtSections.add(section)
+		if reset {
+			s.sdtReady = false
+			s.services = map[uint16]ServiceInfo{}
+		}
+		if ready {
+			s.handleSDT()
+		}
+	case TableIDNIT0:
+		reset, ready := s.nitSections.add(section)
+		if reset {
+			s.nitReady = false
+			s.remoteKeys = map[uint16]uint8{}
+			s.applyRemoteKeys()
+		}
+		if ready {
+			s.handleNIT()
+		}
+	}
 }
 
 func (s *serviceScanState) handlePAT() {

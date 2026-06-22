@@ -26,7 +26,7 @@ func (c *EITCollector) CollectEITPF(ctx context.Context, src io.Reader, observe 
 
 func (c *EITCollector) collect(ctx context.Context, src io.Reader, observe func(*EIT) error, accept func(byte) bool) error {
 	reader := NewPacketReader(src)
-	assembler := NewSectionAssembler(PIDEIT)
+	demuxer := NewDemuxer()
 	for {
 		select {
 		case <-ctx.Done():
@@ -41,10 +41,7 @@ func (c *EITCollector) collect(ctx context.Context, src io.Reader, observe func(
 			}
 			return err
 		}
-		if packet.PID() != PIDEIT || packet.TransportErrorIndicator() || packet.IsNull() || !packet.ValidPayloadOffset() {
-			continue
-		}
-		sections, err := assembler.FeedAll(packet)
+		sections, err := demuxer.Feed(packet)
 		if err != nil {
 			return err
 		}

@@ -128,6 +128,7 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 		ProgramUpdater: programs,
 		Scanner:        ts.NewServiceScanner(),
 		TunerManager:   tuners,
+		SharedTSEngine: true,
 	})
 	serviceScanner := stream.NewServiceScannerAdapter(streams)
 	logoCollector := stream.NewLogoCollectorAdapter(streams)

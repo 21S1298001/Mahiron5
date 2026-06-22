@@ -24,6 +24,7 @@ type StreamManager struct {
 	programUpdater ProgramUpdater
 	remotes        map[string]*RemoteClient
 	scanner        ServiceScanner
+	sharedTSEngine bool
 	sessions       map[sessionKey]Session
 	sessionTypes   map[sessionKey]string
 	sources        *SourcePool
@@ -41,6 +42,7 @@ type StreamManagerConfig struct {
 	ProgramUpdater     ProgramUpdater
 	Scanner            ServiceScanner
 	TunerManager       TunerManager
+	SharedTSEngine     bool
 }
 
 type sessionKey struct {
@@ -77,6 +79,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		programUpdater: cfg.ProgramUpdater,
 		remotes:        remotes,
 		scanner:        cfg.Scanner,
+		sharedTSEngine: cfg.SharedTSEngine,
 		sessions:       map[sessionKey]Session{},
 		sessionTypes:   map[sessionKey]string{},
 		sources:        NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
@@ -110,12 +113,15 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	}
 
 	hooks := []BroadcastHook{}
-	if piggyback := NewEITPFPiggyback(channelType, channel, m.eitCollector, m.eitUpdater); piggyback != nil {
-		hooks = append(hooks, piggyback.Hook)
-	}
-	logoPiggyback := NewLogoPiggyback(channelType, channel, m.logoCollector, m.logoUpdater)
-	if logoPiggyback != nil {
-		hooks = append(hooks, logoPiggyback.Hook)
+	var logoPiggyback *LogoPiggyback
+	if !m.sharedTSEngine {
+		if piggyback := NewEITPFPiggyback(channelType, channel, m.eitCollector, m.eitUpdater); piggyback != nil {
+			hooks = append(hooks, piggyback.Hook)
+		}
+		logoPiggyback = NewLogoPiggyback(channelType, channel, m.logoCollector, m.logoUpdater)
+		if logoPiggyback != nil {
+			hooks = append(hooks, logoPiggyback.Hook)
+		}
 	}
 	slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
 	lease, err := m.sources.Acquire(ctx, channelType, channel, wait, hooks)
@@ -142,17 +148,19 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	}
 
 	session = NewChannelSession(ChannelSessionConfig{
-		Channel:       channel,
-		ChannelConfig: lease.Channel,
-		Broadcast:     broadcast,
-		Descrambler:   lease.Descrambler,
-		EITCollector:  m.eitCollector,
-		EITUpdater:    m.eitUpdater,
-		Filter:        m.filter,
-		LogoPiggyback: logoPiggyback,
-		OnStop:        func() { m.remove(key) },
-		Scanner:       m.scanner,
-		Type:          channelType,
+		Channel:        channel,
+		ChannelConfig:  lease.Channel,
+		Broadcast:      broadcast,
+		Descrambler:    lease.Descrambler,
+		EITCollector:   m.eitCollector,
+		EITUpdater:     m.eitUpdater,
+		Filter:         m.filter,
+		LogoPiggyback:  logoPiggyback,
+		LogoUpdater:    m.logoUpdater,
+		OnStop:         func() { m.remove(key) },
+		Scanner:        m.scanner,
+		Type:           channelType,
+		SharedTSEngine: m.sharedTSEngine,
 	})
 	m.sessions[key] = session
 	m.sessionTypes[key] = lease.RouteType
