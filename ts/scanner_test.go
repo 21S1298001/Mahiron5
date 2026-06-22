@@ -1,5 +1,8 @@
 package ts
 
+// PSI/SI service-discovery scenarios follow ARIB STD-B10 and the terrestrial
+// and satellite operational constraints in TR-B14/TR-B15.
+
 import (
 	"bytes"
 	"context"

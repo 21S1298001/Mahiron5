@@ -19,6 +19,17 @@ func newTestManager(t *testing.T) *JobManager {
 	return mgr
 }
 
+func waitJob(t *testing.T, mgr *JobManager, id string) *Job {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	item, err := mgr.Wait(ctx, id)
+	if err != nil {
+		t.Fatalf("Wait(%q): %v", id, err)
+	}
+	return item
+}
+
 func TestEnqueueAndComplete(t *testing.T) {
 	mgr := newTestManager(t)
 
@@ -47,16 +58,11 @@ func TestEnqueueAndComplete(t *testing.T) {
 		t.Fatal("handler not called")
 	}
 
-	time.Sleep(50 * time.Millisecond)
-
-	jobs := mgr.GetJobs()
-	if len(jobs) != 1 {
-		t.Fatalf("expected 1 job, got %d", len(jobs))
+	job := waitJob(t, mgr, id)
+	if job.Status != StatusFinished {
+		t.Errorf("expected status finished, got %s", job.Status)
 	}
-	if jobs[0].Status != StatusFinished {
-		t.Errorf("expected status finished, got %s", jobs[0].Status)
-	}
-	if jobs[0].HasFailed {
+	if job.HasFailed {
 		t.Error("expected job not to have failed")
 	}
 }
@@ -104,16 +110,11 @@ func TestAbort(t *testing.T) {
 		t.Fatal("handler not cancelled")
 	}
 
-	time.Sleep(50 * time.Millisecond)
-
-	jobs := mgr.GetJobs()
-	if len(jobs) != 1 {
-		t.Fatalf("expected 1 job, got %d", len(jobs))
-	}
-	if !jobs[0].HasAborted {
+	job := waitJob(t, mgr, id)
+	if !job.HasAborted {
 		t.Error("expected HasAborted to be true")
 	}
-	if !jobs[0].IsAborting {
+	if !job.IsAborting {
 		t.Error("expected IsAborting to be true")
 	}
 }
@@ -149,14 +150,15 @@ func TestRerun(t *testing.T) {
 	}
 
 	<-done
-	time.Sleep(50 * time.Millisecond)
+	waitJob(t, mgr, id)
 
 	if err := mgr.Rerun(id); err != nil {
 		t.Fatal(err)
 	}
 
 	<-done
-	time.Sleep(50 * time.Millisecond)
+	jobs := mgr.GetJobs()
+	waitJob(t, mgr, jobs[len(jobs)-1].ID)
 
 	if callCount != 2 {
 		t.Errorf("expected 2 calls, got %d", callCount)
@@ -183,7 +185,7 @@ func TestRerunNotRerunnable(t *testing.T) {
 	}
 
 	<-done
-	time.Sleep(50 * time.Millisecond)
+	waitJob(t, mgr, id)
 
 	err = mgr.Rerun(id)
 	if !errors.Is(err, ErrJobNotRerunnable) {
@@ -205,23 +207,18 @@ func TestHandlerError(t *testing.T) {
 		IsRerunnable: true,
 	})
 
-	_, err := mgr.Enqueue("fail-job")
+	id, err := mgr.Enqueue("fail-job")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	<-done
-	time.Sleep(50 * time.Millisecond)
-
-	jobs := mgr.GetJobs()
-	if len(jobs) != 1 {
-		t.Fatalf("expected 1 job, got %d", len(jobs))
-	}
-	if !jobs[0].HasFailed {
+	job := waitJob(t, mgr, id)
+	if !job.HasFailed {
 		t.Error("expected HasFailed to be true")
 	}
-	if jobs[0].Error != "something went wrong" {
-		t.Errorf("expected error message, got %s", jobs[0].Error)
+	if job.Error != "something went wrong" {
+		t.Errorf("expected error message, got %s", job.Error)
 	}
 }
 
@@ -312,7 +309,8 @@ func TestMaxHistory(t *testing.T) {
 	})
 
 	for i := 0; i < 15; i++ {
-		if _, err := mgr.Enqueue("history-job"); err != nil {
+		id, err := mgr.Enqueue("history-job")
+		if err != nil {
 			t.Fatal(err)
 		}
 		select {
@@ -320,34 +318,12 @@ func TestMaxHistory(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("history job did not complete")
 		}
-		waitJobIdle(t, mgr, "history-job")
+		waitJob(t, mgr, id)
 	}
-
-	time.Sleep(50 * time.Millisecond)
 
 	jobs := mgr.GetJobs()
 	if len(jobs) > 10 {
 		t.Errorf("expected at most 10 jobs in history, got %d", len(jobs))
-	}
-}
-
-func waitJobIdle(t *testing.T, mgr *JobManager, key string) {
-	t.Helper()
-	deadline := time.After(time.Second)
-	ticker := time.NewTicker(time.Millisecond)
-	defer ticker.Stop()
-	for {
-		mgr.mu.Lock()
-		active := mgr.activeKeys[key]
-		mgr.mu.Unlock()
-		if !active {
-			return
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("job %q did not become idle", key)
-		case <-ticker.C:
-		}
 	}
 }
 
@@ -383,7 +359,7 @@ func TestEnqueueSingleton(t *testing.T) {
 		IsRerunnable: true,
 	})
 
-	_, err := mgr.Enqueue("singleton-job")
+	id, err := mgr.Enqueue("singleton-job")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +370,7 @@ func TestEnqueueSingleton(t *testing.T) {
 	}
 
 	close(block)
-	time.Sleep(50 * time.Millisecond)
+	waitJob(t, mgr, id)
 
 	_, err = mgr.Enqueue("singleton-job")
 	if err != nil {
@@ -455,33 +431,25 @@ func TestAbortQueuedJob(t *testing.T) {
 	if err := mgr.Abort(id); err != nil {
 		t.Fatal(err)
 	}
+	item := waitJob(t, mgr, id)
 	close(block)
-	time.Sleep(50 * time.Millisecond)
-	for _, item := range mgr.GetJobs() {
-		if item.ID == id && (!item.HasAborted || item.Status != StatusFinished) {
-			t.Fatalf("queued abort state = %#v", item)
-		}
+	if !item.HasAborted || item.Status != StatusFinished {
+		t.Fatalf("queued abort state = %#v", item)
 	}
 }
 
 func TestGetActiveJobKeysByPrefix(t *testing.T) {
 	mgr := newTestManager(t)
-	mgr.Register(JobDefinition{Key: "epg-gather:nid:1", Handler: func(context.Context) error { return nil }})
-	mgr.Register(JobDefinition{Key: "epg-gather:nid:2", Handler: func(context.Context) error { return nil }})
-	mgr.Register(JobDefinition{Key: "service-scan:GR:27", Handler: func(context.Context) error { return nil }})
+	release := make(chan struct{})
+	mgr.Register(JobDefinition{Key: "epg-gather:nid:1", Handler: func(context.Context) error { <-release; return nil }})
+	mgr.Register(JobDefinition{Key: "epg-gather:nid:2", Handler: func(context.Context) error { <-release; return nil }})
+	mgr.Register(JobDefinition{Key: "service-scan:GR:27", Handler: func(context.Context) error { <-release; return nil }})
 	for _, key := range []string{"epg-gather:nid:1", "epg-gather:nid:2", "service-scan:GR:27"} {
 		if _, err := mgr.Enqueue(key); err != nil {
 			t.Fatal(err)
 		}
 	}
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		keys := mgr.GetActiveJobKeysByPrefix("epg-gather:")
-		if len(keys) == 2 {
-			return
-		}
-		time.Sleep(time.Millisecond)
-	}
+	t.Cleanup(func() { close(release) })
 	keys := mgr.GetActiveJobKeysByPrefix("epg-gather:")
 	if diff := cmp.Diff([]string{"epg-gather:nid:1", "epg-gather:nid:2"}, keys, cmpopts.SortSlices(func(a, b string) bool { return a < b })); diff != "" {
 		t.Errorf("GetActiveJobKeysByPrefix mismatch (-want +got):\n%s\nall jobs: %#v", diff, mgr.GetJobs())

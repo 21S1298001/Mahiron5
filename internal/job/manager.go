@@ -38,6 +38,7 @@ type Job struct {
 	FinishedAt *time.Time
 	NextRunAt  *time.Time
 	definition *JobDefinition
+	done       chan struct{}
 }
 
 type JobDefinition struct {
@@ -64,6 +65,7 @@ type JobManager struct {
 	wg             sync.WaitGroup
 	shutdownCtx    context.Context
 	shutdownCancel context.CancelFunc
+	changed        chan struct{}
 }
 
 type Config struct {
@@ -93,6 +95,7 @@ func NewManager(cfg Config) (*JobManager, error) {
 		maxHistory:     cfg.MaxHistory,
 		shutdownCtx:    shutdownCtx,
 		shutdownCancel: shutdownCancel,
+		changed:        make(chan struct{}),
 	}, nil
 }
 
@@ -194,11 +197,13 @@ func (m *JobManager) enqueueLocked(def *JobDefinition) (string, error) {
 	item := &Job{
 		ID: uuid.New().String(), Key: def.Key, Name: def.Name,
 		Status: StatusQueued, CreatedAt: now, UpdatedAt: now, definition: def,
+		done: make(chan struct{}),
 	}
 	m.history = append(m.history, item)
 	m.trimHistory()
 	m.queue = append(m.queue, item)
 	m.activeKeys[def.Key] = true
+	m.notifyLocked()
 	slog.Info("job queued", "key", item.Key, "name", item.Name, "id", item.ID)
 	m.dispatchLocked()
 	return item.ID, nil
@@ -215,6 +220,7 @@ func (m *JobManager) dispatchLocked() {
 		ctx, cancel := context.WithCancel(m.shutdownCtx)
 		m.active[item.ID] = cancel
 		m.running++
+		m.notifyLocked()
 		m.wg.Add(1)
 		slog.Info("job started", "key", item.Key, "name", item.Name, "id", item.ID)
 		go m.run(ctx, item)
@@ -258,6 +264,7 @@ func (m *JobManager) standbyLocked(item *Job, err error) {
 	item.UpdatedAt = time.Now()
 	item.NextRunAt = &next
 	item.Error = err.Error()
+	m.notifyLocked()
 	slog.Warn("job retry scheduled", "key", item.Key, "id", item.ID, "retry", item.RetryCount, "nextRunAt", next, "err", err)
 	m.wg.Add(1)
 	go func() {
@@ -278,12 +285,16 @@ func (m *JobManager) standbyLocked(item *Job, err error) {
 		item.UpdatedAt = time.Now()
 		item.NextRunAt = nil
 		m.queue = append(m.queue, item)
+		m.notifyLocked()
 		slog.Info("job retry enqueued", "key", item.Key, "name", item.Name, "id", item.ID, "retry", item.RetryCount)
 		m.dispatchLocked()
 	}()
 }
 
 func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
+	if item.Status == StatusFinished {
+		return
+	}
 	now := time.Now()
 	item.Status = StatusFinished
 	item.UpdatedAt = now
@@ -295,6 +306,8 @@ func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
 		item.Error = err.Error()
 	}
 	delete(m.activeKeys, item.Key)
+	close(item.done)
+	m.notifyLocked()
 	m.trimHistory()
 	if item.StartedAt != nil {
 		if item.HasFailed {
@@ -303,6 +316,46 @@ func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
 			slog.Info("job completed", "key", item.Key, "id", item.ID, "duration", now.Sub(*item.StartedAt))
 		}
 	}
+}
+
+// Changes returns a notification channel that is closed on the next job state
+// transition. Callers should take a fresh channel after every notification.
+func (m *JobManager) Changes() <-chan struct{} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.changed
+}
+
+func (m *JobManager) notifyLocked() {
+	close(m.changed)
+	m.changed = make(chan struct{})
+}
+
+// Wait blocks until the identified execution reaches its terminal state.  It
+// is also the synchronization boundary for callers that need to observe a
+// completed Job without polling the manager's internal state.
+func (m *JobManager) Wait(ctx context.Context, id string) (*Job, error) {
+	m.mu.Lock()
+	item := m.findJob(id)
+	if item == nil {
+		m.mu.Unlock()
+		return nil, ErrJobNotFound
+	}
+	done := item.done
+	m.mu.Unlock()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	copy := *item
+	copy.definition = nil
+	copy.done = nil
+	return &copy, nil
 }
 
 func (m *JobManager) Abort(id string) error {
@@ -387,6 +440,7 @@ func (m *JobManager) GetJobs() []*Job {
 	for i, item := range m.history {
 		copy := *item
 		copy.definition = nil
+		copy.done = nil
 		result[i] = &copy
 	}
 	return result

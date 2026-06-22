@@ -206,32 +206,33 @@ func TestServiceUpdaterTriggersEPGGatherForNewNetworks(t *testing.T) {
 	for _, item := range mgr.GetJobs() {
 		if item.Key == "epg-gather:nid:4" {
 			_ = mgr.Abort(item.ID)
+			waitJob(t, mgr, item.ID)
 		}
 	}
-	waitJobIdle(t, mgr, "epg-gather:nid:4")
 
 	// A second scan of the same channel re-finds the same services (now in DB),
 	// so no new networks are detected and EPG gather is NOT re-enqueued.
 	// Record the scan count before enqueuing so we can wait for the new scan
 	// to finish before asserting.
 	scansBefore := countFinishedJobs(t, mgr, "service-scan:BS:BS01")
-	if _, err := mgr.Enqueue(ServiceUpdaterKey); err != nil {
+	updaterID, err := mgr.Enqueue(ServiceUpdaterKey)
+	if err != nil {
 		t.Fatal(err)
 	}
-	// Wait for the second service-scan to finish, then verify no new gather.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if countFinishedJobs(t, mgr, "service-scan:BS:BS01") >= scansBefore+1 {
-			break
+	waitJob(t, mgr, updaterID)
+	var secondScan *Job
+	for _, item := range mgr.GetJobs() {
+		if item.Key == "service-scan:BS:BS01" {
+			secondScan = item
 		}
-		time.Sleep(time.Millisecond)
 	}
+	if secondScan == nil {
+		t.Fatal("second service scan was not enqueued")
+	}
+	waitJob(t, mgr, secondScan.ID)
 	if got := countFinishedJobs(t, mgr, "service-scan:BS:BS01"); got < scansBefore+1 {
 		t.Fatalf("second service-scan did not finish, finished=%d before=%d", got, scansBefore)
 	}
-	// Give the scan handler a moment to enqueue any EPG gather after the scan
-	// result is processed.
-	time.Sleep(50 * time.Millisecond)
 	count := 0
 	for _, item := range mgr.GetJobs() {
 		if item.Key == "epg-gather:nid:4" {
@@ -289,8 +290,10 @@ func (d *fakeScanDevice) Err() error            { return nil }
 
 func waitForJobKeys(t *testing.T, mgr *JobManager, expected map[string]bool) {
 	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	for {
+		changed := mgr.Changes()
 		found := make(map[string]bool)
 		for _, item := range mgr.GetJobs() {
 			found[item.Key] = true
@@ -302,9 +305,12 @@ func waitForJobKeys(t *testing.T, mgr *JobManager, expected map[string]bool) {
 		if all {
 			return
 		}
-		time.Sleep(time.Millisecond)
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			t.Fatalf("job keys not dispatched: %#v", mgr.GetJobs())
+		}
 	}
-	t.Fatalf("job keys not dispatched: %#v", mgr.GetJobs())
 }
 
 func countFinishedJobs(t *testing.T, mgr *JobManager, key string) int {

@@ -10,4 +10,6 @@ go build ./cmd/mahiron5
 go generate ./internal/web/api
 go tool sqlc generate
 GOCACHE=/private/tmp/mahiron5-gocache go test ./...
+make test-race
+make verify
 ```

@@ -1,5 +1,8 @@
 package ts
 
+// Logo transmission descriptors and CDT payloads are tested against the
+// current ARIB STD-B10 service-information representation.
+
 import (
 	"bytes"
 	"context"

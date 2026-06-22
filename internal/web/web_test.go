@@ -8,12 +8,87 @@ import (
 	"testing"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/db"
+	"github.com/21S1298001/Mahiron5/internal/event"
+	"github.com/21S1298001/Mahiron5/internal/job"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/internal/stream"
+	"github.com/21S1298001/Mahiron5/internal/tuner"
+	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
+
+func TestHTTPContractRoundTripsThroughGeneratedClientAndSQLite(t *testing.T) {
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	disabled := false
+	channels := config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &disabled}}
+	hub := event.New()
+	services := service.NewServiceManager(service.NewSQLiteStore(database), channels, hub)
+	programs := program.NewProgramManager(program.NewSQLiteStore(database), hub)
+	tuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{})
+	jobs, err := job.NewManager(job.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = jobs.Shutdown(context.Background()) })
+
+	handler, err := NewWeb(WebConfig{
+		ServiceManager: services,
+		ProgramManager: programs,
+		StreamManager:  testStreamManager{},
+		TunerManager:   tuners,
+		JobManager:     jobs,
+		LogStore:       observability.NewLogStore(16),
+		EventHub:       hub,
+		EpgStaleAfter:  7_200_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := apigen.NewClient("http://mahiron.test/api", apigen.WithClient(handlerClient{handler: handler}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	version, err := client.CheckVersion(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := version.(*apigen.Version); !ok {
+		t.Fatalf("CheckVersion response = %T, want *apigen.Version", version)
+	}
+	gotChannels, err := client.GetChannels(t.Context(), apigen.GetChannelsParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, ok := gotChannels.(*apigen.GetChannelsOKApplicationJSON)
+	if !ok || len(*list) != 1 || (*list)[0].Channel != "27" {
+		t.Fatalf("GetChannels response = %#v", gotChannels)
+	}
+	status, err := client.GetStatus(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := status.(*apigen.Status); !ok {
+		t.Fatalf("GetStatus response = %T, want *apigen.Status", status)
+	}
+}
+
+type handlerClient struct{ handler http.Handler }
+
+func (c handlerClient) Do(request *http.Request) (*http.Response, error) {
+	recorder := httptest.NewRecorder()
+	c.handler.ServeHTTP(recorder, request)
+	return recorder.Result(), nil
+}
 
 func TestNewWebFiltersStreamHTTPSpans(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()

@@ -1,5 +1,8 @@
 package ts
 
+// Transport packet, PAT and PMT vectors cover the MPEG-TS framing used by the
+// current ARIB STD-B10/TR-B14/TR-B15 broadcast profiles.
+
 import (
 	"bytes"
 	"context"

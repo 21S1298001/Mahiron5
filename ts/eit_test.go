@@ -1,5 +1,8 @@
 package ts
 
+// EIT section and descriptor vectors in this file exercise the service
+// information contract defined by ARIB STD-B10.
+
 import (
 	"bytes"
 	"context"

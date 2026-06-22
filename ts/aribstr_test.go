@@ -1,5 +1,9 @@
 package ts
 
+// Character-code vectors in this file are derived from ARIB STD-B24,
+// Fascicle 1. They intentionally assert Unicode output rather than decoder
+// implementation details.
+
 import "testing"
 
 type aribStringDecodeTest struct {
