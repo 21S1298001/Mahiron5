@@ -136,14 +136,14 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 	scanService := servicescan.NewService(services, serviceScanner, cfg.Channels)
 	epgService := epg.NewService(programs, services, epgStreams, cfg.Channels, cfg.System.EpgRetentionDays, time.Duration(cfg.System.EpgRetrievalTime)*time.Millisecond)
 
-	jobs, err := job.NewManager(job.Config{MaxHistory: 100, MaxRunning: cfg.System.JobMaxRunning})
+	jobs, err := job.NewManager(job.Config{MaxHistory: 100})
 	if err != nil {
 		return nil, "failed to create job manager", err
 	}
 
 	job.RegisterServiceUpdater(jobs, scanService, epgService)
 	job.RegisterEPGGathererService(jobs, epgService)
-	job.RegisterLogoGatherer(jobs, scanService, logoCollector, services, time.Duration(cfg.System.LogoGatherDuration)*time.Millisecond)
+	job.RegisterLogoGatherer(jobs, logoCollector, services, time.Duration(cfg.System.LogoGatherTimeout)*time.Millisecond)
 
 	schedules := cfg.System.Jobs
 	if len(schedules) == 0 {

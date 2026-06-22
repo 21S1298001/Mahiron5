@@ -3,8 +3,7 @@ addresses:
   - unix: /tmp/test.sock
 
 logLevel: debug
-jobMaxRunning: 1
-logoGatherDuration: 86400000
+logoGatherTimeout: 1200000
 
 jobs:
   - key: service-updater
@@ -12,4 +11,4 @@ jobs:
   - key: epg-gatherer
     schedule: "20,50 * * * *"
   - key: logo-gatherer
-    schedule: "15 3 * * *"
+    schedule: "5 3 * * *"

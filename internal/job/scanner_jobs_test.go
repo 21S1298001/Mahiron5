@@ -165,6 +165,85 @@ func TestEnqueueEPGGatherForNetworkIgnoresMissingNetwork(t *testing.T) {
 	}
 }
 
+func TestLogoGathererDispatchesOnlyMissingChannelsAndCompletesWhenSatisfied(t *testing.T) {
+	mgr := newTestManager(t)
+	target := service.LogoTarget{
+		NetworkId: 4, ServiceId: 101, ChannelType: "BS", ChannelId: "BS01",
+		LogoId: 12, LogoVersion: 3, LogoDownloadDataId: 7,
+	}
+	collector := &fakeLogoObserver{image: &ts.LogoImage{
+		OriginalNetworkID: 4, LogoID: 12, LogoVersion: 3, DownloadDataID: 7,
+	}}
+	RegisterLogoGatherer(mgr, collector, fakeLogoTargetStore{targets: []service.LogoTarget{target}}, 20*time.Minute)
+
+	parentID, err := mgr.Enqueue(LogoGathererKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, mgr, parentID)
+	waitForJobKeys(t, mgr, map[string]bool{
+		LogoGathererKey:       true,
+		"logo-gather:BS:BS01": true,
+	})
+	for _, item := range mgr.GetJobs() {
+		if item.Key == "logo-gather:BS:BS01" {
+			waitJob(t, mgr, item.ID)
+		}
+	}
+	if collector.calls != 1 {
+		t.Fatalf("ObserveLogos calls = %d, want 1", collector.calls)
+	}
+}
+
+func TestLogoGathererSkipsChannelsWithoutMissingTargets(t *testing.T) {
+	mgr := newTestManager(t)
+	collector := &fakeLogoObserver{}
+	RegisterLogoGatherer(mgr, collector, fakeLogoTargetStore{}, 20*time.Minute)
+	id, err := mgr.Enqueue(LogoGathererKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, mgr, id)
+	if collector.calls != 0 {
+		t.Fatalf("ObserveLogos calls = %d, want 0", collector.calls)
+	}
+	for _, item := range mgr.GetJobs() {
+		if item.Key != LogoGathererKey {
+			t.Fatalf("unexpected logo child job: %#v", item)
+		}
+	}
+}
+
+func TestLogoGatherTimeoutIsSuccessful(t *testing.T) {
+	mgr := newTestManager(t)
+	target := service.LogoTarget{NetworkId: 4, ServiceId: 101, ChannelType: "BS", ChannelId: "BS01", LogoId: 12, LogoVersion: 3, LogoDownloadDataId: 7}
+	collector := &fakeLogoObserver{waitForContext: true}
+	RegisterLogoGatherer(mgr, collector, fakeLogoTargetStore{targets: []service.LogoTarget{target}}, time.Millisecond)
+	parentID, err := mgr.Enqueue(LogoGathererKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, mgr, parentID)
+	var child *Job
+	deadline := time.Now().Add(time.Second)
+	for child == nil && time.Now().Before(deadline) {
+		for _, item := range mgr.GetJobs() {
+			if item.Key == "logo-gather:BS:BS01" {
+				child = item
+				break
+			}
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if child == nil {
+		t.Fatal("logo child job was not created")
+	}
+	finished := waitJob(t, mgr, child.ID)
+	if finished.HasFailed {
+		t.Fatalf("timed out logo job failed: %#v", finished)
+	}
+}
+
 // TestServiceUpdaterTriggersEPGGatherForNewNetworks verifies that a successful
 // service scan which introduces a new network causes an EPG gather job for
 // that network to be enqueued, without waiting for the EPG gatherer cron.
@@ -262,6 +341,29 @@ func (f fakeScanScanner) ScanServices(_ context.Context, _ io.Reader) ([]ts.Serv
 }
 
 type fakeScanTunerManager struct{}
+
+type fakeLogoTargetStore struct {
+	targets []service.LogoTarget
+}
+
+func (s fakeLogoTargetStore) MissingLogoTargets(context.Context) ([]service.LogoTarget, error) {
+	return append([]service.LogoTarget(nil), s.targets...), nil
+}
+
+type fakeLogoObserver struct {
+	calls          int
+	image          *ts.LogoImage
+	waitForContext bool
+}
+
+func (f *fakeLogoObserver) ObserveLogos(ctx context.Context, _, _ string, observe func(*ts.LogoImage) error) error {
+	f.calls++
+	if f.waitForContext {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return observe(f.image)
+}
 
 func (fakeScanTunerManager) NewDeviceByType(string, *config.ChannelConfig) (tuner.Device, error) {
 	return &fakeScanDevice{}, nil

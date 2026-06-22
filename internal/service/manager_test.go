@@ -458,3 +458,32 @@ func TestSQLiteStoreDeletesStaleLogosWhenServiceLogoMetadataChanges(t *testing.T
 		t.Fatal("HasLogoData = true after service logo version changed and stale cache was deleted")
 	}
 }
+
+func TestMissingLogoTargetsTracksExactStoredVersion(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	logoID, version, downloadID := int64(42), int64(3), int64(7)
+	service := &Service{
+		Id: "0000100101", NetworkId: 1, ServiceId: 101, TransportStreamId: 10,
+		ChannelType: "GR", ChannelId: "27", LogoId: &logoID, LogoVersion: &version, LogoDownloadDataId: &downloadID,
+	}
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
+		t.Fatal(err)
+	}
+	missing, err := store.MissingLogoTargets(ctx)
+	if err != nil || len(missing) != 1 {
+		t.Fatalf("missing before upsert = %#v, err=%v", missing, err)
+	}
+	if err := store.UpsertLogo(ctx, 1, 101, logoID, 5, version, downloadID, []byte("png"), 1000); err != nil {
+		t.Fatal(err)
+	}
+	missing, err = store.MissingLogoTargets(ctx)
+	if err != nil || len(missing) != 0 {
+		t.Fatalf("missing after upsert = %#v, err=%v", missing, err)
+	}
+}

@@ -191,6 +191,20 @@ WHERE s.logo_id IS NOT NULL AND s.logo_id >= 0
   AND s.logo_download_data_id IS NOT NULL
 ORDER BY s.channel_type, s.channel_id, s.network_id, s.service_id;
 
+-- name: MissingLogoTargets :many
+SELECT s.network_id, s.service_id, s.transport_stream_id, s.channel_type, s.channel_id, s.logo_id, s.logo_version, s.logo_download_data_id
+FROM services s
+WHERE s.logo_id IS NOT NULL AND s.logo_id >= 0
+  AND s.logo_version IS NOT NULL
+  AND s.logo_download_data_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM service_logos l
+    WHERE l.network_id = s.network_id AND l.service_id = s.service_id
+      AND l.logo_id = s.logo_id AND l.logo_version = s.logo_version
+      AND l.download_data_id = s.logo_download_data_id
+  )
+ORDER BY s.channel_type, s.channel_id, s.network_id, s.service_id;
+
 -- name: SetEPGAttempt :exec
 INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_error)
 VALUES (?, ?, ?, ?)

@@ -144,6 +144,25 @@ func (s *sqliteStore) KnownLogoTargets(ctx context.Context) ([]LogoTarget, error
 	return result, nil
 }
 
+func (s *sqliteStore) MissingLogoTargets(ctx context.Context) ([]LogoTarget, error) {
+	rows, err := s.q.MissingLogoTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]LogoTarget, 0, len(rows))
+	for _, row := range rows {
+		if row.LogoID == nil || row.LogoVersion == nil || row.LogoDownloadDataID == nil {
+			continue
+		}
+		result = append(result, LogoTarget{
+			NetworkId: uint16(row.NetworkID), ServiceId: uint16(row.ServiceID), TransportStreamId: uint16(row.TransportStreamID),
+			ChannelType: row.ChannelType, ChannelId: row.ChannelID, LogoId: *row.LogoID,
+			LogoVersion: *row.LogoVersion, LogoDownloadDataId: *row.LogoDownloadDataID,
+		})
+	}
+	return result, nil
+}
+
 func (s *sqliteStore) SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
 	return s.q.SetEPGAttempt(ctx, gen.SetEPGAttemptParams{
 		NetworkID:     int64(networkID),

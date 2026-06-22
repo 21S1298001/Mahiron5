@@ -187,7 +187,7 @@ func (p *SourcePool) tryRoute(ctx context.Context, channel *config.ChannelConfig
 	if route.Remote != "" {
 		selected, err = p.tryRemoteRoute(routeCtx, route, routeChannel)
 	} else {
-		selected, err = p.tryLocalRoute(routeCtx, channel, route, routeChannel, hooks)
+		selected, err = p.tryLocalRoute(routeCtx, channel, route, routeChannel, wait, hooks)
 	}
 	if err != nil {
 		return routeSelection{}, err
@@ -207,7 +207,7 @@ func (p *SourcePool) tryRemoteRoute(ctx context.Context, route config.ChannelRou
 	return routeSelection{route: route, channel: routeChannel}, nil
 }
 
-func (p *SourcePool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, routeChannel config.ChannelConfig, hooks []BroadcastHook) (routeSelection, error) {
+func (p *SourcePool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, routeChannel config.ChannelConfig, wait bool, hooks []BroadcastHook) (routeSelection, error) {
 	key := newRouteSourceKey(route)
 	source, finishCreate, err := p.beginRouteSourceCreate(ctx, key)
 	if err != nil {
@@ -222,7 +222,7 @@ func (p *SourcePool) tryLocalRoute(ctx context.Context, channel *config.ChannelC
 	var device TunerDevice
 	var decoder string
 	if allocator, ok := p.tunerManager.(TunerAllocator); ok {
-		device, decoder, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, false)
+		device, decoder, err = allocator.AcquireDevice(ctx, route.Type, channel, &routeChannel, wait)
 	} else {
 		device, err = p.tunerManager.NewDeviceByType(route.Type, &routeChannel)
 	}

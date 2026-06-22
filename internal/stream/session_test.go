@@ -363,6 +363,21 @@ func TestManagerPassesTunerUserPriorityToAllocator(t *testing.T) {
 	}
 }
 
+func TestManagerPassesBackgroundWaitToAllocator(t *testing.T) {
+	no := false
+	tuners := &priorityCapturingTunerManager{}
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
+		TunerManager: tuners,
+	})
+	if _, err := manager.GetOrCreateWait(context.Background(), "GR", "27"); err != nil {
+		t.Fatal(err)
+	}
+	if !tuners.wait {
+		t.Fatal("allocator wait = false, want true for background acquisition")
+	}
+}
+
 func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
 	no := false
 	priorityLocal := 10
@@ -877,15 +892,17 @@ func (m *routeSelectingTunerManager) NewDeviceByType(channelType string, channel
 
 type priorityCapturingTunerManager struct {
 	priority int
+	wait     bool
 }
 
 func (m *priorityCapturingTunerManager) NewDeviceByType(string, *config.ChannelConfig) (tuner.Device, error) {
 	return &fakeTunerDevice{done: make(chan struct{})}, nil
 }
 
-func (m *priorityCapturingTunerManager) AcquireDevice(ctx context.Context, _ string, _, _ *config.ChannelConfig, _ bool) (tuner.Device, string, error) {
+func (m *priorityCapturingTunerManager) AcquireDevice(ctx context.Context, _ string, _, _ *config.ChannelConfig, wait bool) (tuner.Device, string, error) {
 	user, _ := tuner.UserFromContext(ctx)
 	m.priority = user.Priority
+	m.wait = wait
 	return &fakeTunerDevice{done: make(chan struct{})}, "", nil
 }
 

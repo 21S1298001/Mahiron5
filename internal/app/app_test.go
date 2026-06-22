@@ -19,11 +19,10 @@ func TestBuildRuntimeWiresCurrentApplication(t *testing.T) {
 	}
 	obs := observability.Setup(t.Context(), config.ObservabilityConfig{}, nil)
 	cfg := &config.Config{System: &config.SystemConfig{
-		Addresses:          []config.ServerAddress{{Http: "127.0.0.1:0"}},
-		JobMaxRunning:      1,
-		EpgRetrievalTime:   5_000,
-		EpgStaleAfter:      7_200_000,
-		LogoGatherDuration: 86_400_000,
+		Addresses:         []config.ServerAddress{{Http: "127.0.0.1:0"}},
+		EpgRetrievalTime:  5_000,
+		EpgStaleAfter:     7_200_000,
+		LogoGatherTimeout: 1_200_000,
 	}}
 
 	runtime, message, err := buildRuntime(cfg, database, obs)
@@ -58,7 +57,7 @@ func TestStartupQueuePolicyUsesCurrentState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mgr, err := job.NewManager(job.Config{MaxHistory: 10, MaxRunning: 2})
+			mgr, err := job.NewManager(job.Config{MaxHistory: 10})
 			if err != nil {
 				t.Fatal(err)
 			}

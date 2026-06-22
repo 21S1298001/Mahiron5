@@ -55,7 +55,7 @@ type Session interface {
 	ScanServices(context.Context) ([]ts.ServiceInfo, error)
 	CollectEITS(context.Context, func(*ts.EIT) error) error
 	CollectEITPF(context.Context, func(*ts.EIT) error) error
-	CollectLogos(context.Context, func(*ts.LogoImage) error) error
+	ObserveLogos(context.Context, func(*ts.LogoImage) error) error
 	Stop(context.Context) error
 }
 
@@ -113,8 +113,9 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	if piggyback := NewEITPFPiggyback(channelType, channel, m.eitCollector, m.eitUpdater); piggyback != nil {
 		hooks = append(hooks, piggyback.Hook)
 	}
-	if piggyback := NewLogoPiggyback(channelType, channel, m.logoCollector, m.logoUpdater); piggyback != nil {
-		hooks = append(hooks, piggyback.Hook)
+	logoPiggyback := NewLogoPiggyback(channelType, channel, m.logoCollector, m.logoUpdater)
+	if logoPiggyback != nil {
+		hooks = append(hooks, logoPiggyback.Hook)
 	}
 	slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
 	lease, err := m.sources.Acquire(ctx, channelType, channel, wait, hooks)
@@ -148,7 +149,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		EITCollector:  m.eitCollector,
 		EITUpdater:    m.eitUpdater,
 		Filter:        m.filter,
-		LogoCollector: m.logoCollector,
+		LogoPiggyback: logoPiggyback,
 		OnStop:        func() { m.remove(key) },
 		Scanner:       m.scanner,
 		Type:          channelType,

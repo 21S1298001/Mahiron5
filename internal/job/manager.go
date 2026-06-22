@@ -58,8 +58,6 @@ type JobManager struct {
 	queue          []*Job
 	active         map[string]context.CancelFunc
 	activeKeys     map[string]bool
-	running        int
-	maxRunning     int
 	maxHistory     int
 	mu             sync.Mutex
 	wg             sync.WaitGroup
@@ -70,15 +68,11 @@ type JobManager struct {
 
 type Config struct {
 	MaxHistory int
-	MaxRunning int
 }
 
 func NewManager(cfg Config) (*JobManager, error) {
 	if cfg.MaxHistory <= 0 {
 		cfg.MaxHistory = 100
-	}
-	if cfg.MaxRunning <= 0 {
-		cfg.MaxRunning = 1
 	}
 	scheduler, err := gocron.NewScheduler()
 	if err != nil {
@@ -91,7 +85,6 @@ func NewManager(cfg Config) (*JobManager, error) {
 		gocronIDs:      make(map[string]uuid.UUID),
 		active:         make(map[string]context.CancelFunc),
 		activeKeys:     make(map[string]bool),
-		maxRunning:     cfg.MaxRunning,
 		maxHistory:     cfg.MaxHistory,
 		shutdownCtx:    shutdownCtx,
 		shutdownCancel: shutdownCancel,
@@ -210,7 +203,7 @@ func (m *JobManager) enqueueLocked(def *JobDefinition) (string, error) {
 }
 
 func (m *JobManager) dispatchLocked() {
-	for m.running < m.maxRunning && len(m.queue) > 0 && m.shutdownCtx.Err() == nil {
+	for len(m.queue) > 0 && m.shutdownCtx.Err() == nil {
 		item := m.queue[0]
 		m.queue = m.queue[1:]
 		now := time.Now()
@@ -219,7 +212,6 @@ func (m *JobManager) dispatchLocked() {
 		item.UpdatedAt = now
 		ctx, cancel := context.WithCancel(m.shutdownCtx)
 		m.active[item.ID] = cancel
-		m.running++
 		m.notifyLocked()
 		m.wg.Add(1)
 		slog.Info("job started", "key", item.Key, "name", item.Name, "id", item.ID)
@@ -239,7 +231,6 @@ func (m *JobManager) run(ctx context.Context, item *Job) {
 	observability.EndSpan(span, err)
 	m.mu.Lock()
 	delete(m.active, item.ID)
-	m.running--
 	if !item.HasAborted && m.shouldRetryLocked(item, err) {
 		m.standbyLocked(item, err)
 	} else {

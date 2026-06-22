@@ -534,7 +534,7 @@ func (s *RemoteSession) CollectEITPF(context.Context, func(*ts.EIT) error) error
 	return ErrEITCollectorNotConfigured
 }
 
-func (s *RemoteSession) CollectLogos(context.Context, func(*ts.LogoImage) error) error {
+func (s *RemoteSession) ObserveLogos(context.Context, func(*ts.LogoImage) error) error {
 	return ErrLogoCollectorNotConfigured
 }
 

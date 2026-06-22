@@ -25,11 +25,11 @@ type ServiceScanner interface {
 }
 
 type LogoCollector interface {
-	CollectLogos(context.Context, string, string, func(*ts.LogoImage) error) error
+	ObserveLogos(context.Context, string, string, func(*ts.LogoImage) error) error
 }
 
-type LogoUpdater interface {
-	UpsertLogoImage(context.Context, *ts.LogoImage) error
+type LogoStore interface {
+	MissingLogoTargets(context.Context) ([]service.LogoTarget, error)
 }
 
 type EPGGatherer interface {
@@ -53,7 +53,7 @@ type EPGProgramStore interface {
 
 type EPGStreamManager interface {
 	HasSession(string, string) bool
-	GetOrCreate(context.Context, string, string) (interface {
+	GetOrCreateWait(context.Context, string, string) (interface {
 		CollectEITS(context.Context, func(*ts.EIT) error) error
 		CollectEITPF(context.Context, func(*ts.EIT) error) error
 	}, error)

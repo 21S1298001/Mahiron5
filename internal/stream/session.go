@@ -19,7 +19,7 @@ type ChannelSession struct {
 	eitCollector  EITCollector
 	filter        ServiceFilter
 	flows         *FlowRegistry
-	logoCollector LogoCollector
+	logoPiggyback *LogoPiggyback
 	mu            sync.Mutex
 	scanner       ServiceScanner
 	stopped       bool
@@ -34,7 +34,7 @@ type ChannelSessionConfig struct {
 	EITCollector  EITCollector
 	EITUpdater    EITSectionUpdater
 	Filter        ServiceFilter
-	LogoCollector LogoCollector
+	LogoPiggyback *LogoPiggyback
 	OnStop        func()
 	Scanner       ServiceScanner
 	Type          string
@@ -47,7 +47,7 @@ func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
 		descrambler:   config.Descrambler,
 		eitCollector:  config.EITCollector,
 		filter:        config.Filter,
-		logoCollector: config.LogoCollector,
+		logoPiggyback: config.LogoPiggyback,
 		scanner:       config.Scanner,
 		typ:           config.Type,
 	}
@@ -125,13 +125,11 @@ func (s *ChannelSession) CollectEITPF(ctx context.Context, observe func(*ts.EIT)
 	})
 }
 
-func (s *ChannelSession) CollectLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
-	if s.logoCollector == nil {
+func (s *ChannelSession) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
+	if s.logoPiggyback == nil {
 		return ErrLogoCollectorNotConfigured
 	}
-	return NewStreamTaskRunner(s.broadcast).RunTask(ctx, func(ctx context.Context, src io.Reader) error {
-		return s.logoCollector.Collect(ctx, src, observe)
-	})
+	return s.logoPiggyback.Observe(ctx, s.broadcast, observe)
 }
 
 func (s *ChannelSession) Stop(ctx context.Context) error {

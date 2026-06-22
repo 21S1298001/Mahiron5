@@ -378,8 +378,8 @@ func TestEnqueueSingleton(t *testing.T) {
 	}
 }
 
-func TestMaxRunningQueuesJobs(t *testing.T) {
-	mgr, err := NewManager(Config{MaxHistory: 10, MaxRunning: 2})
+func TestJobsRunIndependently(t *testing.T) {
+	mgr, err := NewManager(Config{MaxHistory: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,46 +396,14 @@ func TestMaxRunningQueuesJobs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for range 2 {
+	for range 3 {
 		select {
 		case <-started:
 		case <-time.After(time.Second):
-			t.Fatal("first two jobs did not start")
+			t.Fatal("jobs did not start independently")
 		}
 	}
-	select {
-	case key := <-started:
-		t.Fatalf("third job %q started above the limit", key)
-	case <-time.After(50 * time.Millisecond):
-	}
 	close(release)
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("queued job did not start after a slot was released")
-	}
-}
-
-func TestAbortQueuedJob(t *testing.T) {
-	mgr := newTestManager(t)
-	block := make(chan struct{})
-	mgr.Register(JobDefinition{Key: "blocker", Handler: func(context.Context) error { <-block; return nil }})
-	mgr.Register(JobDefinition{Key: "queued", Handler: func(context.Context) error { t.Fatal("aborted queued job ran"); return nil }})
-	if _, err := mgr.Enqueue("blocker"); err != nil {
-		t.Fatal(err)
-	}
-	id, err := mgr.Enqueue("queued")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := mgr.Abort(id); err != nil {
-		t.Fatal(err)
-	}
-	item := waitJob(t, mgr, id)
-	close(block)
-	if !item.HasAborted || item.Status != StatusFinished {
-		t.Fatalf("queued abort state = %#v", item)
-	}
 }
 
 func TestGetActiveJobKeysByPrefix(t *testing.T) {

@@ -638,6 +638,64 @@ func (q *Queries) ListServices(ctx context.Context) ([]ListServicesRow, error) {
 	return items, nil
 }
 
+const missingLogoTargets = `-- name: MissingLogoTargets :many
+SELECT s.network_id, s.service_id, s.transport_stream_id, s.channel_type, s.channel_id, s.logo_id, s.logo_version, s.logo_download_data_id
+FROM services s
+WHERE s.logo_id IS NOT NULL AND s.logo_id >= 0
+  AND s.logo_version IS NOT NULL
+  AND s.logo_download_data_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM service_logos l
+    WHERE l.network_id = s.network_id AND l.service_id = s.service_id
+      AND l.logo_id = s.logo_id AND l.logo_version = s.logo_version
+      AND l.download_data_id = s.logo_download_data_id
+  )
+ORDER BY s.channel_type, s.channel_id, s.network_id, s.service_id
+`
+
+type MissingLogoTargetsRow struct {
+	NetworkID          int64  `json:"network_id"`
+	ServiceID          int64  `json:"service_id"`
+	TransportStreamID  int64  `json:"transport_stream_id"`
+	ChannelType        string `json:"channel_type"`
+	ChannelID          string `json:"channel_id"`
+	LogoID             *int64 `json:"logo_id"`
+	LogoVersion        *int64 `json:"logo_version"`
+	LogoDownloadDataID *int64 `json:"logo_download_data_id"`
+}
+
+func (q *Queries) MissingLogoTargets(ctx context.Context) ([]MissingLogoTargetsRow, error) {
+	rows, err := q.db.QueryContext(ctx, missingLogoTargets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MissingLogoTargetsRow
+	for rows.Next() {
+		var i MissingLogoTargetsRow
+		if err := rows.Scan(
+			&i.NetworkID,
+			&i.ServiceID,
+			&i.TransportStreamID,
+			&i.ChannelType,
+			&i.ChannelID,
+			&i.LogoID,
+			&i.LogoVersion,
+			&i.LogoDownloadDataID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setEPGAttempt = `-- name: SetEPGAttempt :exec
 INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_error)
 VALUES (?, ?, ?, ?)

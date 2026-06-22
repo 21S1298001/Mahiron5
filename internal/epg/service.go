@@ -24,7 +24,7 @@ type ServiceStore interface {
 
 type StreamManager interface {
 	HasSession(string, string) bool
-	GetOrCreate(context.Context, string, string) (interface {
+	GetOrCreateWait(context.Context, string, string) (interface {
 		CollectEITS(context.Context, func(*ts.EIT) error) error
 		CollectEITPF(context.Context, func(*ts.EIT) error) error
 	}, error)
@@ -215,7 +215,7 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 			},
 		})
 		var candidateErr error
-		session, candidateErr := streams.GetOrCreate(userCtx, candidate.Type, candidate.Channel)
+		session, candidateErr := streams.GetOrCreateWait(userCtx, candidate.Type, candidate.Channel)
 		if candidateErr == nil {
 			candidateErr = CollectServiceSnapshots(userCtx, programStore, serviceStore, session, serviceKeys, retrievalTime)
 		}

@@ -192,6 +192,10 @@ func (s *ServiceManager) KnownLogoTargets(ctx context.Context) ([]LogoTarget, er
 	return s.store.KnownLogoTargets(ctx)
 }
 
+func (s *ServiceManager) MissingLogoTargets(ctx context.Context) ([]LogoTarget, error) {
+	return s.store.MissingLogoTargets(ctx)
+}
+
 func (s *ServiceManager) UpsertLogo(ctx context.Context, networkID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
 	if err := s.store.UpsertLogo(ctx, networkID, serviceID, logoID, logoType, logoVersion, downloadDataID, data, updatedAt); err != nil {
 		return err
