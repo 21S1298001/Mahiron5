@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/ts"
@@ -30,6 +31,9 @@ func TestCollectServiceSnapshotsSyncsStoredRemotePrograms(t *testing.T) {
 	}
 	if len(store.replaced[key]) != 1 || store.replaced[key][0].EventID != 1 {
 		t.Fatalf("replaced = %#v", store.replaced)
+	}
+	if store.sources[key] != "remote" {
+		t.Fatalf("replace source = %q, want remote", store.sources[key])
 	}
 	if status.attempts[key] == 0 {
 		t.Fatal("attempt timestamp was not recorded")
@@ -79,10 +83,14 @@ func TestCollectServiceSnapshotsSyncsStoredRemoteProgramsPartialFailure(t *testi
 
 type remoteSyncProgramStore struct {
 	replaced map[ServiceKey][]*program.Program
+	sources  map[ServiceKey]string
 }
 
 func newRemoteSyncProgramStore() *remoteSyncProgramStore {
-	return &remoteSyncProgramStore{replaced: make(map[ServiceKey][]*program.Program)}
+	return &remoteSyncProgramStore{
+		replaced: make(map[ServiceKey][]*program.Program),
+		sources:  make(map[ServiceKey]string),
+	}
 }
 
 func (s *remoteSyncProgramStore) UpsertPrograms(context.Context, []*program.Program) error {
@@ -93,9 +101,10 @@ func (s *remoteSyncProgramStore) DeleteEndedBefore(context.Context, int64) error
 	return nil
 }
 
-func (s *remoteSyncProgramStore) ReplaceServicePrograms(_ context.Context, networkID, serviceID uint16, _ int64, programs []*program.Program) error {
+func (s *remoteSyncProgramStore) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, _ int64, programs []*program.Program) error {
 	key := ServiceKey{NetworkID: networkID, ServiceID: serviceID}
 	s.replaced[key] = append([]*program.Program(nil), programs...)
+	s.sources[key] = observability.EPGMetricSource(ctx)
 	return nil
 }
 

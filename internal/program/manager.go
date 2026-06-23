@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/21S1298001/Mahiron5/internal/observability"
 )
 
 const programEventDelay = time.Second
@@ -43,6 +45,8 @@ func NewProgramManager(store ProgramStore, events ...eventPublisher) *ProgramMan
 }
 
 func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program) error {
+	source := observability.EPGMetricSource(ctx)
+	attempted := nonNilProgramCount(programs)
 	ids := make([]int64, 0, len(programs))
 	for _, p := range programs {
 		if p == nil {
@@ -59,8 +63,10 @@ func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program
 		before[p.ID] = p
 	}
 	if err := m.store.UpsertAll(ctx, programs); err != nil {
+		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
 		return err
 	}
+	changed := 0
 	for _, p := range programs {
 		if p == nil {
 			continue
@@ -68,11 +74,14 @@ func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program
 		existing, ok := before[p.ID]
 		switch {
 		case !ok:
+			changed++
 			m.enqueueProgramEvent(eventTypeCreate, p)
 		case !reflect.DeepEqual(existing, p):
+			changed++
 			m.enqueueProgramEvent(eventTypeUpdate, p)
 		}
 	}
+	observability.RecordEPGProgramsUpserted(ctx, source, "success", int64(changed))
 	return nil
 }
 
@@ -85,20 +94,25 @@ func (m *ProgramManager) List(ctx context.Context, query Query) ([]*Program, err
 }
 
 func (m *ProgramManager) DeleteEndedBefore(ctx context.Context, cutoff int64) error {
+	source := observability.EPGMetricSource(ctx)
 	removed, err := m.store.ListEndedIDsBefore(ctx, cutoff)
 	if err != nil {
 		return err
 	}
 	if err := m.store.DeleteEndedBefore(ctx, cutoff); err != nil {
+		observability.RecordEPGProgramsDeleted(ctx, source, "error", int64(len(removed)))
 		return err
 	}
 	for _, id := range removed {
 		m.enqueueProgramRemoveEvent(id)
 	}
+	observability.RecordEPGProgramsDeleted(ctx, source, "success", int64(len(removed)))
 	return nil
 }
 
 func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) error {
+	source := observability.EPGMetricSource(ctx)
+	attempted := nonNilProgramCount(programs)
 	beforeList, err := m.store.ListByServiceFrom(ctx, networkID, serviceID, from)
 	if err != nil {
 		return err
@@ -108,8 +122,11 @@ func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, 
 		before[p.ID] = p
 	}
 	if err := m.store.ReplaceServicePrograms(ctx, networkID, serviceID, from, programs); err != nil {
+		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
+		observability.RecordEPGProgramsDeleted(ctx, source, "error", int64(len(beforeList)))
 		return err
 	}
+	changed := 0
 	for _, p := range programs {
 		if p == nil {
 			continue
@@ -118,18 +135,32 @@ func (m *ProgramManager) ReplaceServicePrograms(ctx context.Context, networkID, 
 		delete(before, p.ID)
 		switch {
 		case !ok:
+			changed++
 			m.enqueueProgramEvent(eventTypeCreate, p)
 		case !reflect.DeepEqual(existing, p):
+			changed++
 			m.enqueueProgramEvent(eventTypeUpdate, p)
 		}
 	}
 	for id := range before {
 		m.enqueueProgramRemoveEvent(id)
 	}
+	observability.RecordEPGProgramsUpserted(ctx, source, "success", int64(changed))
+	observability.RecordEPGProgramsDeleted(ctx, source, "success", int64(len(before)))
 	return nil
 }
 
 func (m *ProgramManager) Count(ctx context.Context) (int, error) { return m.store.Count(ctx) }
+
+func nonNilProgramCount(programs []*Program) int {
+	count := 0
+	for _, p := range programs {
+		if p != nil {
+			count++
+		}
+	}
+	return count
+}
 
 func (m *ProgramManager) enqueueProgramEvent(typ string, p *Program) {
 	if m.events == nil {

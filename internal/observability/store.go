@@ -2,6 +2,7 @@ package observability
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"sync"
 )
@@ -53,6 +54,7 @@ func (s *LogStore) Write(p []byte) (int, error) {
 			select {
 			case sub.ch <- copied:
 			default:
+				RecordLogDropped(context.Background())
 			}
 		}
 	}

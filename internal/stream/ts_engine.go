@@ -299,6 +299,7 @@ func (e *packetEngine) dispatch(packet ts.Packet, sections []ts.Section) {
 		select {
 		case sub.queue <- out:
 		default:
+			observability.RecordStreamSubscriberOverflow(context.Background(), e.channelType, "packet_overflow")
 			e.finishPacketLocked(id, ErrSubscriberOverflow)
 		}
 	}
@@ -313,6 +314,7 @@ func (e *packetEngine) dispatch(packet ts.Packet, sections []ts.Section) {
 			select {
 			case sub.queue <- section:
 			default:
+				observability.RecordStreamSubscriberOverflow(context.Background(), e.channelType, "section_overflow")
 				e.finishSectionLocked(id, ErrSubscriberOverflow)
 			}
 		}
@@ -328,6 +330,7 @@ func (e *packetEngine) writePackets(id uint64, sub *packetSubscription, dst io.W
 			err = io.ErrShortWrite
 		}
 		if err != nil {
+			observability.RecordStreamSubscriberError(context.Background(), e.channelType, "write")
 			e.finishPacket(id, err)
 			return
 		}
@@ -338,6 +341,7 @@ func (e *packetEngine) writeSections(id uint64, sub *sectionSubscription) {
 	defer close(sub.writerDone)
 	for section := range sub.queue {
 		if err := sub.observe(section); err != nil {
+			observability.RecordStreamSubscriberError(context.Background(), e.channelType, "observe")
 			e.finishSection(id, err)
 			return
 		}

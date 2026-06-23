@@ -81,6 +81,7 @@ func (h *Hub) PublishEvent(resource, typ string, data any) {
 		select {
 		case ch <- cloneEvent(event):
 		default:
+			observability.RecordEventDropped(context.Background())
 		}
 	}
 	h.mu.Unlock()

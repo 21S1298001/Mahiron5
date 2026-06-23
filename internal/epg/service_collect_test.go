@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/ts"
 )
@@ -28,6 +29,9 @@ func TestCollectServiceSnapshotsRoutesEITSAndEITPF(t *testing.T) {
 	}
 	if got, want := store.eventIDs(), []uint16{1, 10}; !equalEventIDs(got, want) {
 		t.Fatalf("upserted event IDs = %v, want %v", got, want)
+	}
+	if got, want := store.sources, []string{"eitpf", "eits"}; !equalStrings(got, want) {
+		t.Fatalf("sources = %v, want %v", got, want)
 	}
 }
 
@@ -71,6 +75,18 @@ func TestGatherNetworkTimesOutWhileWaitingForSession(t *testing.T) {
 	}
 }
 
+func TestServiceCleanupUsesCleanupMetricSource(t *testing.T) {
+	store := &collectProgramStore{}
+	service := NewService(store, newRemoteSyncServiceStore(), nil, nil, 1, time.Second)
+
+	if err := service.Cleanup(context.Background(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if store.deleteSource != "cleanup" {
+		t.Fatalf("delete source = %q, want cleanup", store.deleteSource)
+	}
+}
+
 type blockingEPGStreams struct{}
 
 func (blockingEPGStreams) HasSession(string, string) bool { return false }
@@ -99,20 +115,26 @@ func (s *collectEITSession) CollectEIT(ctx context.Context, observe func(*ts.EIT
 }
 
 type collectProgramStore struct {
-	calls       [][]*program.Program
-	failEventID uint16
-	failErr     error
+	calls        [][]*program.Program
+	failEventID  uint16
+	failErr      error
+	sources      []string
+	deleteSource string
 }
 
-func (s *collectProgramStore) UpsertPrograms(_ context.Context, programs []*program.Program) error {
+func (s *collectProgramStore) UpsertPrograms(ctx context.Context, programs []*program.Program) error {
 	s.calls = append(s.calls, append([]*program.Program(nil), programs...))
+	s.sources = append(s.sources, observability.EPGMetricSource(ctx))
 	if len(programs) > 0 && programs[0].EventID == s.failEventID {
 		return s.failErr
 	}
 	return nil
 }
 
-func (s *collectProgramStore) DeleteEndedBefore(context.Context, int64) error { return nil }
+func (s *collectProgramStore) DeleteEndedBefore(ctx context.Context, _ int64) error {
+	s.deleteSource = observability.EPGMetricSource(ctx)
+	return nil
+}
 
 func (s *collectProgramStore) ReplaceServicePrograms(context.Context, uint16, uint16, int64, []*program.Program) error {
 	return nil
@@ -145,6 +167,18 @@ func testEIT(tableID byte, key ServiceKey, eventID uint16) *ts.EIT {
 }
 
 func equalEventIDs(a, b []uint16) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}

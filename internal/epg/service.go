@@ -89,7 +89,7 @@ func (s *Service) Cleanup(ctx context.Context, now time.Time) error {
 	}
 	cutoff := now.Add(-time.Duration(s.retentionDays) * 24 * time.Hour).UnixMilli()
 	slog.Debug("cleaning up old EPG data", "retentionDays", s.retentionDays, "cutoff", cutoff)
-	return s.programStore.DeleteEndedBefore(ctx, cutoff)
+	return s.programStore.DeleteEndedBefore(observability.ContextWithEPGMetricSource(ctx, "cleanup"), cutoff)
 }
 
 func RetryableError(err error) bool {
@@ -267,10 +267,17 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	}
 
 	startedAt := time.Now().UnixMilli()
-	for _, key := range expected {
-		_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, startedAt, "")
+	source := "eits"
+	lister, hasStoredPrograms := session.(StoredProgramLister)
+	if hasStoredPrograms {
+		source = "remote"
 	}
-	if lister, ok := session.(StoredProgramLister); ok {
+	for _, key := range expected {
+		if err := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, startedAt, ""); err != nil {
+			observability.RecordEPGServiceUpdateError(ctx, source, "attempt")
+		}
+	}
+	if hasStoredPrograms {
 		return syncStoredServicePrograms(ctx, programStore, serviceStore, lister, expected, retrievalTime)
 	}
 	collectCtx, cancel := context.WithTimeout(ctx, retrievalTime)
@@ -296,7 +303,8 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 					return nil
 				}
 				slog.Debug("upserting EIT section", "source", "eitpf", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
-				if err := programStore.UpsertPrograms(collectCtx, section.Programs()); err != nil {
+				sourceCtx := observability.ContextWithEPGMetricSource(collectCtx, "eitpf")
+				if err := programStore.UpsertPrograms(sourceCtx, section.Programs()); err != nil {
 					pfErr = err
 				}
 				return nil
@@ -358,14 +366,18 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 				observability.AttrEPGServiceID.Int(int(key.ServiceID)),
 				observability.AttrProgramCount.Int(len(programs)),
 			)
+			mergeCtx = observability.ContextWithEPGMetricSource(mergeCtx, "eits")
 			err := programStore.UpsertPrograms(mergeCtx, programs)
 			observability.EndSpan(mergeSpan, err)
 			if err != nil {
-				_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
+				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error()); attemptErr != nil {
+					observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
+				}
 				result = errors.Join(result, fmt.Errorf("service %d: merge: %w", key.ServiceID, err))
 				continue
 			}
 			if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, now); err != nil {
+				observability.RecordEPGServiceUpdateError(ctx, "eits", "success")
 				result = errors.Join(result, err)
 			}
 		} else {
@@ -374,7 +386,9 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 				"serviceId", key.ServiceID,
 				"report", snapshot.CompletionReport(key))
 			err := fmt.Errorf("service %d EITS incomplete", key.ServiceID)
-			_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
+			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error()); attemptErr != nil {
+				observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
+			}
 			result = errors.Join(result, err)
 		}
 	}
@@ -399,7 +413,9 @@ func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, s
 		programs, err := lister.ListServicePrograms(syncCtx, key.NetworkID, key.ServiceID)
 		now := time.Now().UnixMilli()
 		if err != nil {
-			_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
+			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error()); attemptErr != nil {
+				observability.RecordEPGServiceUpdateError(ctx, "remote", "attempt")
+			}
 			result = errors.Join(result, fmt.Errorf("service %d: list remote programs: %w", key.ServiceID, err))
 			continue
 		}
@@ -409,14 +425,18 @@ func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, s
 			observability.AttrEPGServiceID.Int(int(key.ServiceID)),
 			observability.AttrProgramCount.Int(len(programs)),
 		)
+		replaceCtx = observability.ContextWithEPGMetricSource(replaceCtx, "remote")
 		err = programStore.ReplaceServicePrograms(replaceCtx, key.NetworkID, key.ServiceID, 0, programs)
 		observability.EndSpan(replaceSpan, err)
 		if err != nil {
-			_ = serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error())
+			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error()); attemptErr != nil {
+				observability.RecordEPGServiceUpdateError(ctx, "remote", "attempt")
+			}
 			result = errors.Join(result, fmt.Errorf("service %d: replace remote programs: %w", key.ServiceID, err))
 			continue
 		}
 		if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, now); err != nil {
+			observability.RecordEPGServiceUpdateError(ctx, "remote", "success")
 			result = errors.Join(result, err)
 		}
 	}

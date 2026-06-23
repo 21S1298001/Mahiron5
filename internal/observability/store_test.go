@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 func TestLogStoreSnapshotKeepsNewestRecords(t *testing.T) {
@@ -59,6 +62,31 @@ func TestLogStoreSubscribeCloseUnblocksReader(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("reader did not unblock")
+	}
+}
+
+func TestLogStoreRecordsDroppedSubscriberChunks(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	initMetrics(provider)
+
+	store := NewLogStore(200)
+	stream, unsubscribe := store.Subscribe()
+	defer stream.Close()
+	defer unsubscribe()
+
+	for range 129 {
+		if _, err := store.Write([]byte("line\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var data metricdata.ResourceMetrics
+	if err := reader.Collect(t.Context(), &data); err != nil {
+		t.Fatal(err)
+	}
+	if got := int64Sum(data, MetricLogsDropped); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricLogsDropped, got)
 	}
 }
 
