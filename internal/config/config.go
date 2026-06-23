@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 )
+
+const DefaultConfigDir = "./config"
 
 type Config struct {
 	Channels ChannelsConfig
@@ -14,22 +17,26 @@ type Config struct {
 }
 
 func LoadAndParseConfig() (*Config, error) {
-	channels, err := LoadAndParseChannelsConfig("channels.yml")
+	return LoadAndParseConfigFromDir(DefaultConfigDir)
+}
+
+func LoadAndParseConfigFromDir(configDir string) (*Config, error) {
+	channels, err := LoadAndParseChannelsConfig(filepath.Join(configDir, "channels.yml"))
 	if err != nil {
 		return nil, err
 	}
 
-	system, err := LoadAndParseSystemConfig("server.yml")
+	system, err := LoadAndParseSystemConfig(filepath.Join(configDir, "server.yml"))
 	if err != nil {
 		return nil, err
 	}
 
-	tuners, err := LoadAndParseTunersConfig("tuners.yml")
+	tuners, err := LoadAndParseTunersConfig(filepath.Join(configDir, "tuners.yml"))
 	if err != nil {
 		return nil, err
 	}
 
-	remotes, err := loadRemotesForChannels("remotes.yml", channels)
+	remotes, err := loadRemotesForChannels(filepath.Join(configDir, "remotes.yml"), channels)
 	if err != nil {
 		return nil, err
 	}

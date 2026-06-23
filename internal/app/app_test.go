@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -13,6 +14,49 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
+
+func TestParseRunOptions(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    runOptions
+		wantErr bool
+	}{
+		{
+			name: "default config dir",
+			want: runOptions{ConfigDir: config.DefaultConfigDir},
+		},
+		{
+			name: "custom config dir",
+			args: []string{"--config-dir", "/etc/mahiron5"},
+			want: runOptions{ConfigDir: "/etc/mahiron5"},
+		},
+		{
+			name:    "unknown flag",
+			args:    []string{"--unknown"},
+			wantErr: true,
+		},
+		{
+			name:    "unexpected positional argument",
+			args:    []string{"extra"},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseRunOptions(tt.args, io.Discard)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseRunOptions() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			if got != tt.want {
+				t.Fatalf("parseRunOptions() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestBuildRuntimeWiresCurrentApplication(t *testing.T) {
 	database, err := db.OpenInMemory()

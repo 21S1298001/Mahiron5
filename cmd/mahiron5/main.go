@@ -8,5 +8,5 @@ import (
 )
 
 func main() {
-	os.Exit(app.Run(context.Background()))
+	os.Exit(app.Run(context.Background(), os.Args[1:]))
 }

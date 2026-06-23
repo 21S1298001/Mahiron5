@@ -6,7 +6,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -30,8 +32,35 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/web"
 )
 
-func Run(ctx context.Context) int {
-	cfg, err := config.LoadAndParseConfig()
+type runOptions struct {
+	ConfigDir string
+}
+
+func parseRunOptions(args []string, output io.Writer) (runOptions, error) {
+	options := runOptions{ConfigDir: config.DefaultConfigDir}
+	flags := flag.NewFlagSet("mahiron5", flag.ContinueOnError)
+	flags.SetOutput(output)
+	flags.StringVar(&options.ConfigDir, "config-dir", options.ConfigDir, "directory containing configuration files")
+	if err := flags.Parse(args); err != nil {
+		return runOptions{}, err
+	}
+	if flags.NArg() > 0 {
+		return runOptions{}, fmt.Errorf("unexpected arguments: %v", flags.Args())
+	}
+	return options, nil
+}
+
+func Run(ctx context.Context, args []string) int {
+	options, err := parseRunOptions(args, os.Stderr)
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		slog.Error("failed to parse arguments", "err", err)
+		return 1
+	}
+
+	cfg, err := config.LoadAndParseConfigFromDir(options.ConfigDir)
 	if err != nil {
 		slog.Error("failed to load config", "err", err)
 		return 1
