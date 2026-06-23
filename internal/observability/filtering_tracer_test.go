@@ -34,7 +34,18 @@ func TestRecordJobRunMetrics(t *testing.T) {
 	RecordJobRun(t.Context(), "test-job", "success", 123)
 	RecordStreamSessionStart(t.Context(), "GR", "GR", "local", "success")
 	RecordStreamSessionDuration(t.Context(), "GR", "GR", "local", 456)
+	RecordStreamPacket(t.Context(), "GR", "27", 188)
+	RecordStreamPacketError(t.Context(), "GR", "27", "read")
+	RecordStreamContinuityCounterError(t.Context(), "GR", "27")
 	RecordTunerAcquire(t.Context(), "GR", "success", false, 12)
+	RecordTunerProcessStart(t.Context(), "GR", "27", "success")
+	RecordTunerProcessExit(t.Context(), "GR", "27", "success")
+	RecordTunerProcessRestartAttempt(t.Context(), "GR", "27")
+	RecordRemoteOperation(t.Context(), "remote.check_available", "success", 23)
+	RecordRemoteOperation(t.Context(), "remote.check_available", "failure", 34)
+	RecordDBOperation(t.Context(), "db.program.upsert_all", 45, nil)
+	RecordDBOperation(t.Context(), "db.program.upsert_all", 56, context.Canceled)
+	RecordEventPublished(t.Context(), "program", "update")
 
 	var data metricdata.ResourceMetrics
 	if err := reader.Collect(t.Context(), &data); err != nil {
@@ -52,11 +63,50 @@ func TestRecordJobRunMetrics(t *testing.T) {
 	if got := int64HistogramCount(data, MetricStreamSessionDuration); got != 1 {
 		t.Fatalf("%s count = %d, want 1", MetricStreamSessionDuration, got)
 	}
+	if got := int64Sum(data, MetricStreamPackets); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricStreamPackets, got)
+	}
+	if got := int64Sum(data, MetricStreamBytes); got != 188 {
+		t.Fatalf("%s = %d, want 188", MetricStreamBytes, got)
+	}
+	if got := int64Sum(data, MetricStreamPacketErrors); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricStreamPacketErrors, got)
+	}
+	if got := int64Sum(data, MetricStreamContinuityErrors); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricStreamContinuityErrors, got)
+	}
 	if got := int64Sum(data, MetricTunerAcquireRequests); got != 1 {
 		t.Fatalf("%s = %d, want 1", MetricTunerAcquireRequests, got)
 	}
 	if got := int64HistogramCount(data, MetricTunerAcquireDuration); got != 1 {
 		t.Fatalf("%s count = %d, want 1", MetricTunerAcquireDuration, got)
+	}
+	if got := int64Sum(data, MetricTunerProcessStarts); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricTunerProcessStarts, got)
+	}
+	if got := int64Sum(data, MetricTunerProcessExits); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricTunerProcessExits, got)
+	}
+	if got := int64Sum(data, MetricTunerProcessRestarts); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricTunerProcessRestarts, got)
+	}
+	if got := int64Sum(data, MetricRemoteRequests); got != 2 {
+		t.Fatalf("%s = %d, want 2", MetricRemoteRequests, got)
+	}
+	if got := int64HistogramCount(data, MetricRemoteDuration); got != 2 {
+		t.Fatalf("%s count = %d, want 2", MetricRemoteDuration, got)
+	}
+	if got := int64Sum(data, MetricRemoteErrors); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricRemoteErrors, got)
+	}
+	if got := int64HistogramCount(data, MetricDBOperationDuration); got != 2 {
+		t.Fatalf("%s count = %d, want 2", MetricDBOperationDuration, got)
+	}
+	if got := int64Sum(data, MetricDBOperationErrors); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricDBOperationErrors, got)
+	}
+	if got := int64Sum(data, MetricEventsPublished); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricEventsPublished, got)
 	}
 }
 

@@ -71,6 +71,30 @@ func TestTunerDeviceStopTerminatesDVBCommand(t *testing.T) {
 	}
 }
 
+func TestTunerDeviceProcessStartedAt(t *testing.T) {
+	device := NewCommandDevice(nil, "sleep 10")
+	if err := device.Start(context.Background(), bytes.NewBuffer(nil)); err != nil {
+		t.Fatal(err)
+	}
+	startedAt := device.(ProcessUptimeStatus).ProcessStartedAt()
+	if startedAt.IsZero() {
+		t.Fatal("ProcessStartedAt() is zero for running process")
+	}
+	stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := device.Stop(stopCtx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-device.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("tuner device did not stop")
+	}
+	if got := device.(ProcessUptimeStatus).ProcessStartedAt(); !got.IsZero() {
+		t.Fatalf("ProcessStartedAt() after stop = %v, want zero", got)
+	}
+}
+
 func TestTunerDeviceStartupRetryCommandPreservesFirstChunk(t *testing.T) {
 	dir := t.TempDir()
 	countPath := filepath.Join(dir, "count")

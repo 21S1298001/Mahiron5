@@ -52,8 +52,8 @@ func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
 	session.sectionCancel = sectionCancel
 	session.sectionQueue = make(chan ts.Section, sectionSubscriberBuffer)
 	go session.runSectionUpdates(sectionCtx)
-	session.rawEngine = newPacketEngine(config.Broadcast.SubscribeRaw, config.OnStop, session.observeSection)
-	session.decodedEngine = newPacketEngine(session.subscribeDecodedMux, nil)
+	session.rawEngine = newPacketEngine(config.Broadcast.SubscribeRaw, config.OnStop, session.observeSection).withMetricLabels(config.Type, config.Channel)
+	session.decodedEngine = newPacketEngine(session.subscribeDecodedMux, nil).withMetricLabels(config.Type, config.Channel)
 	return session
 }
 

@@ -150,6 +150,31 @@ func TestSharedSessionUsesOneDescramblerForDecodedSubscribers(t *testing.T) {
 	}
 }
 
+func TestContinuityMonitorDetectsCounterGap(t *testing.T) {
+	monitor := &continuityMonitor{last: map[uint16]byte{}}
+	if monitor.observe(engineTestPacket(0x0100, 1)) {
+		t.Fatal("first packet reported continuity error")
+	}
+	if monitor.observe(engineTestPacket(0x0100, 2)) {
+		t.Fatal("sequential packet reported continuity error")
+	}
+	if !monitor.observe(engineTestPacket(0x0100, 4)) {
+		t.Fatal("counter gap did not report continuity error")
+	}
+	if monitor.observe(engineTestPacket(0x0101, 9)) {
+		t.Fatal("first packet for another PID reported continuity error")
+	}
+}
+
+func TestContinuityMonitorIgnoresInvalidPackets(t *testing.T) {
+	monitor := &continuityMonitor{last: map[uint16]byte{}}
+	packet := engineTestPacket(0x0100, 1)
+	packet[0] = 0
+	if monitor.observe(packet) {
+		t.Fatal("invalid packet reported continuity error")
+	}
+}
+
 type blockingWriter struct {
 	entered chan struct{}
 	release chan struct{}

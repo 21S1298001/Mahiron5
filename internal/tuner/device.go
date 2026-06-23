@@ -56,6 +56,7 @@ type processDevice struct {
 	openAfterStart    func() (io.ReadCloser, error)
 	openBeforeStart   func(*util.Process) (io.ReadCloser, error)
 	rawReader         io.Closer
+	startedAt         time.Time
 	startupRetryMax   int
 	startupTimeout    time.Duration
 	startupRetryDelay time.Duration
@@ -179,18 +180,24 @@ func (d *processDevice) startOnce(ctx context.Context, dst io.Writer) error {
 	if err := process.Start(); err != nil {
 		d.tunerProcess = nil
 		d.mu.Unlock()
+		observability.RecordTunerProcessStart(ctx, channelTypeOf(d.channel), channelID(d.channel), "failure")
 		return err
 	}
+	d.startedAt = time.Now()
+	observability.RecordTunerProcessStart(ctx, channelTypeOf(d.channel), channelID(d.channel), "success")
 	if d.openAfterStart != nil {
 		tunerOut, err = d.openAfterStart()
 		if err != nil {
 			process := d.tunerProcess
 			d.done = nil
 			d.tunerProcess = nil
+			d.startedAt = time.Time{}
 			d.mu.Unlock()
 			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			return errors.Join(err, process.Stop(stopCtx))
+			stopErr := process.Stop(stopCtx)
+			observability.RecordTunerProcessExit(context.Background(), channelTypeOf(d.channel), channelID(d.channel), "failure")
+			return errors.Join(err, stopErr)
 		}
 	}
 	d.rawReader = tunerOut
@@ -225,6 +232,7 @@ func (d *processDevice) startWithRetry(ctx context.Context, dst io.Writer) (err 
 		if attempt == d.startupRetryMax {
 			break
 		}
+		observability.RecordTunerProcessRestartAttempt(ctx, channelTypeOf(d.channel), channelID(d.channel))
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -251,11 +259,14 @@ func (d *processDevice) startOnceWithProbe(ctx context.Context, dst io.Writer) e
 		if tunerOut != nil {
 			_ = tunerOut.Close()
 		}
+		observability.RecordTunerProcessStart(ctx, channelTypeOf(d.channel), channelID(d.channel), "failure")
 		return err
 	}
 	d.mu.Lock()
 	d.tunerProcess = process
+	d.startedAt = time.Now()
 	d.mu.Unlock()
+	observability.RecordTunerProcessStart(ctx, channelTypeOf(d.channel), channelID(d.channel), "success")
 
 	if d.openAfterStart != nil {
 		tunerOut, err = d.openAfterStart()
@@ -316,6 +327,7 @@ func (d *processDevice) cleanupStartupAttempt(process *util.Process, reader io.C
 	}
 	if d.tunerProcess == process {
 		d.tunerProcess = nil
+		d.startedAt = time.Time{}
 	}
 	d.mu.Unlock()
 
@@ -327,6 +339,7 @@ func (d *processDevice) cleanupStartupAttempt(process *util.Process, reader io.C
 		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		result = errors.Join(result, process.Stop(stopCtx))
+		observability.RecordTunerProcessExit(context.Background(), channelTypeOf(d.channel), channelID(d.channel), "failure")
 	}
 	return result
 }
@@ -358,6 +371,12 @@ func (d *processDevice) ProcessStatus() ProcessInfo {
 	}
 	info.PID = d.tunerProcess.Pid()
 	return info
+}
+
+func (d *processDevice) ProcessStartedAt() time.Time {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.startedAt
 }
 
 func (d *processDevice) Stop(ctx context.Context) error {
@@ -430,7 +449,9 @@ func (d *processDevice) copyRaw(src io.Reader, dst io.Writer) {
 	if process != nil {
 		waitErr = process.Wait()
 	}
-	d.finish(errors.Join(copyErr, waitErr))
+	err := errors.Join(copyErr, waitErr)
+	observability.RecordTunerProcessExit(context.Background(), channelTypeOf(d.channel), channelID(d.channel), tunerProcessExitResult(err))
+	d.finish(err)
 }
 
 func (d *processDevice) closeRawReader() error {
@@ -462,6 +483,18 @@ func (d *processDevice) finish(err error) {
 		return
 	default:
 		d.err = err
+		d.startedAt = time.Time{}
 		close(d.done)
+	}
+}
+
+func tunerProcessExitResult(err error) string {
+	switch {
+	case err == nil:
+		return "success"
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "canceled"
+	default:
+		return "failure"
 	}
 }

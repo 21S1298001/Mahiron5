@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/ts"
 )
 
@@ -19,20 +20,23 @@ var ErrSubscriberOverflow = errors.New("ts subscriber buffer overflow")
 type sourceSubscriber func(context.Context, io.Writer) error
 
 type packetEngine struct {
-	cancel     context.CancelFunc
-	demux      *ts.Demuxer
-	done       chan struct{}
-	err        error
-	mu         sync.Mutex
-	nextID     uint64
-	onEmpty    func()
-	onSections []func(ts.Section)
-	packets    map[uint64]*packetSubscription
-	sections   map[uint64]*sectionSubscription
-	source     sourceSubscriber
-	started    bool
-	stopped    bool
-	stopOnce   sync.Once
+	cancel      context.CancelFunc
+	channelID   string
+	channelType string
+	continuity  *continuityMonitor
+	demux       *ts.Demuxer
+	done        chan struct{}
+	err         error
+	mu          sync.Mutex
+	nextID      uint64
+	onEmpty     func()
+	onSections  []func(ts.Section)
+	packets     map[uint64]*packetSubscription
+	sections    map[uint64]*sectionSubscription
+	source      sourceSubscriber
+	started     bool
+	stopped     bool
+	stopOnce    sync.Once
 }
 
 type packetSubscription struct {
@@ -57,6 +61,7 @@ type sectionSubscription struct {
 
 func newPacketEngine(source sourceSubscriber, onEmpty func(), onSections ...func(ts.Section)) *packetEngine {
 	return &packetEngine{
+		continuity: &continuityMonitor{last: map[uint16]byte{}},
 		demux:      ts.NewDemuxer(),
 		done:       make(chan struct{}),
 		onEmpty:    onEmpty,
@@ -65,6 +70,12 @@ func newPacketEngine(source sourceSubscriber, onEmpty func(), onSections ...func
 		sections:   map[uint64]*sectionSubscription{},
 		source:     source,
 	}
+}
+
+func (e *packetEngine) withMetricLabels(channelType, channelID string) *packetEngine {
+	e.channelType = channelType
+	e.channelID = channelID
+	return e
 }
 
 func (e *packetEngine) SubscribeChannel(ctx context.Context, dst io.Writer) error {
@@ -233,12 +244,18 @@ func (e *packetEngine) run(ctx context.Context) {
 		if err != nil {
 			if !errors.Is(err, io.EOF) && ctx.Err() == nil {
 				runErr = err
+				observability.RecordStreamPacketError(ctx, e.channelType, e.channelID, "read")
 			}
 			break
+		}
+		observability.RecordStreamPacket(ctx, e.channelType, e.channelID, int64(len(packet)))
+		if e.continuity.observe(packet) {
+			observability.RecordStreamContinuityCounterError(ctx, e.channelType, e.channelID)
 		}
 		sections, err := e.demux.Feed(packet)
 		if err != nil {
 			runErr = err
+			observability.RecordStreamPacketError(ctx, e.channelType, e.channelID, "demux")
 			break
 		}
 		e.dispatch(packet, sections)
@@ -248,6 +265,21 @@ func (e *packetEngine) run(ctx context.Context) {
 		runErr = errors.Join(runErr, err)
 	}
 	e.close(runErr)
+}
+
+type continuityMonitor struct {
+	last map[uint16]byte
+}
+
+func (m *continuityMonitor) observe(packet ts.Packet) bool {
+	if len(packet) != ts.PacketSize || packet.TransportErrorIndicator() || packet.IsNull() || !packet.ValidPayloadOffset() || !packet.HasPayload() {
+		return false
+	}
+	pid := packet.PID()
+	counter := packet.ContinuityCounter()
+	last, ok := m.last[pid]
+	m.last[pid] = counter
+	return ok && counter != ((last+1)&0x0f)
 }
 
 func (e *packetEngine) dispatch(packet ts.Packet, sections []ts.Section) {

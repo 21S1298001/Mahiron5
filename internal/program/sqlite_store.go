@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/db/gen"
 	"github.com/21S1298001/Mahiron5/internal/observability"
@@ -23,10 +24,14 @@ func NewSQLiteStore(db *sql.DB) ProgramStore {
 }
 
 func (s *sqliteStore) UpsertAll(ctx context.Context, programs []*Program) (err error) {
+	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanDBProgramUpsertAll,
 		observability.AttrProgramCount.Int(len(programs)),
 	)
-	defer func() { observability.EndSpan(span, err) }()
+	defer func() {
+		observability.RecordDBOperation(ctx, observability.SpanDBProgramUpsertAll, time.Since(start).Milliseconds(), err)
+		observability.EndSpan(span, err)
+	}()
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -105,22 +110,30 @@ func (s *sqliteStore) ListEndedIDsBefore(ctx context.Context, cutoff int64) ([]i
 }
 
 func (s *sqliteStore) DeleteEndedBefore(ctx context.Context, cutoff int64) (err error) {
+	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanDBProgramDeleteEndedBefore,
 		observability.AttrProgramCutoff.Int64(cutoff),
 	)
-	defer func() { observability.EndSpan(span, err) }()
+	defer func() {
+		observability.RecordDBOperation(ctx, observability.SpanDBProgramDeleteEndedBefore, time.Since(start).Milliseconds(), err)
+		observability.EndSpan(span, err)
+	}()
 
 	return s.q.DeleteEndedAtBefore(ctx, cutoff)
 }
 
 func (s *sqliteStore) ReplaceServicePrograms(ctx context.Context, networkID, serviceID uint16, from int64, programs []*Program) (err error) {
+	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanDBProgramReplaceServicePrograms,
 		observability.AttrEPGNetworkID.Int(int(networkID)),
 		observability.AttrEPGServiceID.Int(int(serviceID)),
 		observability.AttrProgramFrom.Int64(from),
 		observability.AttrProgramCount.Int(len(programs)),
 	)
-	defer func() { observability.EndSpan(span, err) }()
+	defer func() {
+		observability.RecordDBOperation(ctx, observability.SpanDBProgramReplaceServicePrograms, time.Since(start).Milliseconds(), err)
+		observability.EndSpan(span, err)
+	}()
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

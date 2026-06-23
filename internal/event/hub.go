@@ -1,11 +1,13 @@
 package event
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
 	"github.com/21S1298001/Mahiron5/internal/service"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
@@ -62,6 +64,7 @@ func (h *Hub) PublishEvent(resource, typ string, data any) {
 	if err != nil {
 		return
 	}
+	observability.RecordEventPublished(context.Background(), resource, typ)
 	event := Event{
 		Resource: resource,
 		Type:     typ,
@@ -113,6 +116,12 @@ func (h *Hub) Log() []Event {
 		events[i] = cloneEvent(h.log[i])
 	}
 	return events
+}
+
+func (h *Hub) SubscriberCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.subscribers)
 }
 
 func (h *Hub) Subscribe() (<-chan Event, func()) {

@@ -74,6 +74,12 @@ func (s *LogStore) Snapshot() []byte {
 	return buf.Bytes()
 }
 
+func (s *LogStore) SubscriberCount() int {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return len(s.subscribers)
+}
+
 func (s *LogStore) Subscribe() (io.ReadCloser, func()) {
 	sub := &subscriber{
 		ch:     make(chan []byte, 128),

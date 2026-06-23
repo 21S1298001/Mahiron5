@@ -394,6 +394,14 @@ func (d *managedDevice) ProcessStatus() ProcessInfo {
 	return process.ProcessStatus()
 }
 
+func (d *managedDevice) ProcessStartedAt() time.Time {
+	process, ok := d.Device.(ProcessUptimeStatus)
+	if !ok {
+		return time.Time{}
+	}
+	return process.ProcessStartedAt()
+}
+
 func (d *managedDevice) AddUser(user User) { d.manager.addUser(d.tuner, user) }
 
 func (d *managedDevice) RemoveUser(id string) { d.manager.removeUser(d.tuner, id) }

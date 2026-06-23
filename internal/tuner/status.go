@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sort"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 )
@@ -43,6 +44,18 @@ type Status struct {
 	CurrentChannel     string
 	TunedChannelType   string
 	TunedChannel       string
+}
+
+type ProcessUptime struct {
+	Index         int
+	Name          string
+	ChannelType   string
+	ChannelID     string
+	UptimeSeconds int64
+}
+
+type ProcessUptimeStatus interface {
+	ProcessStartedAt() time.Time
 }
 
 type userContextKey struct{}
@@ -100,6 +113,34 @@ func (tm *TunerManager) Status(index int) (Status, bool) {
 		return Status{}, false
 	}
 	return tm.statusLocked(index), true
+}
+
+func (tm *TunerManager) ProcessUptimes() []ProcessUptime {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	now := time.Now()
+	var result []ProcessUptime
+	for i, item := range tm.tuners {
+		runtime := tm.runtime[item]
+		uptime, ok := runtime.device.(ProcessUptimeStatus)
+		if !ok || !runtime.running {
+			continue
+		}
+		startedAt := uptime.ProcessStartedAt()
+		if startedAt.IsZero() {
+			continue
+		}
+		channel := runtime.tuned
+		result = append(result, ProcessUptime{
+			Index:         i,
+			Name:          item.Name(),
+			ChannelType:   channelTypeOf(channel),
+			ChannelID:     channelID(channel),
+			UptimeSeconds: int64(now.Sub(startedAt).Seconds()),
+		})
+	}
+	return result
 }
 
 func (tm *TunerManager) statusLocked(index int) Status {

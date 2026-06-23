@@ -172,7 +172,7 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 		return nil, "failed to create web handler", err
 	}
 
-	registerRuntimeMetrics(obs.MeterProvider, streams, tuners, jobs, programs, services, int64(cfg.System.EpgStaleAfter))
+	registerRuntimeMetrics(obs.MeterProvider, streams, tuners, jobs, programs, services, events, obs.LogStore, int64(cfg.System.EpgStaleAfter))
 
 	return &applicationRuntime{
 		database: database,

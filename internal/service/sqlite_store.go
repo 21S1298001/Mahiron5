@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/db/gen"
 	"github.com/21S1298001/Mahiron5/internal/observability"
@@ -206,10 +207,14 @@ func (s *sqliteStore) UpsertLogo(ctx context.Context, networkID, serviceID uint1
 }
 
 func (s *sqliteStore) EPGSummary(ctx context.Context, staleAfter int64, now int64) (stale, failed int, lastSuccess *int64, err error) {
+	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanDBServiceEPGSummary,
 		observability.AttrEPGStaleAfter.Int64(staleAfter),
 	)
-	defer func() { observability.EndSpan(span, err) }()
+	defer func() {
+		observability.RecordDBOperation(ctx, observability.SpanDBServiceEPGSummary, time.Since(start).Milliseconds(), err)
+		observability.EndSpan(span, err)
+	}()
 
 	row, err := s.q.GetEPGSummary(ctx, gen.GetEPGSummaryParams{
 		Now:        &now,
@@ -256,12 +261,16 @@ func nullableString(value string) *string {
 }
 
 func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, channelId string, services []*Service) (err error) {
+	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanDBServiceReplaceChannelServices,
 		observability.AttrChannelType.String(channelType),
 		observability.AttrChannelID.String(channelId),
 		observability.AttrServiceCount.Int(len(services)),
 	)
-	defer func() { observability.EndSpan(span, err) }()
+	defer func() {
+		observability.RecordDBOperation(ctx, observability.SpanDBServiceReplaceChannelServices, time.Since(start).Milliseconds(), err)
+		observability.EndSpan(span, err)
+	}()
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

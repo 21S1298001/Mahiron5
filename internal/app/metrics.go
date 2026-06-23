@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/21S1298001/Mahiron5/internal/event"
 	"github.com/21S1298001/Mahiron5/internal/job"
 	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/program"
@@ -22,6 +23,8 @@ func registerRuntimeMetrics(
 	jobs *job.JobManager,
 	programs *program.ProgramManager,
 	services *service.ServiceManager,
+	events *event.Hub,
+	logs *observability.LogStore,
 	epgStaleAfter int64,
 ) {
 	if provider == nil {
@@ -63,14 +66,40 @@ func registerRuntimeMetrics(
 		slog.Warn("failed to create failed EPG services metric", "err", err)
 		return
 	}
+	tunerProcessUptime, err := meter.Int64ObservableGauge(observability.MetricTunerProcessUptime, metric.WithUnit("s"))
+	if err != nil {
+		slog.Warn("failed to create tuner process uptime metric", "err", err)
+		return
+	}
+	eventSubscribers, err := meter.Int64ObservableGauge(observability.MetricEventsSubscribers)
+	if err != nil {
+		slog.Warn("failed to create events subscribers metric", "err", err)
+		return
+	}
+	logSubscribers, err := meter.Int64ObservableGauge(observability.MetricLogsSubscribers)
+	if err != nil {
+		slog.Warn("failed to create logs subscribers metric", "err", err)
+		return
+	}
 
 	_, err = meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
 		observer.ObserveInt64(streamSessions, int64(streams.ActiveSessionCount()))
 		observeTunerMetrics(observer, tunerDevices, tunerUsers, tuners.Statuses())
+		observeTunerProcessUptime(observer, tunerProcessUptime, tuners.ProcessUptimes())
 		observeJobMetrics(observer, jobCount, jobs.GetJobs(), jobs.GetJobSchedules())
 		observeEPGMetrics(ctx, observer, epgPrograms, epgStale, epgFailed, programs, services, epgStaleAfter)
+		eventSubscriberCount := 0
+		if events != nil {
+			eventSubscriberCount = events.SubscriberCount()
+		}
+		observer.ObserveInt64(eventSubscribers, int64(eventSubscriberCount))
+		logSubscriberCount := 0
+		if logs != nil {
+			logSubscriberCount = logs.SubscriberCount()
+		}
+		observer.ObserveInt64(logSubscribers, int64(logSubscriberCount))
 		return nil
-	}, streamSessions, tunerDevices, tunerUsers, jobCount, epgPrograms, epgStale, epgFailed)
+	}, streamSessions, tunerDevices, tunerUsers, jobCount, epgPrograms, epgStale, epgFailed, tunerProcessUptime, eventSubscribers, logSubscribers)
 	if err != nil {
 		slog.Warn("failed to register runtime metrics callback", "err", err)
 	}
@@ -103,6 +132,21 @@ func observeTunerMetrics(observer metric.Observer, devices, users metric.Int64Ob
 		observer.ObserveInt64(devices, count, metric.WithAttributes(observability.AttrState.String(state)))
 	}
 	observer.ObserveInt64(users, userCount)
+}
+
+func observeTunerProcessUptime(observer metric.Observer, instrument metric.Int64ObservableGauge, uptimes []tuner.ProcessUptime) {
+	if len(uptimes) == 0 {
+		observer.ObserveInt64(instrument, 0)
+		return
+	}
+	for _, uptime := range uptimes {
+		observer.ObserveInt64(instrument, uptime.UptimeSeconds, metric.WithAttributes(
+			observability.AttrTunerIndex.Int(uptime.Index),
+			observability.AttrTunerName.String(uptime.Name),
+			observability.AttrChannelType.String(uptime.ChannelType),
+			observability.AttrChannelID.String(uptime.ChannelID),
+		))
+	}
 }
 
 func observeJobMetrics(observer metric.Observer, instrument metric.Int64ObservableGauge, jobs []*job.Job, schedules []job.ScheduleInfo) {

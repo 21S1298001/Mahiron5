@@ -99,6 +99,9 @@ func TestBuildRuntimeRegistersRuntimeMetrics(t *testing.T) {
 		observability.MetricEPGProgramsStored,
 		observability.MetricEPGServicesStale,
 		observability.MetricEPGServicesFailed,
+		observability.MetricTunerProcessUptime,
+		observability.MetricEventsSubscribers,
+		observability.MetricLogsSubscribers,
 	} {
 		if !hasMetric(data, name) {
 			t.Fatalf("collected metrics missing %s: %#v", name, data.ScopeMetrics)
