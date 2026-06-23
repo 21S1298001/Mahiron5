@@ -12,19 +12,24 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	otelmetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
 const instrumentationName = "github.com/21S1298001/Mahiron5"
 
 type SetupResult struct {
 	LogStore       *LogStore
+	MeterProvider  otelmetric.MeterProvider
 	TracerProvider trace.TracerProvider
 	Shutdown       func(context.Context) error
 }
@@ -49,7 +54,7 @@ func Setup(ctx context.Context, cfg config.ObservabilityConfig, level slog.Level
 
 	slog.SetDefault(slog.New(newFanoutHandler(handlers...)))
 
-	tracerProvider := trace.TracerProvider(noop.NewTracerProvider())
+	tracerProvider := trace.TracerProvider(tracenoop.NewTracerProvider())
 	if cfg.Endpoint != "" && cfg.Traces.Enabled {
 		provider, cleanup, err := newOTelTracerProvider(ctx, cfg)
 		if err != nil {
@@ -61,8 +66,22 @@ func Setup(ctx context.Context, cfg config.ObservabilityConfig, level slog.Level
 	}
 	otel.SetTracerProvider(tracerProvider)
 
+	meterProvider := otelmetric.MeterProvider(noop.NewMeterProvider())
+	if cfg.Endpoint != "" && cfg.Metrics.Enabled {
+		provider, cleanup, err := newOTelMeterProvider(ctx, cfg)
+		if err != nil {
+			slog.Warn("failed to initialize OTLP metric exporter", "err", err)
+		} else {
+			meterProvider = provider
+			shutdowns = append(shutdowns, cleanup)
+		}
+	}
+	otel.SetMeterProvider(meterProvider)
+	initMetrics(meterProvider)
+
 	return SetupResult{
 		LogStore:       store,
+		MeterProvider:  meterProvider,
 		TracerProvider: tracerProvider,
 		Shutdown:       shutdownAll(shutdowns...),
 	}
@@ -115,6 +134,30 @@ func newOTelTracerProvider(ctx context.Context, cfg config.ObservabilityConfig) 
 	provider := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
 		sdktrace.WithBatcher(exporter),
+	)
+	return provider, provider.Shutdown, nil
+}
+
+func newOTelMeterProvider(ctx context.Context, cfg config.ObservabilityConfig) (otelmetric.MeterProvider, func(context.Context) error, error) {
+	options := []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpoint(cfg.Endpoint)}
+	if cfg.Insecure {
+		options = append(options, otlpmetricgrpc.WithInsecure())
+	}
+	if len(cfg.Headers) > 0 {
+		options = append(options, otlpmetricgrpc.WithHeaders(cfg.Headers))
+	}
+
+	exporter, err := otlpmetricgrpc.New(ctx, options...)
+	if err != nil {
+		return nil, nil, err
+	}
+	res, err := newResource(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	provider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithResource(res),
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter)),
 	)
 	return provider, provider.Shutdown, nil
 }

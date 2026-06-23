@@ -310,6 +310,13 @@ func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
 	m.notifyLocked()
 	m.trimHistory()
 	if item.StartedAt != nil {
+		result := "success"
+		if item.HasAborted {
+			result = "aborted"
+		} else if item.HasFailed {
+			result = "failure"
+		}
+		observability.RecordJobRun(context.Background(), item.Key, result, now.Sub(*item.StartedAt).Milliseconds())
 		if item.HasFailed {
 			slog.Error("job failed", "key", item.Key, "id", item.ID, "err", err, "duration", now.Sub(*item.StartedAt))
 		} else {

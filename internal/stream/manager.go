@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/observability"
@@ -20,6 +21,7 @@ type StreamManager struct {
 	logoUpdater    LogoUpdater
 	programUpdater ProgramUpdater
 	remotes        map[string]*RemoteClient
+	sessionDetails map[sessionKey]sessionMetricDetail
 	sessions       map[sessionKey]Session
 	sessionTypes   map[sessionKey]string
 	sources        *SourcePool
@@ -38,6 +40,12 @@ type StreamManagerConfig struct {
 type sessionKey struct {
 	channel string
 	typ     string
+}
+
+type sessionMetricDetail struct {
+	routeType string
+	source    string
+	startedAt time.Time
 }
 
 type Session interface {
@@ -64,6 +72,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		logoUpdater:    cfg.LogoUpdater,
 		programUpdater: cfg.ProgramUpdater,
 		remotes:        remotes,
+		sessionDetails: map[sessionKey]sessionMetricDetail{},
 		sessions:       map[sessionKey]Session{},
 		sessionTypes:   map[sessionKey]string{},
 		sources:        NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
@@ -84,7 +93,13 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		observability.AttrChannelID.String(channel),
 		observability.AttrWait.Bool(wait),
 	)
-	defer func() { observability.EndSpan(span, err) }()
+	recordStart := true
+	defer func() {
+		if recordStart {
+			observability.RecordStreamSessionStart(ctx, channelType, "", "", streamSessionStartResult(err))
+		}
+		observability.EndSpan(span, err)
+	}()
 
 	key := sessionKey{typ: channelType, channel: channel}
 
@@ -92,6 +107,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	defer m.mu.Unlock()
 
 	if session := m.sessions[key]; session != nil {
+		recordStart = false
 		slog.Debug("reusing stream session", "type", channelType, "channel", channel)
 		return session, nil
 	}
@@ -103,11 +119,15 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		return nil, err
 	}
 	if lease.Session != nil {
+		source := streamSessionSource(lease)
 		if remoteSession, ok := lease.Session.(*RemoteSession); ok {
 			remoteSession.StartProgramEventSync(m.programUpdater)
 		}
 		m.sessions[key] = lease.Session
 		m.sessionTypes[key] = lease.RouteType
+		m.sessionDetails[key] = sessionMetricDetail{routeType: lease.RouteType, source: source, startedAt: time.Now()}
+		observability.RecordStreamSessionStart(ctx, channelType, lease.RouteType, source, "success")
+		recordStart = false
 		slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", lease.RouteType, "source", "remote")
 		return lease.Session, nil
 	}
@@ -131,6 +151,9 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	})
 	m.sessions[key] = session
 	m.sessionTypes[key] = lease.RouteType
+	m.sessionDetails[key] = sessionMetricDetail{routeType: lease.RouteType, source: streamSessionSource(lease), startedAt: time.Now()}
+	observability.RecordStreamSessionStart(ctx, channelType, lease.RouteType, streamSessionSource(lease), "success")
+	recordStart = false
 	slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", lease.RouteType, "source", "local")
 	return session, nil
 }
@@ -174,15 +197,59 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 			result = errors.Join(result, err)
 		}
 	}
+	m.mu.Lock()
+	for key := range m.sessions {
+		m.recordSessionDurationLocked(key)
+		delete(m.sessions, key)
+		delete(m.sessionTypes, key)
+		delete(m.sessionDetails, key)
+	}
+	m.mu.Unlock()
 	return result
 }
 
 func (m *StreamManager) remove(key sessionKey) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.recordSessionDurationLocked(key)
 	delete(m.sessions, key)
 	delete(m.sessionTypes, key)
+	delete(m.sessionDetails, key)
 	slog.Debug("stream session removed", "type", key.typ, "channel", key.channel)
+}
+
+func (m *StreamManager) recordSessionDurationLocked(key sessionKey) {
+	detail, ok := m.sessionDetails[key]
+	if !ok || detail.startedAt.IsZero() {
+		return
+	}
+	observability.RecordStreamSessionDuration(context.Background(), key.typ, detail.routeType, detail.source, time.Since(detail.startedAt).Milliseconds())
+}
+
+func streamSessionSource(lease *SourceLease) string {
+	if lease != nil && lease.Session != nil {
+		return "remote"
+	}
+	return "local"
+}
+
+func streamSessionStartResult(err error) string {
+	switch {
+	case err == nil:
+		return "success"
+	case errors.Is(err, ErrChannelNotFound):
+		return "not_found"
+	case errors.Is(err, ErrTunerNotFound):
+		return "tuner_not_found"
+	case errors.Is(err, ErrUnsupportedTuner):
+		return "unsupported"
+	case errors.Is(err, ErrTunerUnavailable):
+		return "unavailable"
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "canceled"
+	default:
+		return "failure"
+	}
 }
 
 var (

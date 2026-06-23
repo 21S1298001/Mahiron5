@@ -10,6 +10,8 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/db"
 	"github.com/21S1298001/Mahiron5/internal/job"
 	"github.com/21S1298001/Mahiron5/internal/observability"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 func TestBuildRuntimeWiresCurrentApplication(t *testing.T) {
@@ -39,6 +41,68 @@ func TestBuildRuntimeWiresCurrentApplication(t *testing.T) {
 	runtime.shutdown()
 	if err := database.PingContext(t.Context()); err == nil {
 		t.Fatal("runtime shutdown left the database open")
+	}
+}
+
+func TestBuildRuntimeRegistersRuntimeMetrics(t *testing.T) {
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := db.Migrate(t.Context(), database); err != nil {
+		t.Fatal(err)
+	}
+
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	cfg := &config.Config{System: &config.SystemConfig{
+		Addresses:          []config.ServerAddress{{Http: "127.0.0.1:0"}},
+		MaxConcurrentJobs:  1,
+		EpgRetrievalTime:   5_000,
+		EpgStaleAfter:      7_200_000,
+		LogoGatherTimeout:  1_200_000,
+		ServiceScanTimeout: 30_000,
+	}}
+	obs := observability.SetupResult{
+		LogStore:      observability.NewLogStore(16),
+		MeterProvider: provider,
+		Shutdown:      provider.Shutdown,
+	}
+
+	runtime, message, err := buildRuntime(cfg, database, obs)
+	if err != nil {
+		t.Fatalf("buildRuntime() message=%q err=%v", message, err)
+	}
+	t.Cleanup(runtime.shutdown)
+	jobID, err := runtime.jobs.EnqueueDefinition(job.JobDefinition{
+		Key:     "metrics-test",
+		Name:    "Metrics Test",
+		Handler: func(context.Context) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.jobs.Wait(t.Context(), jobID); err != nil {
+		t.Fatal(err)
+	}
+
+	var data metricdata.ResourceMetrics
+	if err := reader.Collect(t.Context(), &data); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		observability.MetricStreamSessionsActive,
+		observability.MetricTunerDevices,
+		observability.MetricTunerUsers,
+		observability.MetricJobs,
+		observability.MetricEPGProgramsStored,
+		observability.MetricEPGServicesStale,
+		observability.MetricEPGServicesFailed,
+	} {
+		if !hasMetric(data, name) {
+			t.Fatalf("collected metrics missing %s: %#v", name, data.ScopeMetrics)
+		}
 	}
 }
 
@@ -110,6 +174,17 @@ func containsKey(keys []string, want string) bool {
 	for _, key := range keys {
 		if key == want {
 			return true
+		}
+	}
+	return false
+}
+
+func hasMetric(data metricdata.ResourceMetrics, name string) bool {
+	for _, scope := range data.ScopeMetrics {
+		for _, item := range scope.Metrics {
+			if item.Name == name {
+				return true
+			}
 		}
 	}
 	return false

@@ -17,6 +17,9 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/stream"
 	"github.com/21S1298001/Mahiron5/internal/tuner"
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/ogen-go/ogen/otelogen"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -117,6 +120,32 @@ func TestNewWebFiltersStreamHTTPSpans(t *testing.T) {
 	}
 }
 
+func TestNewWebUsesConfiguredMeterProvider(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	handler, err := NewWeb(WebConfig{
+		ServiceManager: testServiceManager{},
+		StreamManager:  testStreamManager{},
+		MeterProvider:  provider,
+	})
+	if err != nil {
+		t.Fatalf("NewWeb() = %v", err)
+	}
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/status", nil))
+
+	var data metricdata.ResourceMetrics
+	if err := reader.Collect(t.Context(), &data); err != nil {
+		t.Fatal(err)
+	}
+	if got := int64MetricSum(data, otelogen.ServerRequestCount); got != 1 {
+		t.Fatalf("%s = %d, want 1", otelogen.ServerRequestCount, got)
+	}
+	if !hasMetric(data, otelogen.ServerDuration) {
+		t.Fatalf("collected metrics missing %s: %#v", otelogen.ServerDuration, data.ScopeMetrics)
+	}
+}
+
 type testStreamManager struct{}
 
 func (testStreamManager) GetOrCreate(context.Context, string, string) (interface {
@@ -169,6 +198,37 @@ func contains(values []string, needle string) bool {
 	for _, value := range values {
 		if value == needle {
 			return true
+		}
+	}
+	return false
+}
+
+func int64MetricSum(data metricdata.ResourceMetrics, name string) int64 {
+	for _, scope := range data.ScopeMetrics {
+		for _, item := range scope.Metrics {
+			if item.Name != name {
+				continue
+			}
+			sum, ok := item.Data.(metricdata.Sum[int64])
+			if !ok {
+				return 0
+			}
+			var total int64
+			for _, point := range sum.DataPoints {
+				total += point.Value
+			}
+			return total
+		}
+	}
+	return 0
+}
+
+func hasMetric(data metricdata.ResourceMetrics, name string) bool {
+	for _, scope := range data.ScopeMetrics {
+		for _, item := range scope.Metrics {
+			if item.Name == name {
+				return true
+			}
 		}
 	}
 	return false

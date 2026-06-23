@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/21S1298001/Mahiron5/internal/config"
 	"github.com/21S1298001/Mahiron5/internal/observability"
@@ -81,6 +82,7 @@ func (tm *TunerManager) NewDeviceByType(channelType string, channel *config.Chan
 }
 
 func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, requestedChannel, tunedChannel *config.ChannelConfig, wait bool) (device Device, decoder string, err error) {
+	start := time.Now()
 	ctx, span := observability.StartSpan(ctx, observability.SpanTunerAcquireDevice,
 		observability.AttrChannelType.String(channelType),
 		observability.AttrChannelID.String(channelID(requestedChannel)),
@@ -88,7 +90,10 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 		observability.AttrTunedChannelID.String(channelID(tunedChannel)),
 		observability.AttrWait.Bool(wait),
 	)
-	defer func() { observability.EndSpan(span, err) }()
+	defer func() {
+		observability.RecordTunerAcquire(ctx, channelType, tunerAcquireResult(err), wait, time.Since(start).Milliseconds())
+		observability.EndSpan(span, err)
+	}()
 
 	requestPriority := priorityFromContext(ctx)
 	for {
@@ -137,6 +142,23 @@ func (tm *TunerManager) AcquireDevice(ctx context.Context, channelType string, r
 			return nil, "", ctx.Err()
 		case <-attempt.changed:
 		}
+	}
+}
+
+func tunerAcquireResult(err error) string {
+	switch {
+	case err == nil:
+		return "success"
+	case errors.Is(err, ErrTunerNotFound):
+		return "not_found"
+	case errors.Is(err, ErrUnsupportedTuner):
+		return "unsupported"
+	case errors.Is(err, ErrTunerUnavailable):
+		return "unavailable"
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "canceled"
+	default:
+		return "failure"
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/21S1298001/Mahiron5/internal/observability"
 	"github.com/21S1298001/Mahiron5/internal/web/api"
 	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -19,6 +20,7 @@ type WebConfig struct {
 	LogStore       api.LogStore
 	EventHub       *event.Hub
 	EpgStaleAfter  int64
+	MeterProvider  metric.MeterProvider
 	TracerProvider trace.TracerProvider
 }
 
@@ -33,7 +35,10 @@ func NewWeb(config WebConfig) (http.Handler, error) {
 		LogStore:       config.LogStore,
 		EventHub:       config.EventHub,
 		EpgStaleAfter:  config.EpgStaleAfter,
-	}), apigen.WithTracerProvider(observability.NewFilteringTracerProvider(config.TracerProvider, observability.StreamOperationNames)))
+	}),
+		apigen.WithMeterProvider(config.MeterProvider),
+		apigen.WithTracerProvider(observability.NewFilteringTracerProvider(config.TracerProvider, observability.StreamOperationNames)),
+	)
 	if err != nil {
 		return nil, err
 	}
