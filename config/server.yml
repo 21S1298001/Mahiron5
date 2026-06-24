@@ -1,11 +1,29 @@
 addresses:
   - http: localhost:40772
-  - unix: /tmp/test.sock
+  - unix: /tmp/mahiron.sock
 
-logLevel: debug
+logLevel: info
+databasePath: ./db
 maxConcurrentJobs: 1
+epgRetentionDays: 3
+epgRetrievalTime: 600000
+epgStaleAfter: 7200000
 logoGatherTimeout: 1200000
 serviceScanTimeout: 30000
+
+observability:
+  serviceName: mahiron
+  endpoint: localhost:4317
+  insecure: true
+  headers:
+    authorization: Bearer sample-token
+    x-tenant: sample-home
+  logs:
+    enabled: true
+  traces:
+    enabled: true
+  metrics:
+    enabled: true
 
 jobs:
   - key: service-updater

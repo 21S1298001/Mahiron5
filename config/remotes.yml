@@ -1,0 +1,8 @@
+- name: living
+  url: http://living.local:40772/api
+  basicAuth:
+    username: sample-user
+    password: sample-password
+
+- name: study
+  url: http://study.local:40772/api

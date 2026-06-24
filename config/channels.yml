@@ -1,3 +1,69 @@
-- name: NHK
+- name: NHK総合 東京
   type: GR
   channel: "27"
+  serviceId: 1024
+  commandVars:
+    area: tokyo
+    lnb: false
+  isDisabled: false
+  routes:
+    - id: gr-local
+      type: GR
+      channel: "27"
+      serviceId: 1024
+      commandVars:
+        area: tokyo
+      isDisabled: false
+      priority: 10
+    - id: gr-living-remote
+      remote: living
+      type: GR
+      channel: "27"
+      serviceId: 1024
+      commandVars:
+        area: tokyo
+      isDisabled: false
+      priority: 20
+
+- name: NHK BS
+  type: BS
+  channel: "101"
+  serviceId: 101
+  isDisabled: false
+  routes:
+    - id: bs-local
+      type: BS
+      channel: "101"
+      serviceId: 101
+      commandVars: {}
+      isDisabled: false
+      priority: 10
+    - id: bs-catv-transmod
+      remote: living
+      type: CATV_BS
+      channel: C101
+      serviceId: 101
+      commandVars:
+        freq: 12345
+        modulation: qam256
+      isDisabled: false
+      priority: 30
+
+- name: スカパー！サンプル
+  type: SKY
+  channel: SKY001
+  serviceId: 333
+  isDisabled: true
+  satellite: JCSAT3A
+  space: 1
+  freq: 12345
+  polarity: H
+
+- name: CATV サンプル
+  type: CATV
+  channel: C013
+  serviceId: 2048
+  tsmfRelTs: 3
+  commandVars:
+    network: sample-cable
+  isDisabled: false

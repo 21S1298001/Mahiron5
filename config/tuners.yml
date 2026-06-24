@@ -1,4 +1,33 @@
-- name: test
+- name: px4-gr-0
   types:
     - GR
-  command: curl -s http://sulfur.dns.ggrel.net:40772/api/channels/GR/27/stream
+  command: recpt1 --device /dev/px4video0 --b25 --strip {{channel}} - -
+  dvbDevicePath: /dev/dvb/adapter0
+  decoder: arib-b25-stream-test
+  isDisabled: false
+  startupRetryMax: 3
+  startupTimeout: 5000
+  startupRetryDelay: 1000
+
+- name: px4-bs-cs-0
+  types:
+    - BS
+    - CS
+    - SKY
+  command: recpt1 --device /dev/px4video1 --b25 --strip {{channel}} - -
+  decoder: arib-b25-stream-test
+  isDisabled: false
+  startupRetryMax: 3
+  startupTimeout: 5000
+  startupRetryDelay: 1000
+
+- name: remote-catv-sample
+  types:
+    - CATV
+    - CATV_BS
+  command: curl -fsSL http://living.local:40772/api/channels/{{type}}/{{channel}}/stream
+  decoder: arib-b25-stream-test
+  isDisabled: true
+  startupRetryMax: 1
+  startupTimeout: 3000
+  startupRetryDelay: 500
