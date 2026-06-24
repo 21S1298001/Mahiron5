@@ -1596,6 +1596,7 @@ components:
         - isAvailable
         - isFault
         - isFree
+        - isRemote
         - isUsing
         - name
         - pid
@@ -1620,6 +1621,8 @@ components:
           items:
             $ref: "#/components/schemas/TunerUser"
         isAvailable:
+          type: boolean
+        isRemote:
           type: boolean
         isFree:
           type: boolean

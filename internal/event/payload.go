@@ -15,7 +15,11 @@ func serviceEventData(svc *service.Service, channel *config.ChannelConfig) map[s
 		"transportStreamId":  svc.TransportStreamId,
 		"name":               svc.Name,
 		"type":               int(svc.Type),
+		"hasLogoData":        svc.HasLogoData,
 		"remoteControlKeyId": int(svc.RemoteControlKeyId),
+	}
+	if svc.LogoId != nil {
+		data["logoId"] = *svc.LogoId
 	}
 	if svc.EPG.LastSuccessAt != nil {
 		data["epgReady"] = true
@@ -52,6 +56,7 @@ func tunerEventData(status tuner.Status) map[string]any {
 		"pid":         status.PID,
 		"users":       tunerUserEventData(status.Users),
 		"isAvailable": status.IsAvailable,
+		"isRemote":    false,
 		"isFree":      status.IsFree,
 		"isUsing":     status.IsUsing,
 		"isFault":     status.IsFault,
@@ -124,13 +129,16 @@ func streamSettingEventData(setting tuner.StreamSetting) map[string]any {
 
 func programEventData(p *program.Program) map[string]any {
 	data := map[string]any{
-		"id":        p.ID,
-		"eventId":   p.EventID,
-		"serviceId": p.ServiceID,
-		"networkId": p.NetworkID,
-		"startAt":   p.StartAt,
-		"duration":  p.Duration,
-		"isFree":    p.IsFree,
+		"id":           p.ID,
+		"eventId":      p.EventID,
+		"serviceId":    p.ServiceID,
+		"networkId":    p.NetworkID,
+		"startAt":      p.StartAt,
+		"duration":     p.Duration,
+		"isFree":       p.IsFree,
+		"genres":       programGenresEventData(p.Genres),
+		"audios":       programAudiosEventData(p.Audios),
+		"relatedItems": programRelatedItemsEventData(p.RelatedItems),
 	}
 	if p.Name != "" {
 		data["name"] = p.Name
@@ -138,23 +146,14 @@ func programEventData(p *program.Program) map[string]any {
 	if p.Description != "" {
 		data["description"] = p.Description
 	}
-	if len(p.Genres) > 0 {
-		data["genres"] = programGenresEventData(p.Genres)
-	}
 	if p.Video != nil {
 		data["video"] = map[string]any{
 			"streamContent": p.Video.StreamContent,
 			"componentType": p.Video.ComponentType,
 		}
 	}
-	if len(p.Audios) > 0 {
-		data["audios"] = programAudiosEventData(p.Audios)
-	}
 	if len(p.Extended) > 0 {
 		data["extended"] = p.Extended
-	}
-	if len(p.RelatedItems) > 0 {
-		data["relatedItems"] = programRelatedItemsEventData(p.RelatedItems)
 	}
 	if p.Series != nil {
 		series := map[string]any{

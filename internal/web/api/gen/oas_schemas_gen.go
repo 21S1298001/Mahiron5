@@ -4841,6 +4841,7 @@ type TunerDevice struct {
 	Pid                int         `json:"pid"`
 	Users              []TunerUser `json:"users"`
 	IsAvailable        bool        `json:"isAvailable"`
+	IsRemote           bool        `json:"isRemote"`
 	IsFree             bool        `json:"isFree"`
 	IsUsing            bool        `json:"isUsing"`
 	IsFault            bool        `json:"isFault"`
@@ -4883,6 +4884,11 @@ func (s *TunerDevice) GetUsers() []TunerUser {
 // GetIsAvailable returns the value of IsAvailable.
 func (s *TunerDevice) GetIsAvailable() bool {
 	return s.IsAvailable
+}
+
+// GetIsRemote returns the value of IsRemote.
+func (s *TunerDevice) GetIsRemote() bool {
+	return s.IsRemote
 }
 
 // GetIsFree returns the value of IsFree.
@@ -4953,6 +4959,11 @@ func (s *TunerDevice) SetUsers(val []TunerUser) {
 // SetIsAvailable sets the value of IsAvailable.
 func (s *TunerDevice) SetIsAvailable(val bool) {
 	s.IsAvailable = val
+}
+
+// SetIsRemote sets the value of IsRemote.
+func (s *TunerDevice) SetIsRemote(val bool) {
+	s.IsRemote = val
 }
 
 // SetIsFree sets the value of IsFree.

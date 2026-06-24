@@ -7556,6 +7556,10 @@ func (s *TunerDevice) encodeFields(e *jx.Encoder) {
 		e.Bool(s.IsAvailable)
 	}
 	{
+		e.FieldStart("isRemote")
+		e.Bool(s.IsRemote)
+	}
+	{
 		e.FieldStart("isFree")
 		e.Bool(s.IsFree)
 	}
@@ -7593,7 +7597,7 @@ func (s *TunerDevice) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfTunerDevice = [14]string{
+var jsonFieldsNameOfTunerDevice = [15]string{
 	0:  "index",
 	1:  "name",
 	2:  "types",
@@ -7601,13 +7605,14 @@ var jsonFieldsNameOfTunerDevice = [14]string{
 	4:  "pid",
 	5:  "users",
 	6:  "isAvailable",
-	7:  "isFree",
-	8:  "isUsing",
-	9:  "isFault",
-	10: "currentChannelType",
-	11: "currentChannel",
-	12: "tunedChannelType",
-	13: "tunedChannel",
+	7:  "isRemote",
+	8:  "isFree",
+	9:  "isUsing",
+	10: "isFault",
+	11: "currentChannelType",
+	12: "currentChannel",
+	13: "tunedChannelType",
+	14: "tunedChannel",
 }
 
 // Decode decodes TunerDevice from json.
@@ -7717,8 +7722,20 @@ func (s *TunerDevice) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"isAvailable\"")
 			}
-		case "isFree":
+		case "isRemote":
 			requiredBitSet[0] |= 1 << 7
+			if err := func() error {
+				v, err := d.Bool()
+				s.IsRemote = bool(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"isRemote\"")
+			}
+		case "isFree":
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				v, err := d.Bool()
 				s.IsFree = bool(v)
@@ -7730,7 +7747,7 @@ func (s *TunerDevice) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"isFree\"")
 			}
 		case "isUsing":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := d.Bool()
 				s.IsUsing = bool(v)
@@ -7742,7 +7759,7 @@ func (s *TunerDevice) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"isUsing\"")
 			}
 		case "isFault":
-			requiredBitSet[1] |= 1 << 1
+			requiredBitSet[1] |= 1 << 2
 			if err := func() error {
 				v, err := d.Bool()
 				s.IsFault = bool(v)
@@ -7804,7 +7821,7 @@ func (s *TunerDevice) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
 		0b11111111,
-		0b00000011,
+		0b00000111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

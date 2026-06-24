@@ -9,7 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/event"
+	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/tuner"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -67,6 +70,61 @@ func TestGetEventsReturnsOnlyLast100Events(t *testing.T) {
 	}
 	if id != 1 {
 		t.Fatalf("first retained id = %d, want 1", id)
+	}
+}
+
+func TestGetEventsReturnsMirakurunCompatibleData(t *testing.T) {
+	hub := event.New()
+	logoID := int64(12)
+	hub.PublishServiceEvent(event.TypeUpdate, &service.Service{
+		ServiceId:         101,
+		NetworkId:         1,
+		TransportStreamId: 10,
+		Name:              "NHK",
+		Type:              1,
+		LogoId:            &logoID,
+		HasLogoData:       true,
+		ChannelType:       "GR",
+		ChannelId:         "27",
+	}, &config.ChannelConfig{Type: "GR", Channel: "27", Name: "NHK"})
+	hub.PublishTunerStatusEvent(event.TypeUpdate, tuner.Status{
+		Index:       1,
+		Name:        "tuner-a",
+		Types:       []string{"GR"},
+		Command:     "recpt1",
+		PID:         1234,
+		IsAvailable: true,
+		IsFree:      true,
+	})
+	handler := NewHandler(HandlerConfig{EventHub: hub})
+
+	res, err := handler.GetEvents(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := res.(*apigen.GetEventsOKApplicationJSON)
+	if got, want := len(*events), 2; got != want {
+		t.Fatalf("events length = %d, want %d", got, want)
+	}
+
+	var serviceTransportStreamID int
+	if err := json.Unmarshal((*events)[0].Data["transportStreamId"], &serviceTransportStreamID); err != nil {
+		t.Fatal(err)
+	}
+	var hasLogoData bool
+	if err := json.Unmarshal((*events)[0].Data["hasLogoData"], &hasLogoData); err != nil {
+		t.Fatal(err)
+	}
+	if serviceTransportStreamID != 10 || !hasLogoData {
+		t.Fatalf("service event data = %#v", (*events)[0].Data)
+	}
+
+	var isRemote bool
+	if err := json.Unmarshal((*events)[1].Data["isRemote"], &isRemote); err != nil {
+		t.Fatal(err)
+	}
+	if isRemote {
+		t.Fatalf("tuner isRemote = true, want false")
 	}
 }
 

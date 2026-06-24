@@ -13,6 +13,7 @@ import (
 func TestServiceEventDataIncludesEPGAndChannel(t *testing.T) {
 	attemptedAt := int64(1000)
 	succeededAt := int64(2000)
+	logoID := int64(12)
 	tsmfRelTs := uint8(1)
 	data := serviceEventData(&service.Service{
 		ServiceId:         101,
@@ -20,6 +21,8 @@ func TestServiceEventDataIncludesEPGAndChannel(t *testing.T) {
 		TransportStreamId: 10,
 		Name:              "NHK",
 		Type:              1,
+		LogoId:            &logoID,
+		HasLogoData:       true,
 		EPG: service.EPGStatus{
 			LastAttemptAt: &attemptedAt,
 			LastSuccessAt: &succeededAt,
@@ -27,7 +30,8 @@ func TestServiceEventDataIncludesEPGAndChannel(t *testing.T) {
 		},
 	}, &config.ChannelConfig{Type: "GR", Channel: "27", Name: "NHK", TsmfRelTs: &tsmfRelTs})
 
-	if data["id"] != int64(100101) || data["epgReady"] != true || data["epgUpdatedAt"] != succeededAt {
+	if data["id"] != int64(100101) || data["logoId"] != logoID || data["hasLogoData"] != true ||
+		data["transportStreamId"] != uint16(10) || data["epgReady"] != true || data["epgUpdatedAt"] != succeededAt {
 		t.Fatalf("service event data = %#v", data)
 	}
 	channel := data["channel"].(map[string]any)
@@ -69,7 +73,8 @@ func TestTunerEventDataIncludesUsersAndStreamSetting(t *testing.T) {
 		}},
 	})
 
-	if data["name"] != "tuner-a" || data["currentChannel"] != "27" || data["tunedChannel"] != "28" {
+	if data["name"] != "tuner-a" || data["isRemote"] != false ||
+		data["currentChannel"] != "27" || data["tunedChannel"] != "28" {
 		t.Fatalf("tuner event data = %#v", data)
 	}
 	users := data["users"].([]map[string]any)
@@ -136,8 +141,38 @@ func TestProgramEventDataIncludesNestedFields(t *testing.T) {
 	if decoded["audios"].([]any)[0].(map[string]any)["langs"].([]any)[0] != "jpn" {
 		t.Fatalf("program audio data = %#v", decoded["audios"])
 	}
+	if decoded["relatedItems"].([]any)[0].(map[string]any)["type"] != "shared" {
+		t.Fatalf("program related item data = %#v", decoded["relatedItems"])
+	}
 	if decoded["series"].(map[string]any)["expiresAt"] != float64(expiresAt) {
 		t.Fatalf("program series data = %#v", decoded["series"])
+	}
+}
+
+func TestProgramEventDataIncludesEmptyArrays(t *testing.T) {
+	data := programEventData(&program.Program{
+		ID:        program.ProgramID(1, 101, 9),
+		NetworkID: 1,
+		ServiceID: 101,
+		EventID:   9,
+		StartAt:   1000,
+		Duration:  1800,
+		IsFree:    true,
+	})
+
+	raw, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"genres", "audios", "relatedItems"} {
+		items, ok := decoded[name].([]any)
+		if !ok || len(items) != 0 {
+			t.Fatalf("%s = %#v, want empty array", name, decoded[name])
+		}
 	}
 }
 
