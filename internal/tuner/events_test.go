@@ -15,7 +15,7 @@ type fakeTunerEventPublisher struct {
 	events []publishedTunerEvent
 }
 
-func (p *fakeTunerEventPublisher) PublishTunerStatusEvent(typ string, _ Status) {
+func (p *fakeTunerEventPublisher) PublishTunerStatusEvent(typ string, _ map[string]any) {
 	p.events = append(p.events, publishedTunerEvent{typ: typ})
 }
 

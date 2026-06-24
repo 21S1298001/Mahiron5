@@ -10,7 +10,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/internal/tuner"
 )
 
 const (
@@ -94,8 +93,8 @@ func (h *Hub) PublishServiceEvent(typ string, svc *service.Service, channel *con
 	h.PublishEvent(ResourceService, typ, serviceEventData(svc, channel))
 }
 
-func (h *Hub) PublishTunerStatusEvent(typ string, status tuner.Status) {
-	h.PublishEvent(ResourceTuner, typ, tunerEventData(status))
+func (h *Hub) PublishTunerStatusEvent(typ string, data map[string]any) {
+	h.PublishEvent(ResourceTuner, typ, data)
 }
 
 func (h *Hub) PublishProgramEvent(typ string, p *program.Program) {

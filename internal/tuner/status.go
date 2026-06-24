@@ -298,9 +298,103 @@ func (tm *TunerManager) SeedEventLog() {
 	}
 }
 
+func (s Status) EventData() map[string]any {
+	data := map[string]any{
+		"index":       s.Index,
+		"name":        s.Name,
+		"types":       s.Types,
+		"command":     s.Command,
+		"pid":         s.PID,
+		"users":       userListEventData(s.Users),
+		"isAvailable": s.IsAvailable,
+		"isRemote":    false,
+		"isFree":      s.IsFree,
+		"isUsing":     s.IsUsing,
+		"isFault":     s.IsFault,
+	}
+	if s.CurrentChannelType != "" {
+		data["currentChannelType"] = s.CurrentChannelType
+		data["currentChannel"] = s.CurrentChannel
+	}
+	if s.TunedChannelType != "" {
+		data["tunedChannelType"] = s.TunedChannelType
+		data["tunedChannel"] = s.TunedChannel
+	}
+	return data
+}
+
+func (u User) EventData() map[string]any {
+	data := map[string]any{
+		"id":             u.ID,
+		"priority":       u.Priority,
+		"disableDecoder": u.DisableDecoder,
+	}
+	if u.Agent != "" {
+		data["agent"] = u.Agent
+	}
+	if u.URL != "" {
+		data["url"] = u.URL
+	}
+	if setting := u.StreamSetting.EventData(); len(setting) > 0 {
+		data["streamSetting"] = setting
+	}
+	if len(u.StreamInfo) > 0 {
+		info := map[string]any{}
+		for key, item := range u.StreamInfo {
+			info[key] = map[string]any{
+				"packet": item.Packet,
+				"drop":   item.Drop,
+			}
+		}
+		data["streamInfo"] = info
+	}
+	return data
+}
+
+func userListEventData(users []User) []map[string]any {
+	result := make([]map[string]any, len(users))
+	for i, user := range users {
+		result[i] = user.EventData()
+	}
+	return result
+}
+
+func (s StreamSetting) EventData() map[string]any {
+	data := map[string]any{}
+	if s.Channel != nil {
+		data["channel"] = map[string]any{
+			"name":    s.Channel.Name,
+			"type":    s.Channel.Type,
+			"channel": s.Channel.Channel,
+		}
+	}
+	if s.NetworkID != nil {
+		data["networkId"] = *s.NetworkID
+	}
+	if s.ServiceID != nil {
+		data["serviceId"] = *s.ServiceID
+	}
+	if s.EventID != nil {
+		data["eventId"] = *s.EventID
+	}
+	if s.NoProvide != nil {
+		data["noProvide"] = *s.NoProvide
+	}
+	if s.ParseNIT != nil {
+		data["parseNIT"] = *s.ParseNIT
+	}
+	if s.ParseSDT != nil {
+		data["parseSDT"] = *s.ParseSDT
+	}
+	if s.ParseEIT != nil {
+		data["parseEIT"] = *s.ParseEIT
+	}
+	return data
+}
+
 func (tm *TunerManager) publishStatus(typ string, status Status) {
 	if tm.events == nil {
 		return
 	}
-	tm.events.PublishTunerStatusEvent(typ, status)
+	tm.events.PublishTunerStatusEvent(typ, status.EventData())
 }

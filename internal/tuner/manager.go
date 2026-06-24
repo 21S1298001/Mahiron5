@@ -19,7 +19,7 @@ const (
 )
 
 type eventPublisher interface {
-	PublishTunerStatusEvent(typ string, status Status)
+	PublishTunerStatusEvent(typ string, data map[string]any)
 }
 
 type TunerManager struct {

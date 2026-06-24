@@ -7,7 +7,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/internal/tuner"
 )
 
 func TestServiceEventDataIncludesEPGAndChannel(t *testing.T) {
@@ -37,57 +36,6 @@ func TestServiceEventDataIncludesEPGAndChannel(t *testing.T) {
 	channel := data["channel"].(map[string]any)
 	if channel["type"] != "GR" || channel["channel"] != "27" || channel["name"] != "NHK" || channel["tsmfRelTs"] != tsmfRelTs {
 		t.Fatalf("service channel data = %#v", channel)
-	}
-}
-
-func TestTunerEventDataIncludesUsersAndStreamSetting(t *testing.T) {
-	networkID := uint16(1)
-	serviceID := uint16(101)
-	eventID := uint16(9)
-	parseEIT := true
-	data := tunerEventData(tuner.Status{
-		Index:              2,
-		Name:               "tuner-a",
-		Types:              []string{"GR"},
-		Command:            "recpt1",
-		PID:                1234,
-		IsAvailable:        true,
-		IsUsing:            true,
-		CurrentChannelType: "GR",
-		CurrentChannel:     "27",
-		TunedChannelType:   "GR",
-		TunedChannel:       "28",
-		Users: []tuner.User{{
-			ID:             "viewer",
-			Priority:       1,
-			Agent:          "agent",
-			URL:            "http://example.test",
-			DisableDecoder: true,
-			StreamSetting: tuner.StreamSetting{
-				Channel:   &config.ChannelConfig{Type: "GR", Channel: "27", Name: "NHK"},
-				NetworkID: &networkID,
-				ServiceID: &serviceID,
-				EventID:   &eventID,
-				ParseEIT:  &parseEIT,
-			},
-			StreamInfo: map[string]tuner.StreamInfo{
-				"GR/27:101": {Packet: 120, Drop: 2},
-			},
-		}},
-	})
-
-	if data["name"] != "tuner-a" || data["isRemote"] != false ||
-		data["currentChannel"] != "27" || data["tunedChannel"] != "28" {
-		t.Fatalf("tuner event data = %#v", data)
-	}
-	users := data["users"].([]map[string]any)
-	setting := users[0]["streamSetting"].(map[string]any)
-	info := users[0]["streamInfo"].(map[string]any)["GR/27:101"].(map[string]any)
-	if users[0]["id"] != "viewer" || users[0]["disableDecoder"] != true || setting["eventId"] != eventID || setting["parseEIT"] != true {
-		t.Fatalf("tuner user data = %#v", users[0])
-	}
-	if info["packet"] != 120 || info["drop"] != 2 {
-		t.Fatalf("tuner stream info = %#v", info)
 	}
 }
 

@@ -12,7 +12,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/event"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/internal/tuner"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -87,14 +86,16 @@ func TestGetEventsReturnsMirakurunCompatibleData(t *testing.T) {
 		ChannelType:       "GR",
 		ChannelId:         "27",
 	}, &config.ChannelConfig{Type: "GR", Channel: "27", Name: "NHK"})
-	hub.PublishTunerStatusEvent(event.TypeUpdate, tuner.Status{
-		Index:       1,
-		Name:        "tuner-a",
-		Types:       []string{"GR"},
-		Command:     "recpt1",
-		PID:         1234,
-		IsAvailable: true,
-		IsFree:      true,
+	hub.PublishTunerStatusEvent(event.TypeUpdate, map[string]any{
+		"index":       1,
+		"name":        "tuner-a",
+		"types":       []string{"GR"},
+		"command":     "recpt1",
+		"pid":         1234,
+		"isAvailable": true,
+		"isFree":      true,
+		"isRemote":    false,
+		"users":       []map[string]any{},
 	})
 	handler := NewHandler(HandlerConfig{EventHub: hub})
 

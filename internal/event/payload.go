@@ -4,7 +4,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/internal/tuner"
 )
 
 func serviceEventData(svc *service.Service, channel *config.ChannelConfig) map[string]any {
@@ -43,96 +42,6 @@ func serviceEventData(svc *service.Service, channel *config.ChannelConfig) map[s
 			channelData["tsmfRelTs"] = *channel.TsmfRelTs
 		}
 		data["channel"] = channelData
-	}
-	return data
-}
-
-func tunerEventData(status tuner.Status) map[string]any {
-	data := map[string]any{
-		"index":       status.Index,
-		"name":        status.Name,
-		"types":       status.Types,
-		"command":     status.Command,
-		"pid":         status.PID,
-		"users":       tunerUserEventData(status.Users),
-		"isAvailable": status.IsAvailable,
-		"isRemote":    false,
-		"isFree":      status.IsFree,
-		"isUsing":     status.IsUsing,
-		"isFault":     status.IsFault,
-	}
-	if status.CurrentChannelType != "" {
-		data["currentChannelType"] = status.CurrentChannelType
-		data["currentChannel"] = status.CurrentChannel
-	}
-	if status.TunedChannelType != "" {
-		data["tunedChannelType"] = status.TunedChannelType
-		data["tunedChannel"] = status.TunedChannel
-	}
-	return data
-}
-
-func tunerUserEventData(users []tuner.User) []map[string]any {
-	result := make([]map[string]any, len(users))
-	for i, user := range users {
-		data := map[string]any{
-			"id":             user.ID,
-			"priority":       user.Priority,
-			"disableDecoder": user.DisableDecoder,
-		}
-		if user.Agent != "" {
-			data["agent"] = user.Agent
-		}
-		if user.URL != "" {
-			data["url"] = user.URL
-		}
-		if setting := streamSettingEventData(user.StreamSetting); len(setting) > 0 {
-			data["streamSetting"] = setting
-		}
-		if len(user.StreamInfo) > 0 {
-			info := map[string]any{}
-			for key, item := range user.StreamInfo {
-				info[key] = map[string]any{
-					"packet": item.Packet,
-					"drop":   item.Drop,
-				}
-			}
-			data["streamInfo"] = info
-		}
-		result[i] = data
-	}
-	return result
-}
-
-func streamSettingEventData(setting tuner.StreamSetting) map[string]any {
-	data := map[string]any{}
-	if setting.Channel != nil {
-		data["channel"] = map[string]any{
-			"name":    setting.Channel.Name,
-			"type":    setting.Channel.Type,
-			"channel": setting.Channel.Channel,
-		}
-	}
-	if setting.NetworkID != nil {
-		data["networkId"] = *setting.NetworkID
-	}
-	if setting.ServiceID != nil {
-		data["serviceId"] = *setting.ServiceID
-	}
-	if setting.EventID != nil {
-		data["eventId"] = *setting.EventID
-	}
-	if setting.NoProvide != nil {
-		data["noProvide"] = *setting.NoProvide
-	}
-	if setting.ParseNIT != nil {
-		data["parseNIT"] = *setting.ParseNIT
-	}
-	if setting.ParseSDT != nil {
-		data["parseSDT"] = *setting.ParseSDT
-	}
-	if setting.ParseEIT != nil {
-		data["parseEIT"] = *setting.ParseEIT
 	}
 	return data
 }
