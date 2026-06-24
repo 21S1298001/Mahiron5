@@ -1,0 +1,47 @@
+package ts
+
+import "testing"
+
+func BenchmarkDecodeARIBStringBasicEPG(b *testing.B) {
+	input := []byte{
+		0x0e, 'A', 'B', 'C',
+		0x0f, 0x41, 0x6d, 0x39, 0x67,
+		0x0e, '1', 0xfe,
+		0x0f, 0x45, 0x6c, 0x35, 0x7e,
+	}
+	benchmarkDecodeARIBString(b, input)
+}
+
+func BenchmarkDecodeARIBStringAdditionalSymbols(b *testing.B) {
+	input := []byte{
+		0x1b, 0x24, 0x3b,
+		0x7a, 0x56, 0x7a, 0x5a, 0x7a, 0x66,
+		0x75, 0x21, 0x75, 0x6e,
+		0x7e, 0x21, 0x7e, 0x61, 0x7d, 0x6f,
+	}
+	benchmarkDecodeARIBString(b, input)
+}
+
+func BenchmarkDecodeARIBStringJISCompatibleKanji(b *testing.B) {
+	input := []byte{
+		0x1b, 0x24, 0x39,
+		0x2e, 0x22,
+		0x22, 0x33,
+		0x24, 0x77,
+		0x1b, 0x24, 0x3a,
+		0x21, 0x21,
+		0x21, 0x22,
+		0x2e, 0x56,
+	}
+	benchmarkDecodeARIBString(b, input)
+}
+
+func benchmarkDecodeARIBString(b *testing.B, input []byte) {
+	b.Helper()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := DecodeARIBString(input); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
