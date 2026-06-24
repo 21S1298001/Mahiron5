@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/epg"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/util"
@@ -208,7 +207,7 @@ func (s *ChannelSession) programStream(ctx context.Context, p *program.Program, 
 		}, func(section ts.Section) error {
 			eit, err := ts.ParseEIT(section)
 			if err == nil {
-				gate.observe(epg.EITSectionFromTS(eit))
+				gate.observe(eit)
 			}
 			return nil
 		}, observerAttached)

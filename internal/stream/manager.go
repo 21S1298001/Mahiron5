@@ -13,6 +13,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
+	"github.com/google/uuid"
 )
 
 type StreamManager struct {
@@ -87,7 +88,22 @@ func (m *StreamManager) GetOrCreateWait(ctx context.Context, channelType, channe
 	return m.getOrCreate(ctx, channelType, channel, true)
 }
 
+func ensureUserContext(ctx context.Context, channelType, channel string) context.Context {
+	if _, ok := tuner.UserFromContext(ctx); ok {
+		return ctx
+	}
+	return tuner.WithUser(ctx, tuner.User{
+		ID:       uuid.NewString(),
+		Priority: -1,
+		Agent:    "Mahiron Internal",
+		StreamSetting: tuner.StreamSetting{
+			Channel: &config.ChannelConfig{Type: channelType, Channel: channel},
+		},
+	})
+}
+
 func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel string, wait bool) (session Session, err error) {
+	ctx = ensureUserContext(ctx, channelType, channel)
 	ctx, span := observability.StartSpan(ctx, observability.SpanStreamGetOrCreate,
 		observability.AttrChannelType.String(channelType),
 		observability.AttrChannelID.String(channel),

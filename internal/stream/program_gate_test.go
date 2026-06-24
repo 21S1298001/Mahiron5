@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestProgramEventGateTracksTargetEvent(t *testing.T) {
@@ -56,12 +56,12 @@ func restoreProgramGateTimings(t *testing.T) {
 	})
 }
 
-func gateSection(networkID, serviceID, eventID uint16) *epg.EITSection {
-	return &epg.EITSection{
+func gateSection(networkID, serviceID, eventID uint16) *ts.EIT {
+	return &ts.EIT{
 		OriginalNetworkID: networkID,
 		ServiceID:         serviceID,
 		TableID:           0x4e,
 		SectionNumber:     0,
-		Events:            []epg.EITEvent{{EventID: eventID}},
+		Events:            []ts.EITEvent{{EventID: eventID}},
 	}
 }

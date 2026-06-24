@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/epg"
 	"github.com/21S1298001/mahiron/internal/util"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 var (
@@ -43,15 +43,15 @@ func newProgramEventGate(networkID, serviceID, eventID uint16, initialTimeout ti
 	return g
 }
 
-func (g *programEventGate) observe(section *epg.EITSection) {
-	if section == nil {
+func (g *programEventGate) observe(eit *ts.EIT) {
+	if eit == nil {
 		return
 	}
-	if section.TableID != 0x4e || section.SectionNumber != 0 || section.ServiceID != g.serviceID || section.OriginalNetworkID != g.networkID || len(section.Events) == 0 {
+	if eit.TableID != 0x4e || eit.SectionNumber != 0 || eit.ServiceID != g.serviceID || eit.OriginalNetworkID != g.networkID || len(eit.Events) == 0 {
 		return
 	}
 
-	if section.Events[0].EventID == g.eventID {
+	if eit.Events[0].EventID == g.eventID {
 		g.mu.Lock()
 		g.ready = true
 		g.lastDetectedAt = time.Now()

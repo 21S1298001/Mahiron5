@@ -10,9 +10,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
-	"github.com/google/uuid"
 )
 
 type Candidate struct {
@@ -135,18 +133,10 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 			observability.AttrChannelID.String(candidate.Channel),
 			observability.AttrStreamActiveSession.Bool(active[candidate]),
 		)
-		yes := true
-		userCtx := tuner.WithUser(candidateCtx, tuner.User{
-			ID: uuid.NewString(), Priority: -1, Agent: "Mahiron EPG Gatherer",
-			StreamSetting: tuner.StreamSetting{
-				Channel:  &config.ChannelConfig{Type: candidate.Type, Channel: candidate.Channel},
-				ParseEIT: &yes,
-			},
-		})
 		var candidateErr error
-		session, candidateErr := streams.GetOrCreateWait(userCtx, candidate.Type, candidate.Channel)
+		session, candidateErr := streams.GetOrCreateWait(candidateCtx, candidate.Type, candidate.Channel)
 		if candidateErr == nil {
-			candidateErr = CollectServiceSnapshots(userCtx, programStore, serviceStore, session, serviceKeys, retrievalTime)
+			candidateErr = CollectServiceSnapshots(candidateCtx, programStore, serviceStore, session, serviceKeys, retrievalTime)
 		}
 		cancel()
 		observability.EndSpan(candidateSpan, candidateErr)
