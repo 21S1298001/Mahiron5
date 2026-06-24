@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/version"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -167,6 +168,7 @@ func newResource(cfg config.ObservabilityConfig) (*resource.Resource, error) {
 		resource.Default(),
 		resource.NewSchemaless(
 			semconv.ServiceName(cfg.ServiceName),
+			semconv.ServiceVersion(version.Current),
 			attribute.String("telemetry.sdk.language", "go"),
 		),
 	)

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/version"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -24,6 +25,20 @@ func TestSetupTracesDisabledUsesNoopProvider(t *testing.T) {
 	}
 	if err := result.Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown() = %v", err)
+	}
+}
+
+func TestNewResourceIncludesServiceVersion(t *testing.T) {
+	res, err := newResource(config.ObservabilityConfig{ServiceName: "test-service"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attrs := res.Set()
+	if got, ok := attrs.Value("service.name"); !ok || got.AsString() != "test-service" {
+		t.Fatalf("service.name = %q, %v; want test-service, true", got.AsString(), ok)
+	}
+	if got, ok := attrs.Value("service.version"); !ok || got.AsString() != version.Current {
+		t.Fatalf("service.version = %q, %v; want %q, true", got.AsString(), ok, version.Current)
 	}
 }
 
