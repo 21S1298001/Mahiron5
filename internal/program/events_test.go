@@ -9,7 +9,7 @@ import (
 
 type publishedProgramEvent struct {
 	typ      string
-	program  *Program
+	data     map[string]any
 	removeID int64
 }
 
@@ -17,12 +17,8 @@ type fakeProgramEventPublisher struct {
 	events []publishedProgramEvent
 }
 
-func (p *fakeProgramEventPublisher) PublishProgramEvent(typ string, program *Program) {
-	p.events = append(p.events, publishedProgramEvent{typ: typ, program: program})
-}
-
-func (p *fakeProgramEventPublisher) PublishProgramRemoveEvent(id int64) {
-	p.events = append(p.events, publishedProgramEvent{typ: eventTypeRemove, removeID: id})
+func (p *fakeProgramEventPublisher) PublishProgramEvent(typ string, data map[string]any) {
+	p.events = append(p.events, publishedProgramEvent{typ: typ, data: data})
 }
 
 func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
@@ -59,7 +55,7 @@ func TestProgramManagerPublishesCreateUpdateAndRemoveEvents(t *testing.T) {
 	if events[0].typ != eventTypeCreate || events[1].typ != eventTypeUpdate || events[2].typ != eventTypeRemove {
 		t.Fatalf("event types = %s/%s/%s", events[0].typ, events[1].typ, events[2].typ)
 	}
-	if got, want := events[2].removeID, p.ID; got != want {
-		t.Fatalf("remove payload id = %d, want %d", got, want)
+	if got, want := events[2].data["id"], p.ID; got != want {
+		t.Fatalf("remove payload id = %v, want %d", got, want)
 	}
 }

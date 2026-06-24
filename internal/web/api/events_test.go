@@ -9,9 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/event"
-	"github.com/21S1298001/mahiron/internal/service"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -74,18 +72,22 @@ func TestGetEventsReturnsOnlyLast100Events(t *testing.T) {
 
 func TestGetEventsReturnsMirakurunCompatibleData(t *testing.T) {
 	hub := event.New()
-	logoID := int64(12)
-	hub.PublishServiceEvent(event.TypeUpdate, &service.Service{
-		ServiceId:         101,
-		NetworkId:         1,
-		TransportStreamId: 10,
-		Name:              "NHK",
-		Type:              1,
-		LogoId:            &logoID,
-		HasLogoData:       true,
-		ChannelType:       "GR",
-		ChannelId:         "27",
-	}, &config.ChannelConfig{Type: "GR", Channel: "27", Name: "NHK"})
+	hub.PublishServiceEvent(event.TypeUpdate, map[string]any{
+		"id":                 int64(100101),
+		"serviceId":          uint16(101),
+		"networkId":          uint16(1),
+		"transportStreamId":  uint16(10),
+		"name":               "NHK",
+		"type":               1,
+		"hasLogoData":        true,
+		"remoteControlKeyId": 0,
+		"epgReady":           false,
+		"channel": map[string]any{
+			"type":    "GR",
+			"channel": "27",
+			"name":    "NHK",
+		},
+	})
 	hub.PublishTunerStatusEvent(event.TypeUpdate, map[string]any{
 		"index":       1,
 		"name":        "tuner-a",

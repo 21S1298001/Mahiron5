@@ -17,7 +17,7 @@ const (
 )
 
 type eventPublisher interface {
-	PublishServiceEvent(typ string, svc *Service, channel *config.ChannelConfig)
+	PublishServiceEvent(typ string, data map[string]any)
 }
 
 type ServiceManager struct {
@@ -272,7 +272,7 @@ func (s *ServiceManager) publishService(typ string, svc *Service) {
 	if s.events == nil || svc == nil {
 		return
 	}
-	s.events.PublishServiceEvent(typ, svc, s.GetChannel(svc.ChannelType, svc.ChannelId))
+	s.events.PublishServiceEvent(typ, svc.EventData(s.GetChannel(svc.ChannelType, svc.ChannelId)))
 }
 
 func (s *ServiceManager) prunedServices(ctx context.Context, active []ChannelKey) ([]*Service, error) {

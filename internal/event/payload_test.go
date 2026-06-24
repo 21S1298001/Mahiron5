@@ -14,7 +14,7 @@ func TestServiceEventDataIncludesEPGAndChannel(t *testing.T) {
 	succeededAt := int64(2000)
 	logoID := int64(12)
 	tsmfRelTs := uint8(1)
-	data := serviceEventData(&service.Service{
+	data := (&service.Service{
 		ServiceId:         101,
 		NetworkId:         1,
 		TransportStreamId: 10,
@@ -27,7 +27,7 @@ func TestServiceEventDataIncludesEPGAndChannel(t *testing.T) {
 			LastSuccessAt: &succeededAt,
 			LastError:     "failed once",
 		},
-	}, &config.ChannelConfig{Type: "GR", Channel: "27", Name: "NHK", TsmfRelTs: &tsmfRelTs})
+	}).EventData(&config.ChannelConfig{Type: "GR", Channel: "27", Name: "NHK", TsmfRelTs: &tsmfRelTs})
 
 	if data["id"] != int64(100101) || data["logoId"] != logoID || data["hasLogoData"] != true ||
 		data["transportStreamId"] != uint16(10) || data["epgReady"] != true || data["epgUpdatedAt"] != succeededAt {
@@ -45,7 +45,7 @@ func TestProgramEventDataIncludesNestedFields(t *testing.T) {
 	samplingRate := 48000
 	networkID := uint16(1)
 	expiresAt := int64(3000)
-	data := programEventData(&program.Program{
+	data := (&program.Program{
 		ID:          program.ProgramID(1, 101, 9),
 		NetworkID:   1,
 		ServiceID:   101,
@@ -80,7 +80,7 @@ func TestProgramEventDataIncludesNestedFields(t *testing.T) {
 			LastEpisode: 5,
 			Name:        "series",
 		},
-	})
+	}).EventData()
 
 	raw, err := json.Marshal(data)
 	if err != nil {
@@ -105,7 +105,7 @@ func TestProgramEventDataIncludesNestedFields(t *testing.T) {
 }
 
 func TestProgramEventDataIncludesEmptyArrays(t *testing.T) {
-	data := programEventData(&program.Program{
+	data := (&program.Program{
 		ID:        program.ProgramID(1, 101, 9),
 		NetworkID: 1,
 		ServiceID: 101,
@@ -113,7 +113,7 @@ func TestProgramEventDataIncludesEmptyArrays(t *testing.T) {
 		StartAt:   1000,
 		Duration:  1800,
 		IsFree:    true,
-	})
+	}).EventData()
 
 	raw, err := json.Marshal(data)
 	if err != nil {
@@ -128,12 +128,5 @@ func TestProgramEventDataIncludesEmptyArrays(t *testing.T) {
 		if !ok || len(items) != 0 {
 			t.Fatalf("%s = %#v, want empty array", name, decoded[name])
 		}
-	}
-}
-
-func TestProgramRemoveEventData(t *testing.T) {
-	data := programRemoveEventData(123)
-	if data["id"] != 123 {
-		t.Fatalf("program remove event data = %#v", data)
 	}
 }

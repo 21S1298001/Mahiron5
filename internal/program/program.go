@@ -75,3 +75,110 @@ type Query struct {
 func ProgramID(networkID, serviceID, eventID uint16) int64 {
 	return int64(networkID)*10000000000 + int64(serviceID)*100000 + int64(eventID)
 }
+
+func (p *Program) EventData() map[string]any {
+	data := map[string]any{
+		"id":           p.ID,
+		"eventId":      p.EventID,
+		"serviceId":    p.ServiceID,
+		"networkId":    p.NetworkID,
+		"startAt":      p.StartAt,
+		"duration":     p.Duration,
+		"isFree":       p.IsFree,
+		"genres":       genreListEventData(p.Genres),
+		"audios":       audioListEventData(p.Audios),
+		"relatedItems": relatedItemListEventData(p.RelatedItems),
+	}
+	if p.Name != "" {
+		data["name"] = p.Name
+	}
+	if p.Description != "" {
+		data["description"] = p.Description
+	}
+	if p.Video != nil {
+		data["video"] = map[string]any{
+			"streamContent": p.Video.StreamContent,
+			"componentType": p.Video.ComponentType,
+		}
+	}
+	if len(p.Extended) > 0 {
+		data["extended"] = p.Extended
+	}
+	if p.Series != nil {
+		series := map[string]any{
+			"id":          p.Series.ID,
+			"repeat":      p.Series.Repeat,
+			"pattern":     p.Series.Pattern,
+			"episode":     p.Series.Episode,
+			"lastEpisode": p.Series.LastEpisode,
+		}
+		if p.Series.ExpiresAt != nil {
+			series["expiresAt"] = *p.Series.ExpiresAt
+		}
+		if p.Series.Name != "" {
+			series["name"] = p.Series.Name
+		}
+		data["series"] = series
+	}
+	return data
+}
+
+func genreListEventData(genres []Genre) []map[string]any {
+	result := make([]map[string]any, len(genres))
+	for i, genre := range genres {
+		result[i] = map[string]any{
+			"lv1": genre.Lv1,
+			"lv2": genre.Lv2,
+			"un1": genre.Un1,
+			"un2": genre.Un2,
+		}
+	}
+	return result
+}
+
+func audioListEventData(audios []Audio) []map[string]any {
+	result := make([]map[string]any, len(audios))
+	for i, audio := range audios {
+		data := map[string]any{
+			"componentType": audio.ComponentType,
+		}
+		if audio.ComponentTag != nil {
+			data["componentTag"] = *audio.ComponentTag
+		}
+		if audio.IsMain != nil {
+			data["isMain"] = *audio.IsMain
+		}
+		if audio.SamplingRate != nil {
+			data["samplingRate"] = *audio.SamplingRate
+		}
+		if len(audio.Langs) > 0 {
+			data["langs"] = audio.Langs
+		}
+		result[i] = data
+	}
+	return result
+}
+
+func relatedItemListEventData(items []RelatedItem) []map[string]any {
+	result := make([]map[string]any, len(items))
+	for i, item := range items {
+		data := map[string]any{}
+		if item.Type != "" {
+			data["type"] = item.Type
+		}
+		if item.NetworkID != nil {
+			data["networkId"] = *item.NetworkID
+		}
+		if item.TransportStreamID != nil {
+			data["transportStreamId"] = *item.TransportStreamID
+		}
+		if item.ServiceID != 0 {
+			data["serviceId"] = item.ServiceID
+		}
+		if item.EventID != 0 {
+			data["eventId"] = item.EventID
+		}
+		result[i] = data
+	}
+	return result
+}
