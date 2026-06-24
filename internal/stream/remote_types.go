@@ -37,7 +37,8 @@ type remoteService struct {
 	TransportStreamID  uint16 `json:"transportStreamId"`
 	Name               string `json:"name"`
 	Type               int    `json:"type"`
-	LogoID             uint64 `json:"logoId"`
+	LogoID             *int64 `json:"logoId"`
+	HasLogoData        bool   `json:"hasLogoData"`
 	RemoteControlKeyID int    `json:"remoteControlKeyId"`
 }
 

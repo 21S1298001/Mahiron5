@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"reflect"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -302,7 +303,7 @@ func TestApiServiceEpgReadyFalseWithoutSuccess(t *testing.T) {
 	}
 }
 
-func TestApiServiceExposesLogoMetadataAndImage(t *testing.T) {
+func TestApiServiceExposesMirakurunLogoFieldsAndImage(t *testing.T) {
 	ctx := context.Background()
 	database, err := db.OpenInMemory()
 	if err != nil {
@@ -328,6 +329,13 @@ func TestApiServiceExposesLogoMetadataAndImage(t *testing.T) {
 	services := res.(*apigen.GetServicesOKApplicationJSON)
 	if (*services)[0].LogoId.Value != 42 {
 		t.Fatalf("LogoId = %d, want 42", (*services)[0].LogoId.Value)
+	}
+	serviceType := reflect.TypeOf((*services)[0])
+	if _, ok := serviceType.FieldByName("LogoVersion"); ok {
+		t.Fatal("Service exposes internal LogoVersion field")
+	}
+	if _, ok := serviceType.FieldByName("LogoDownloadDataId"); ok {
+		t.Fatal("Service exposes internal LogoDownloadDataId field")
 	}
 	if (*services)[0].HasLogoData.Value {
 		t.Fatal("HasLogoData = true before image is stored")

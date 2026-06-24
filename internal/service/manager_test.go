@@ -487,3 +487,56 @@ func TestMissingLogoTargetsTracksExactStoredVersion(t *testing.T) {
 		t.Fatalf("missing after upsert = %#v, err=%v", missing, err)
 	}
 }
+
+func TestLogoGatherTargetsRefreshesRemoteSyntheticTargets(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+
+	remoteLogoID, remoteVersion, remoteDownloadID := int64(12), int64(0), int64(101)
+	localLogoID, localVersion, localDownloadID := int64(13), int64(3), int64(7)
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{
+		{Id: "0000400101", NetworkId: 4, ServiceId: 101, ChannelType: "GR", ChannelId: "27", LogoId: &remoteLogoID, LogoVersion: &remoteVersion, LogoDownloadDataId: &remoteDownloadID},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*Service{
+		{Id: "0000400102", NetworkId: 4, ServiceId: 102, ChannelType: "BS", ChannelId: "BS01", LogoId: &localLogoID, LogoVersion: &localVersion, LogoDownloadDataId: &localDownloadID},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertLogo(ctx, 4, 101, remoteLogoID, 5, remoteVersion, remoteDownloadID, []byte("remote"), 1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertLogo(ctx, 4, 102, localLogoID, 5, localVersion, localDownloadID, []byte("local"), 1000); err != nil {
+		t.Fatal(err)
+	}
+
+	no := false
+	manager := NewServiceManager(store, config.ChannelsConfig{
+		{Name: "Remote", Type: "GR", Channel: "27", IsDisabled: &no, Routes: []config.ChannelRouteConfig{{Remote: "mirakurun", Type: "GR", Channel: "27", IsDisabled: &no}}},
+		{Name: "Local", Type: "BS", Channel: "BS01", IsDisabled: &no},
+	})
+
+	missing, err := manager.MissingLogoTargets(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missing) != 0 {
+		t.Fatalf("missing targets = %#v, want none", missing)
+	}
+	targets, err := manager.LogoGatherTargets(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("logo gather targets = %#v, want remote synthetic target", targets)
+	}
+	if targets[0].ChannelType != "GR" || targets[0].ChannelId != "27" || targets[0].LogoId != remoteLogoID {
+		t.Fatalf("logo gather target = %#v, want remote synthetic target", targets[0])
+	}
+}

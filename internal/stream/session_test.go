@@ -422,7 +422,7 @@ func TestManagerSelectsRemoteRouteWhenRemoteAlreadyTunedToSameRoute(t *testing.T
 	}
 }
 
-func TestManagerFallsBackWhenRemoteUnavailable(t *testing.T) {
+func TestManagerSelectsRemoteRouteWithoutTunerPrecheck(t *testing.T) {
 	no := false
 	priorityRemote := 10
 	priorityLocal := 20
@@ -431,7 +431,8 @@ func TestManagerFallsBackWhenRemoteUnavailable(t *testing.T) {
 	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
 		client := NewRemoteClient(remote)
 		client.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-			return stringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":false,"isFault":false}]`), nil
+			t.Fatal("remote route selection should not precheck /tuners")
+			return stringResponse(http.StatusInternalServerError, ""), nil
 		})}
 		return client
 	}
@@ -456,8 +457,67 @@ func TestManagerFallsBackWhenRemoteUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := session.(*ChannelSession); !ok {
-		t.Fatalf("session type = %T, want *ChannelSession", session)
+	if _, ok := session.(*RemoteSession); !ok {
+		t.Fatalf("session type = %T, want *RemoteSession", session)
+	}
+}
+
+func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T) {
+	no := false
+	requests := make(chan string, 2)
+	previousNewRemoteClient := newRemoteClient
+	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
+	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
+		client := NewRemoteClient(remote)
+		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			requests <- r.URL.Path + "?" + r.URL.RawQuery
+			<-r.Context().Done()
+			return nil, r.Context().Err()
+		})}
+		return client
+	}
+
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{{
+			Name:       "NHK",
+			Type:       "GR",
+			Channel:    "27",
+			IsDisabled: &no,
+			Routes: []config.ChannelRouteConfig{
+				{Id: "remote", Remote: "living", Type: "GR", Channel: "27", IsDisabled: &no},
+			},
+		}},
+		ProgramUpdater: &recordingProgramUpdater{},
+		Remotes:        config.RemotesConfig{{Name: "living", URL: "http://remote.local/api"}},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	manager.StartRemoteProgramEventSync(ctx)
+	select {
+	case request := <-requests:
+		if request != "/api/events/stream?resource=program" {
+			t.Fatalf("request = %q, want /api/events/stream?resource=program", request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for remote program event sync request")
+	}
+
+	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := session.(*RemoteSession); !ok {
+		t.Fatalf("session type = %T, want *RemoteSession", session)
+	}
+	select {
+	case request := <-requests:
+		t.Fatalf("unexpected additional event sync request after session creation: %q", request)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	cancel()
+	if err := manager.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
 

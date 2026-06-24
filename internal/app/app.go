@@ -100,6 +100,7 @@ func Run(ctx context.Context, args []string) int {
 	defer stop()
 
 	runtime.jobs.Start()
+	runtime.streams.StartRemoteProgramEventSync(signalCtx)
 
 	if err := runStartupTasks(signalCtx, runtime.services, runtime.programs, runtime.jobs, runtime.database, cfg); err != nil {
 		slog.Error("startup tasks failed", "err", err)

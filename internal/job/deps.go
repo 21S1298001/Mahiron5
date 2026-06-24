@@ -32,6 +32,10 @@ type LogoStore interface {
 	MissingLogoTargets(context.Context) ([]service.LogoTarget, error)
 }
 
+type LogoGatherTargetStore interface {
+	LogoGatherTargets(context.Context) ([]service.LogoTarget, error)
+}
+
 type EPGGatherer interface {
 	Groups(context.Context) (map[uint16]*epg.Network, error)
 	BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error)

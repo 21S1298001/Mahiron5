@@ -3,8 +3,6 @@ package stream
 import (
 	"context"
 	"io"
-	"log/slog"
-	"sync"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
@@ -20,8 +18,6 @@ type RemoteSessionConfig struct {
 type RemoteSession struct {
 	channel      *config.ChannelConfig
 	client       *RemoteClient
-	eventCancel  context.CancelFunc
-	eventOnce    sync.Once
 	routeChannel *config.ChannelConfig
 }
 
@@ -53,34 +49,38 @@ func (s *RemoteSession) ListServicePrograms(ctx context.Context, networkID, serv
 	return s.client.ListServicePrograms(ctx, networkID, serviceID)
 }
 
-func (s *RemoteSession) StartProgramEventSync(updater ProgramUpdater) {
-	if updater == nil {
-		return
-	}
-	s.eventOnce.Do(func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		s.eventCancel = cancel
-		go func() {
-			slog.Debug("starting remote program event sync")
-			defer slog.Debug("finished remote program event sync")
-			if err := s.client.StreamProgramEvents(ctx, updater); err != nil && ctx.Err() == nil {
-				slog.Warn("remote program event sync stopped", "err", err)
-			}
-		}()
-	})
-}
-
 func (s *RemoteSession) CollectEIT(context.Context, func(*ts.EIT) error) error {
 	return ErrEITObservationUnsupported
 }
 
-func (s *RemoteSession) ObserveLogos(context.Context, func(*ts.LogoImage) error) error {
-	return ErrLogoObservationUnsupported
+func (s *RemoteSession) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
+	services, err := s.client.ListChannelServices(ctx, s.routeChannel.Type, s.routeChannel.Channel)
+	if err != nil {
+		return err
+	}
+	for _, svc := range services {
+		if !remoteServiceHasLogo(svc) {
+			continue
+		}
+		data, err := s.client.GetLogoImage(ctx, int64(svc.NetworkID)*100000+int64(svc.ServiceID))
+		if err != nil {
+			return err
+		}
+		image := &ts.LogoImage{
+			OriginalNetworkID: svc.NetworkID,
+			LogoID:            uint16(*svc.LogoID),
+			LogoVersion:       *remoteLogoVersion(),
+			DownloadDataID:    *remoteLogoDownloadDataID(svc),
+			LogoType:          5,
+			Data:              data,
+		}
+		if err := observe(image); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *RemoteSession) Stop(context.Context) error {
-	if s.eventCancel != nil {
-		s.eventCancel()
-	}
 	return nil
 }

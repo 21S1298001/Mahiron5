@@ -17,15 +17,18 @@ import (
 )
 
 type StreamManager struct {
-	mu             sync.Mutex
-	eitUpdater     EITSectionUpdater
-	logoUpdater    LogoUpdater
-	programUpdater ProgramUpdater
-	remotes        map[string]*RemoteClient
-	sessionDetails map[sessionKey]sessionMetricDetail
-	sessions       map[sessionKey]Session
-	sessionTypes   map[sessionKey]string
-	sources        *SourcePool
+	mu                    sync.Mutex
+	eitUpdater            EITSectionUpdater
+	logoUpdater           LogoUpdater
+	programUpdater        ProgramUpdater
+	remoteEventSyncCancel context.CancelFunc
+	remoteEventSyncOnce   sync.Once
+	remoteEventSyncWG     sync.WaitGroup
+	remotes               map[string]*RemoteClient
+	sessionDetails        map[sessionKey]sessionMetricDetail
+	sessions              map[sessionKey]Session
+	sessionTypes          map[sessionKey]string
+	sources               *SourcePool
 }
 
 type StreamManagerConfig struct {
@@ -48,6 +51,11 @@ type sessionMetricDetail struct {
 	source    string
 	startedAt time.Time
 }
+
+const (
+	remoteProgramEventSyncInitialBackoff = time.Second
+	remoteProgramEventSyncMaxBackoff     = time.Minute
+)
 
 type Session interface {
 	ChannelStream(context.Context, bool, io.Writer) error
@@ -77,6 +85,54 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		sessions:       map[sessionKey]Session{},
 		sessionTypes:   map[sessionKey]string{},
 		sources:        NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
+	}
+}
+
+func (m *StreamManager) StartRemoteProgramEventSync(ctx context.Context) {
+	if m.programUpdater == nil || len(m.remotes) == 0 {
+		return
+	}
+	m.remoteEventSyncOnce.Do(func() {
+		syncCtx, cancel := context.WithCancel(ctx)
+		m.remoteEventSyncCancel = cancel
+		for name, client := range m.remotes {
+			name, client := name, client
+			m.remoteEventSyncWG.Add(1)
+			go func() {
+				defer m.remoteEventSyncWG.Done()
+				m.runRemoteProgramEventSync(syncCtx, name, client)
+			}()
+		}
+	})
+}
+
+func (m *StreamManager) runRemoteProgramEventSync(ctx context.Context, name string, client *RemoteClient) {
+	backoff := remoteProgramEventSyncInitialBackoff
+	for {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		slog.Debug("starting remote program event sync", "remote", name)
+		err := client.StreamProgramEvents(ctx, m.programUpdater)
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		slog.Warn("remote program event sync stopped", "remote", name, "err", err, "retryIn", backoff)
+		if !sleepContext(ctx, backoff) {
+			return
+		}
+		backoff = min(backoff*2, remoteProgramEventSyncMaxBackoff)
+	}
+}
+
+func sleepContext(ctx context.Context, duration time.Duration) bool {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 
@@ -136,9 +192,6 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	}
 	if lease.Session != nil {
 		source := streamSessionSource(lease)
-		if remoteSession, ok := lease.Session.(*RemoteSession); ok {
-			remoteSession.StartProgramEventSync(m.programUpdater)
-		}
 		m.sessions[key] = lease.Session
 		m.sessionTypes[key] = lease.RouteType
 		m.sessionDetails[key] = sessionMetricDetail{routeType: lease.RouteType, source: source, startedAt: time.Now()}
@@ -200,6 +253,21 @@ func (m *StreamManager) ActiveSessionCountByType(channelType string) int {
 }
 
 func (m *StreamManager) Shutdown(ctx context.Context) error {
+	var result error
+	if m.remoteEventSyncCancel != nil {
+		m.remoteEventSyncCancel()
+	}
+	eventSyncDone := make(chan struct{})
+	go func() {
+		m.remoteEventSyncWG.Wait()
+		close(eventSyncDone)
+	}()
+	select {
+	case <-eventSyncDone:
+	case <-ctx.Done():
+		result = errors.Join(result, ctx.Err())
+	}
+
 	m.mu.Lock()
 	sessions := make([]Session, 0, len(m.sessions))
 	for _, session := range m.sessions {
@@ -207,7 +275,6 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 
-	var result error
 	for _, session := range sessions {
 		if err := session.Stop(ctx); err != nil {
 			result = errors.Join(result, err)

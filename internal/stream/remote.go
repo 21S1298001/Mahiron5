@@ -16,8 +16,11 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 )
+
+const xMirakurunTunerUserID = "X-Mirakurun-Tuner-User-ID"
 
 const remoteAvailabilityTimeout = 3 * time.Second
 
@@ -29,6 +32,7 @@ const (
 	remoteOperationScanServices        = "remote.scan_services"
 	remoteOperationListServicePrograms = "remote.list_service_programs"
 	remoteOperationStreamProgramEvents = "remote.stream_program_events"
+	remoteOperationGetLogoImage        = "remote.get_logo_image"
 )
 
 type RemoteClient struct {
@@ -61,36 +65,24 @@ func (c *RemoteClient) CheckAvailableForRoute(ctx context.Context, channelType, 
 		observability.RecordRemoteOperation(ctx, remoteOperationCheckAvailable, remoteOperationResult(err), time.Since(start).Milliseconds())
 	}()
 
-	ctx, span := observability.StartSpan(ctx, observability.SpanRemoteCheckAvailable,
-		observability.AttrRemoteURL.String(c.baseURL),
-		observability.AttrChannelType.String(channelType),
-		observability.AttrChannelID.String(channel),
-	)
-	defer func() { observability.EndSpan(span, err) }()
-
 	checkCtx, cancel := context.WithTimeout(ctx, remoteAvailabilityTimeout)
 	defer cancel()
 
 	req, err := c.newRequest(checkCtx, http.MethodGet, "tuners")
 	if err != nil {
-		slog.Warn("failed to build remote tuner status request", "remote", c.baseURL, "type", channelType, "err", err)
 		return err
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		slog.Warn("failed to get remote tuner status", "remote", c.baseURL, "type", channelType, "err", err)
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		err := fmt.Errorf("remote tuners status: %s", resp.Status)
-		slog.Warn("remote tuner status returned non-success", "remote", c.baseURL, "type", channelType, "status", resp.Status)
+	if err := remoteStatusError(resp.StatusCode, resp.Status); err != nil {
 		return err
 	}
 
 	var tuners []remoteTuner
 	if err := json.NewDecoder(resp.Body).Decode(&tuners); err != nil {
-		slog.Warn("failed to decode remote tuner status", "remote", c.baseURL, "type", channelType, "err", err)
 		return err
 	}
 	for _, tuner := range tuners {
@@ -101,7 +93,6 @@ func (c *RemoteClient) CheckAvailableForRoute(ctx context.Context, channelType, 
 			return nil
 		}
 	}
-	slog.Debug("remote tuner unavailable", "remote", c.baseURL, "type", channelType)
 	return ErrTunerUnavailable
 }
 
@@ -117,6 +108,27 @@ func (c *RemoteClient) ProgramStream(ctx context.Context, programID int64, decod
 	return c.stream(ctx, remoteOperationProgramStream, decode, dst, "programs", fmt.Sprint(programID), "stream")
 }
 
+func (c *RemoteClient) GetLogoImage(ctx context.Context, serviceItemID int64) (data []byte, err error) {
+	start := time.Now()
+	defer func() {
+		observability.RecordRemoteOperation(ctx, remoteOperationGetLogoImage, remoteOperationResult(err), time.Since(start).Milliseconds())
+	}()
+
+	req, err := c.newRequest(ctx, http.MethodGet, "services", fmt.Sprint(serviceItemID), "logo")
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if err := remoteStatusError(resp.StatusCode, resp.Status); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(resp.Body)
+}
+
 func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel string) (scanned []ts.ServiceInfo, err error) {
 	start := time.Now()
 	defer func() {
@@ -130,23 +142,55 @@ func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel st
 	)
 	defer func() { observability.EndSpan(span, err) }()
 
-	var services []remoteService
-	if err := c.getJSON(ctx, &services, "channels", channelType, channel, "services"); err != nil {
+	services, err := c.ListChannelServices(ctx, channelType, channel)
+	if err != nil {
 		return nil, err
 	}
 	scanned = make([]ts.ServiceInfo, len(services))
 	for i, svc := range services {
+		logoID := int64(-1)
+		var logoVersion *uint16
+		var logoDownloadDataID *uint16
+		if remoteServiceHasLogo(svc) {
+			logoID = *svc.LogoID
+			logoVersion = remoteLogoVersion()
+			logoDownloadDataID = remoteLogoDownloadDataID(svc)
+		}
 		scanned[i] = ts.ServiceInfo{
 			Nid:                svc.NetworkID,
 			Tsid:               svc.TransportStreamID,
 			Sid:                svc.ServiceID,
 			Name:               svc.Name,
 			Type:               uint8(svc.Type),
-			LogoId:             int64(svc.LogoID),
+			LogoId:             logoID,
+			LogoVersion:        logoVersion,
+			LogoDownloadDataId: logoDownloadDataID,
 			RemoteControlKeyId: uint8Ptr(uint8(svc.RemoteControlKeyID)),
 		}
 	}
 	return scanned, nil
+}
+
+func (c *RemoteClient) ListChannelServices(ctx context.Context, channelType, channel string) ([]remoteService, error) {
+	var services []remoteService
+	if err := c.getJSON(ctx, &services, "channels", channelType, channel, "services"); err != nil {
+		return nil, err
+	}
+	return services, nil
+}
+
+func remoteServiceHasLogo(svc remoteService) bool {
+	return svc.LogoID != nil && *svc.LogoID >= 0 && svc.HasLogoData
+}
+
+func remoteLogoVersion() *uint16 {
+	version := uint16(0)
+	return &version
+}
+
+func remoteLogoDownloadDataID(svc remoteService) *uint16 {
+	downloadDataID := svc.ServiceID
+	return &downloadDataID
 }
 
 func (c *RemoteClient) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) (programs []*program.Program, err error) {
@@ -231,22 +275,36 @@ func (c *RemoteClient) stream(ctx context.Context, operation string, decode bool
 		query.Set("decode", "1")
 		req.URL.RawQuery = query.Encode()
 	}
+	if user, ok := tuner.UserFromContext(ctx); ok {
+		req.Header.Set("X-Mirakurun-Priority", fmt.Sprint(user.Priority))
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if resp.StatusCode == http.StatusNotFound {
-			return ErrChannelNotFound
-		}
-		if resp.StatusCode == http.StatusServiceUnavailable {
-			return ErrTunerUnavailable
-		}
-		return fmt.Errorf("remote stream status: %s", resp.Status)
+	if err := remoteStatusError(resp.StatusCode, resp.Status); err != nil {
+		return err
+	}
+	if userID := resp.Header.Get(xMirakurunTunerUserID); userID != "" {
+		slog.Debug("remote stream acquired tuner user", "remote", c.baseURL, "userId", userID)
 	}
 	_, err = io.Copy(dst, resp.Body)
 	return err
+}
+
+func remoteStatusError(statusCode int, status string) error {
+	if statusCode >= 200 && statusCode < 300 {
+		return nil
+	}
+	switch statusCode {
+	case http.StatusNotFound:
+		return ErrChannelNotFound
+	case http.StatusConflict, http.StatusLocked, http.StatusServiceUnavailable:
+		return ErrTunerUnavailable
+	default:
+		return fmt.Errorf("remote API status: %s", status)
+	}
 }
 
 func remoteOperationResult(err error) string {
@@ -278,8 +336,8 @@ func (c *RemoteClient) doJSON(req *http.Request, dst any) error {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("remote API status: %s", resp.Status)
+	if err := remoteStatusError(resp.StatusCode, resp.Status); err != nil {
+		return err
 	}
 	return json.NewDecoder(resp.Body).Decode(dst)
 }

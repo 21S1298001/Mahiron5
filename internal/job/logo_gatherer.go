@@ -26,7 +26,7 @@ func RegisterLogoGatherer(registry Registry, collector LogoCollector, store Logo
 	registry.Register(JobDefinition{
 		Key: LogoGathererKey, Name: LogoGathererName, IsRerunnable: true,
 		Handler: func(ctx context.Context) error {
-			targets, err := store.MissingLogoTargets(ctx)
+			targets, err := logoGatherTargets(ctx, store)
 			if err != nil {
 				return err
 			}
@@ -87,6 +87,13 @@ func RegisterLogoGatherer(registry Registry, collector LogoCollector, store Logo
 			return nil
 		},
 	})
+}
+
+func logoGatherTargets(ctx context.Context, store LogoStore) ([]service.LogoTarget, error) {
+	if gatherStore, ok := store.(LogoGatherTargetStore); ok {
+		return gatherStore.LogoGatherTargets(ctx)
+	}
+	return store.MissingLogoTargets(ctx)
 }
 
 type logoTargetKey struct {

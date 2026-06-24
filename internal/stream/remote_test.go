@@ -11,6 +11,8 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/tuner"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestRemoteClientCheckAvailableAndBasicAuth(t *testing.T) {
@@ -210,6 +212,32 @@ func TestRemoteProgramStreamMapsStatusErrors(t *testing.T) {
 	if err := client.ProgramStream(context.Background(), 1, false, io.Discard); err != ErrTunerUnavailable {
 		t.Fatalf("ProgramStream 503 error = %v, want ErrTunerUnavailable", err)
 	}
+
+	for _, status := range []int{http.StatusConflict, http.StatusLocked} {
+		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return stringResponse(status, ""), nil
+		})}
+		if err := client.ProgramStream(context.Background(), 1, false, io.Discard); err != ErrTunerUnavailable {
+			t.Fatalf("ProgramStream %d error = %v, want ErrTunerUnavailable", status, err)
+		}
+	}
+}
+
+func TestRemoteStreamForwardsPriorityHeader(t *testing.T) {
+	var priority string
+	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		priority = r.Header.Get("X-Mirakurun-Priority")
+		return stringResponse(http.StatusOK, "ts"), nil
+	})}
+
+	ctx := tuner.WithUser(context.Background(), tuner.User{ID: "viewer", Priority: 7})
+	if err := client.ChannelStream(ctx, "GR", "27", false, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if priority != "7" {
+		t.Fatalf("X-Mirakurun-Priority = %q, want 7", priority)
+	}
 }
 
 func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
@@ -233,6 +261,7 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 			"name": "remote service",
 			"type": 1,
 			"logoId": 12,
+			"hasLogoData": true,
 			"remoteControlKeyId": 5
 		}]`), nil
 	})}
@@ -255,6 +284,9 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 	if len(got) != 1 || got[0].Nid != 32736 || got[0].Sid != 1024 || got[0].Tsid != 32736 || got[0].Name != "remote service" || got[0].RemoteControlKeyId == nil || *got[0].RemoteControlKeyId != 5 {
 		t.Fatalf("services = %#v", got)
 	}
+	if got[0].LogoId != 12 || got[0].LogoVersion == nil || *got[0].LogoVersion != 0 || got[0].LogoDownloadDataId == nil || *got[0].LogoDownloadDataId != 1024 {
+		t.Fatalf("logo metadata = %#v", got[0])
+	}
 }
 
 func TestRemoteClientScanServicesReturnsStatusError(t *testing.T) {
@@ -264,6 +296,60 @@ func TestRemoteClientScanServicesReturnsStatusError(t *testing.T) {
 	})}
 	if _, err := client.ScanServices(context.Background(), "GR", "27"); err == nil {
 		t.Fatal("ScanServices error = nil, want status error")
+	}
+}
+
+func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
+	var paths []string
+	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case "/api/channels/GR/27/services":
+			return stringResponse(http.StatusOK, `[{
+				"serviceId": 101,
+				"networkId": 4,
+				"transportStreamId": 4,
+				"name": "remote service",
+				"type": 1,
+				"logoId": 12,
+				"hasLogoData": true
+			}, {
+				"serviceId": 102,
+				"networkId": 4,
+				"transportStreamId": 4,
+				"name": "remote service without logo data",
+				"type": 1,
+				"logoId": 13,
+				"hasLogoData": false
+			}]`), nil
+		case "/api/services/400101/logo":
+			return stringResponse(http.StatusOK, "png"), nil
+		default:
+			return stringResponse(http.StatusNotFound, ""), nil
+		}
+	})}
+	session := NewRemoteSession(RemoteSessionConfig{
+		Client:       client,
+		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
+	})
+
+	var observed int
+	err := session.ObserveLogos(context.Background(), func(image *ts.LogoImage) error {
+		observed++
+		if image.OriginalNetworkID != 4 || image.LogoID != 12 || image.LogoVersion != 0 || image.DownloadDataID != 101 || string(image.Data) != "png" {
+			t.Fatalf("image = %#v", image)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observed != 1 {
+		t.Fatalf("observed logos = %d, want 1", observed)
+	}
+	if len(paths) != 2 || paths[0] != "/api/channels/GR/27/services" || paths[1] != "/api/services/400101/logo" {
+		t.Fatalf("paths = %#v", paths)
 	}
 }
 

@@ -196,6 +196,32 @@ func (s *ServiceManager) MissingLogoTargets(ctx context.Context) ([]LogoTarget, 
 	return s.store.MissingLogoTargets(ctx)
 }
 
+func (s *ServiceManager) LogoGatherTargets(ctx context.Context) ([]LogoTarget, error) {
+	targets, err := s.store.MissingLogoTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[LogoTarget]struct{}, len(targets))
+	for _, target := range targets {
+		seen[target] = struct{}{}
+	}
+	known, err := s.store.KnownLogoTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, target := range known {
+		if !s.shouldRefreshLogoTarget(target) {
+			continue
+		}
+		if _, ok := seen[target]; ok {
+			continue
+		}
+		targets = append(targets, target)
+		seen[target] = struct{}{}
+	}
+	return targets, nil
+}
+
 func (s *ServiceManager) UpsertLogo(ctx context.Context, networkID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
 	if err := s.store.UpsertLogo(ctx, networkID, serviceID, logoID, logoType, logoVersion, downloadDataID, data, updatedAt); err != nil {
 		return err
@@ -236,6 +262,22 @@ func (s *ServiceManager) UpsertLogoImage(ctx context.Context, image *ts.LogoImag
 		}
 	}
 	return nil
+}
+
+func (s *ServiceManager) shouldRefreshLogoTarget(target LogoTarget) bool {
+	if target.LogoVersion != 0 || target.LogoDownloadDataId != int64(target.ServiceId) {
+		return false
+	}
+	channel := s.GetChannel(target.ChannelType, target.ChannelId)
+	if channel == nil {
+		return false
+	}
+	for _, route := range channel.RoutesOrDefault() {
+		if route.Remote != "" && !config.IsChannelDisabled(channel.RouteChannelConfig(route)) {
+			return true
+		}
+	}
+	return false
 }
 
 func sameServiceCore(a, b *Service) bool {
