@@ -4,8 +4,8 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/21S1298001/Mahiron5/internal/program"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/program"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func GetPrograms(ctx context.Context, h *Handler, params apigen.GetProgramsParams) (apigen.GetProgramsRes, error) {

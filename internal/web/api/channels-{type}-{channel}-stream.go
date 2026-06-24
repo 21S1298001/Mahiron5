@@ -6,8 +6,8 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/21S1298001/Mahiron5/internal/stream"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/stream"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func GetChannelStream(ctx context.Context, h *Handler, params apigen.GetChannelStreamParams) (apigen.GetChannelStreamRes, error) {

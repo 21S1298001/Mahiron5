@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/21S1298001/Mahiron5/internal/app"
+	"github.com/21S1298001/mahiron/internal/app"
 )
 
 func main() {

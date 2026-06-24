@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/observability"
-	"github.com/21S1298001/Mahiron5/internal/program"
-	"github.com/21S1298001/Mahiron5/internal/service"
-	"github.com/21S1298001/Mahiron5/ts"
+	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestCollectServiceSnapshotsSyncsStoredRemotePrograms(t *testing.T) {

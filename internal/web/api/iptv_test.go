@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/db"
-	"github.com/21S1298001/Mahiron5/internal/program"
-	"github.com/21S1298001/Mahiron5/internal/server/middleware"
-	"github.com/21S1298001/Mahiron5/internal/service"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/server/middleware"
+	"github.com/21S1298001/mahiron/internal/service"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func testIPTVHandler(t *testing.T) *Handler {
@@ -228,7 +228,7 @@ func TestIPTVXMLTV(t *testing.T) {
 	start := time.Date(2026, 6, 21, 12, 30, 0, 0, time.Local).Format("20060102150405 -0700")
 	stop := time.Date(2026, 6, 21, 13, 0, 0, 0, time.Local).Format("20060102150405 -0700")
 	for _, want := range []string{
-		`<tv source-info-name="Mahiron5">`,
+		`<tv source-info-name="mahiron">`,
 		`<channel id="100101">`,
 		`<display-name>NHK &amp; News</display-name>`,
 		`<programme start="` + start + `" stop="` + stop + `" channel="100101">`,

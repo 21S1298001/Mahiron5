@@ -3,7 +3,7 @@ package stream
 import (
 	"context"
 
-	"github.com/21S1298001/Mahiron5/ts"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 type ServiceScannerAdapter struct {

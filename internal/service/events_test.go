@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/db"
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/db"
 )
 
 type publishedServiceEvent struct {

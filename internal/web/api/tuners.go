@@ -3,9 +3,9 @@ package api
 import (
 	"context"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/tuner"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/tuner"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func GetTuners(_ context.Context, h *Handler) (apigen.GetTunersRes, error) {

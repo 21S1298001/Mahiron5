@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/event"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/event"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func TestGetEventsReturnsEventLog(t *testing.T) {

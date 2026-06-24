@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/db"
-	"github.com/21S1298001/Mahiron5/internal/epg"
-	"github.com/21S1298001/Mahiron5/internal/program"
-	"github.com/21S1298001/Mahiron5/internal/service"
-	"github.com/21S1298001/Mahiron5/internal/servicescan"
-	"github.com/21S1298001/Mahiron5/internal/stream"
-	"github.com/21S1298001/Mahiron5/internal/tuner"
-	"github.com/21S1298001/Mahiron5/ts"
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/servicescan"
+	"github.com/21S1298001/mahiron/internal/stream"
+	"github.com/21S1298001/mahiron/internal/tuner"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 type noTunerManager struct{}

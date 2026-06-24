@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func TestShouldDecode(t *testing.T) {

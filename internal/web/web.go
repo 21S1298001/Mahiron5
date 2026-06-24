@@ -3,10 +3,10 @@ package web
 import (
 	"net/http"
 
-	"github.com/21S1298001/Mahiron5/internal/event"
-	"github.com/21S1298001/Mahiron5/internal/observability"
-	"github.com/21S1298001/Mahiron5/internal/web/api"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/event"
+	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/web/api"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )

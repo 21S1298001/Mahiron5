@@ -16,20 +16,20 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/db"
-	"github.com/21S1298001/Mahiron5/internal/db/gen"
-	"github.com/21S1298001/Mahiron5/internal/epg"
-	"github.com/21S1298001/Mahiron5/internal/event"
-	"github.com/21S1298001/Mahiron5/internal/job"
-	"github.com/21S1298001/Mahiron5/internal/observability"
-	"github.com/21S1298001/Mahiron5/internal/program"
-	"github.com/21S1298001/Mahiron5/internal/server"
-	"github.com/21S1298001/Mahiron5/internal/service"
-	"github.com/21S1298001/Mahiron5/internal/servicescan"
-	"github.com/21S1298001/Mahiron5/internal/stream"
-	"github.com/21S1298001/Mahiron5/internal/tuner"
-	"github.com/21S1298001/Mahiron5/internal/web"
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/db/gen"
+	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/event"
+	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/server"
+	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/servicescan"
+	"github.com/21S1298001/mahiron/internal/stream"
+	"github.com/21S1298001/mahiron/internal/tuner"
+	"github.com/21S1298001/mahiron/internal/web"
 )
 
 type runOptions struct {
@@ -38,7 +38,7 @@ type runOptions struct {
 
 func parseRunOptions(args []string, output io.Writer) (runOptions, error) {
 	options := runOptions{ConfigDir: config.DefaultConfigDir}
-	flags := flag.NewFlagSet("mahiron5", flag.ContinueOnError)
+	flags := flag.NewFlagSet("mahiron", flag.ContinueOnError)
 	flags.SetOutput(output)
 	flags.StringVar(&options.ConfigDir, "config-dir", options.ConfigDir, "directory containing configuration files")
 	if err := flags.Parse(args); err != nil {

@@ -7,7 +7,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/21S1298001/Mahiron5/internal/server/middleware"
+	"github.com/21S1298001/mahiron/internal/server/middleware"
 	"golang.org/x/sync/errgroup"
 )
 

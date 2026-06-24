@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/db"
-	"github.com/21S1298001/Mahiron5/internal/job"
-	"github.com/21S1298001/Mahiron5/internal/program"
-	"github.com/21S1298001/Mahiron5/internal/service"
-	"github.com/21S1298001/Mahiron5/internal/tuner"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/tuner"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func newStatusHandler(t *testing.T) (*Handler, *job.JobManager, *service.ServiceManager, *program.ProgramManager, *sql.DB) {

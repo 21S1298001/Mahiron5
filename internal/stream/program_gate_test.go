@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/epg"
+	"github.com/21S1298001/mahiron/internal/epg"
 )
 
 func TestProgramEventGateTracksTargetEvent(t *testing.T) {

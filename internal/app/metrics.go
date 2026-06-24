@@ -5,13 +5,13 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/event"
-	"github.com/21S1298001/Mahiron5/internal/job"
-	"github.com/21S1298001/Mahiron5/internal/observability"
-	"github.com/21S1298001/Mahiron5/internal/program"
-	"github.com/21S1298001/Mahiron5/internal/service"
-	"github.com/21S1298001/Mahiron5/internal/stream"
-	"github.com/21S1298001/Mahiron5/internal/tuner"
+	"github.com/21S1298001/mahiron/internal/event"
+	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/stream"
+	"github.com/21S1298001/mahiron/internal/tuner"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -30,7 +30,7 @@ func registerRuntimeMetrics(
 	if provider == nil {
 		return
 	}
-	meter := provider.Meter("github.com/21S1298001/Mahiron5")
+	meter := provider.Meter("github.com/21S1298001/mahiron")
 	streamSessions, err := meter.Int64ObservableGauge(observability.MetricStreamSessionsActive)
 	if err != nil {
 		slog.Warn("failed to create stream sessions metric", "err", err)

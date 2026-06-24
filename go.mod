@@ -1,4 +1,4 @@
-module github.com/21S1298001/Mahiron5
+module github.com/21S1298001/mahiron
 
 go 1.26.0
 

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/epg"
-	"github.com/21S1298001/Mahiron5/internal/util"
+	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/util"
 )
 
 var (

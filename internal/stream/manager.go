@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/observability"
-	"github.com/21S1298001/Mahiron5/internal/program"
-	"github.com/21S1298001/Mahiron5/internal/tuner"
-	"github.com/21S1298001/Mahiron5/ts"
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/tuner"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 type StreamManager struct {

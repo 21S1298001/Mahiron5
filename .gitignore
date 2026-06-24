@@ -24,7 +24,8 @@ go.work.sum
 # env file
 .env
 
-/Mahiron5
+/mahiron
+/mahiron5
 *.db
 *.db-wal
 *.db-shm

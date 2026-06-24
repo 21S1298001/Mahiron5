@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/program"
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/program"
 )
 
 func TestRemoteClientCheckAvailableAndBasicAuth(t *testing.T) {

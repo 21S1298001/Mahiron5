@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/program"
+	"github.com/21S1298001/mahiron/internal/program"
 )
 
 type ServiceKey struct {

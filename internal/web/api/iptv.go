@@ -10,17 +10,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/program"
-	"github.com/21S1298001/Mahiron5/internal/server/middleware"
-	"github.com/21S1298001/Mahiron5/internal/service"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/server/middleware"
+	"github.com/21S1298001/mahiron/internal/service"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 const (
-	iptvName            = "Mahiron5"
+	iptvName            = "mahiron"
 	iptvFirmwareVersion = "5.0.0"
 	iptvDeviceID        = "12345678"
-	iptvDeviceAuth      = "mahiron5"
+	iptvDeviceAuth      = "mahiron"
 )
 
 func IptvDiscoverJSONGet(ctx context.Context, h *Handler) (apigen.IptvDiscoverJSONGetRes, error) {

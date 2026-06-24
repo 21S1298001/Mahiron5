@@ -6,8 +6,8 @@ import (
 	"io"
 	"sync"
 
-	"github.com/21S1298001/Mahiron5/internal/observability"
-	"github.com/21S1298001/Mahiron5/ts"
+	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 const (

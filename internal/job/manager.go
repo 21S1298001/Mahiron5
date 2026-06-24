@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/observability"
+	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/google/uuid"
 )

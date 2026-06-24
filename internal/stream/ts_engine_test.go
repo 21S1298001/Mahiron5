@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/ts"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestPacketEngineNormalizesInputFrames(t *testing.T) {

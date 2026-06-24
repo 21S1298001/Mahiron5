@@ -5,7 +5,7 @@ import (
 	"context"
 	"net/http"
 
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func GetLog(_ context.Context, h *Handler) (apigen.GetLogRes, error) {

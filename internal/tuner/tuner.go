@@ -3,7 +3,7 @@ package tuner
 import (
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/mahiron/internal/config"
 )
 
 type SourceKind string

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/21S1298001/Mahiron5/internal/event"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/event"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func GetEvents(ctx context.Context, h *Handler) (apigen.GetEventsRes, error) {

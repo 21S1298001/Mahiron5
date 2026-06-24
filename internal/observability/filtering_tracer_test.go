@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/mahiron/internal/config"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
-	"github.com/21S1298001/Mahiron5/internal/db"
-	"github.com/21S1298001/Mahiron5/internal/job"
-	"github.com/21S1298001/Mahiron5/internal/observability"
+	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/observability"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
@@ -28,8 +28,8 @@ func TestParseRunOptions(t *testing.T) {
 		},
 		{
 			name: "custom config dir",
-			args: []string{"--config-dir", "/etc/mahiron5"},
-			want: runOptions{ConfigDir: "/etc/mahiron5"},
+			args: []string{"--config-dir", "/etc/mahiron"},
+			want: runOptions{ConfigDir: "/etc/mahiron"},
 		},
 		{
 			name:    "unknown flag",

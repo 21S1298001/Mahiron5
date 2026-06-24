@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/21S1298001/Mahiron5/internal/job"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/job"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func GetJobs(ctx context.Context, h *Handler) (apigen.GetJobsRes, error) {

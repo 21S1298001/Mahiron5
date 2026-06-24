@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/21S1298001/Mahiron5/internal/config"
+	"github.com/21S1298001/mahiron/internal/config"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -25,7 +25,7 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
-const instrumentationName = "github.com/21S1298001/Mahiron5"
+const instrumentationName = "github.com/21S1298001/mahiron"
 
 type SetupResult struct {
 	LogStore       *LogStore

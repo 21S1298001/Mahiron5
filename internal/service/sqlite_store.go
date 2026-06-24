@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/db/gen"
-	"github.com/21S1298001/Mahiron5/internal/observability"
+	"github.com/21S1298001/mahiron/internal/db/gen"
+	"github.com/21S1298001/mahiron/internal/observability"
 )
 
 type sqliteStore struct {

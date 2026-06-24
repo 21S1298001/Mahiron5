@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/epg"
-	"github.com/21S1298001/Mahiron5/internal/program"
-	"github.com/21S1298001/Mahiron5/internal/service"
-	"github.com/21S1298001/Mahiron5/internal/servicescan"
-	"github.com/21S1298001/Mahiron5/ts"
+	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/servicescan"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 // This package keeps job orchestration thin. Feature-specific details should

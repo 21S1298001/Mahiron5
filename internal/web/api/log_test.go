@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/21S1298001/Mahiron5/internal/observability"
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/internal/observability"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
 func TestGetLogReturnsSnapshot(t *testing.T) {

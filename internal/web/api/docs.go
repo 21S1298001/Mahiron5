@@ -4,7 +4,7 @@ import (
 	"context"
 	"embed"
 
-	apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"sigs.k8s.io/yaml"
 )
 

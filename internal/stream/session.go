@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/Mahiron5/internal/epg"
-	"github.com/21S1298001/Mahiron5/internal/program"
-	"github.com/21S1298001/Mahiron5/internal/util"
-	"github.com/21S1298001/Mahiron5/ts"
+	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/util"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 type ChannelSession struct {

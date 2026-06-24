@@ -86,7 +86,7 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 		config.LogLevel = "info"
 	}
 	if config.Observability.ServiceName == "" {
-		config.Observability.ServiceName = "mahiron5"
+		config.Observability.ServiceName = "mahiron"
 	}
 
 	switch config.LogLevel {

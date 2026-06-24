@@ -1,6 +1,6 @@
 package api
 
-import apigen "github.com/21S1298001/Mahiron5/internal/web/api/gen"
+import apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 
 func shouldDecode(decode apigen.OptInt) bool {
 	value, ok := decode.Get()

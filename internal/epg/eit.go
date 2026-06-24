@@ -1,6 +1,6 @@
 package epg
 
-import "github.com/21S1298001/Mahiron5/internal/program"
+import "github.com/21S1298001/mahiron/internal/program"
 
 type EITSection struct {
 	OriginalNetworkID        uint16
