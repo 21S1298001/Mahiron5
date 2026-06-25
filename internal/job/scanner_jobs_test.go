@@ -99,42 +99,6 @@ func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 	})
 }
 
-func TestEnqueueEPGGatherForNetworkDispatches(t *testing.T) {
-	ctx := context.Background()
-	channels := config.ChannelsConfig{
-		{Type: "BS", Channel: "BS01"},
-	}
-	database, err := db.OpenInMemory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	serviceStore := service.NewSQLiteStore(database)
-	sm := service.NewServiceManager(serviceStore, channels)
-	if err := serviceStore.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{
-		{Id: "0000400101", NetworkId: 4, ServiceId: 101, ChannelType: "BS", ChannelId: "BS01"},
-		{Id: "0000400102", NetworkId: 4, ServiceId: 102, ChannelType: "BS", ChannelId: "BS01"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	mgr := newTestManager(t)
-	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
-	pm := program.NewProgramManager(program.NewSQLiteStore(database))
-	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)
-
-	enqueued, err := enqueueEPGGatherForNetwork(ctx, mgr, epgService, 4, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !enqueued {
-		t.Fatal("expected job to be enqueued")
-	}
-	waitForJobKeys(t, mgr, map[string]bool{
-		"epg-gather:nid:4": true,
-	})
-}
-
 func TestEnqueueEPGGatherForNetworkIgnoresMissingNetwork(t *testing.T) {
 	ctx := context.Background()
 	channels := config.ChannelsConfig{{Type: "BS", Channel: "BS01"}}

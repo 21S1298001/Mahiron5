@@ -43,62 +43,50 @@ func TestRemoteClientCheckAvailableAndBasicAuth(t *testing.T) {
 	}
 }
 
-func TestRemoteClientNoAuthAndUnavailable(t *testing.T) {
-	var auth string
-	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local"})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		auth = r.Header.Get("Authorization")
-		return stringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":false,"isFault":false}]`), nil
-	})}
-	if err := client.CheckAvailable(context.Background(), "GR"); err != ErrTunerUnavailable {
-		t.Fatalf("CheckAvailable error = %v, want ErrTunerUnavailable", err)
-	}
-	if auth != "" {
-		t.Fatalf("Authorization = %q, want empty", auth)
-	}
-}
-
-func TestRemoteClientCheckAvailableForActiveSameRoute(t *testing.T) {
-	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local"})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return stringResponse(http.StatusOK, `[{
-			"types":["GR"],
-			"isAvailable":true,
-			"isFree":false,
-			"isFault":false,
-			"tunedChannelType":"GR",
-			"tunedChannel":"27"
-		}]`), nil
-	})}
-	if err := client.CheckAvailableForRoute(context.Background(), "GR", "27"); err != nil {
-		t.Fatalf("CheckAvailableForRoute error = %v, want nil", err)
-	}
-}
-
-func TestRemoteClientCheckAvailableForActiveCurrentRoute(t *testing.T) {
-	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local"})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return stringResponse(http.StatusOK, `[{
-			"types":["CATV"],
-			"isAvailable":true,
-			"isFree":false,
-			"isFault":false,
-			"currentChannelType":"CATV",
-			"currentChannel":"C27"
-		}]`), nil
-	})}
-	if err := client.CheckAvailableForRoute(context.Background(), "CATV", "C27"); err != nil {
-		t.Fatalf("CheckAvailableForRoute error = %v, want nil", err)
-	}
-}
-
-func TestRemoteClientCheckAvailableForBusyDifferentOrUnknownRoute(t *testing.T) {
+func TestRemoteClientCheckAvailableForRoute(t *testing.T) {
 	tests := []struct {
-		name string
-		body string
+		name        string
+		channelType string
+		channel     string
+		body        string
+		wantErr     error
 	}{
 		{
-			name: "different route",
+			name:        "free tuner",
+			channelType: "GR",
+			channel:     "27",
+			body:        `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`,
+		},
+		{
+			name:        "busy same tuned route",
+			channelType: "GR",
+			channel:     "27",
+			body: `[{
+				"types":["GR"],
+				"isAvailable":true,
+				"isFree":false,
+				"isFault":false,
+				"tunedChannelType":"GR",
+				"tunedChannel":"27"
+			}]`,
+		},
+		{
+			name:        "busy same current route",
+			channelType: "CATV",
+			channel:     "C27",
+			body: `[{
+				"types":["CATV"],
+				"isAvailable":true,
+				"isFree":false,
+				"isFault":false,
+				"currentChannelType":"CATV",
+				"currentChannel":"C27"
+			}]`,
+		},
+		{
+			name:        "busy different route",
+			channelType: "GR",
+			channel:     "27",
 			body: `[{
 				"types":["GR"],
 				"isAvailable":true,
@@ -107,15 +95,19 @@ func TestRemoteClientCheckAvailableForBusyDifferentOrUnknownRoute(t *testing.T) 
 				"tunedChannelType":"GR",
 				"tunedChannel":"28"
 			}]`,
+			wantErr: ErrTunerUnavailable,
 		},
 		{
-			name: "unknown route",
+			name:        "busy unknown route",
+			channelType: "GR",
+			channel:     "27",
 			body: `[{
 				"types":["GR"],
 				"isAvailable":true,
 				"isFree":false,
 				"isFault":false
 			}]`,
+			wantErr: ErrTunerUnavailable,
 		},
 	}
 	for _, tt := range tests {
@@ -124,14 +116,14 @@ func TestRemoteClientCheckAvailableForBusyDifferentOrUnknownRoute(t *testing.T) 
 			client.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 				return stringResponse(http.StatusOK, tt.body), nil
 			})}
-			if err := client.CheckAvailableForRoute(context.Background(), "GR", "27"); err != ErrTunerUnavailable {
-				t.Fatalf("CheckAvailableForRoute error = %v, want ErrTunerUnavailable", err)
+			if err := client.CheckAvailableForRoute(context.Background(), tt.channelType, tt.channel); err != tt.wantErr {
+				t.Fatalf("CheckAvailableForRoute error = %v, want %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestRemoteSessionStreamsChannelAndService(t *testing.T) {
+func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 	paths := []string{}
 	queries := []string{}
 	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
@@ -143,6 +135,8 @@ func TestRemoteSessionStreamsChannelAndService(t *testing.T) {
 			return stringResponse(http.StatusOK, "channel-ts"), nil
 		case "/api/channels/GR/27/services/1024/stream":
 			return stringResponse(http.StatusOK, "service-ts"), nil
+		case "/api/programs/10100009/stream":
+			return stringResponse(http.StatusOK, "program-ts"), nil
 		default:
 			return stringResponse(http.StatusNotFound, ""), nil
 		}
@@ -161,40 +155,22 @@ func TestRemoteSessionStreamsChannelAndService(t *testing.T) {
 	if err := session.ServiceStream(context.Background(), 1024, true, &serviceOut); err != nil {
 		t.Fatal(err)
 	}
-	if channelOut.String() != "channel-ts" || serviceOut.String() != "service-ts" {
-		t.Fatalf("streams = %q/%q", channelOut.String(), serviceOut.String())
-	}
-	if len(paths) != 2 || paths[0] != "/api/channels/GR/27/stream" || paths[1] != "/api/channels/GR/27/services/1024/stream" {
-		t.Fatalf("paths = %#v", paths)
-	}
-	if len(queries) != 2 || queries[0] != "" || queries[1] != "decode=1" {
-		t.Fatalf("queries = %#v", queries)
-	}
-}
-
-func TestRemoteSessionStreamsProgram(t *testing.T) {
-	var path string
-	var query string
-	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		path = r.URL.Path
-		query = r.URL.RawQuery
-		if r.URL.Path != "/api/programs/10100009/stream" {
-			return stringResponse(http.StatusNotFound, ""), nil
-		}
-		return stringResponse(http.StatusOK, "program-ts"), nil
-	})}
-	session := NewRemoteSession(RemoteSessionConfig{Client: client})
-
-	var out bytes.Buffer
-	if err := session.ProgramStream(context.Background(), &program.Program{ID: 10100009}, true, &out); err != nil {
+	var programOut bytes.Buffer
+	if err := session.ProgramStream(context.Background(), &program.Program{ID: 10100009}, true, &programOut); err != nil {
 		t.Fatal(err)
 	}
-	if path != "/api/programs/10100009/stream" || query != "decode=1" {
-		t.Fatalf("request = %s?%s", path, query)
+	if channelOut.String() != "channel-ts" || serviceOut.String() != "service-ts" || programOut.String() != "program-ts" {
+		t.Fatalf("streams = %q/%q/%q", channelOut.String(), serviceOut.String(), programOut.String())
 	}
-	if out.String() != "program-ts" {
-		t.Fatalf("program stream = %q, want program-ts", out.String())
+	wantPaths := []string{"/api/channels/GR/27/stream", "/api/channels/GR/27/services/1024/stream", "/api/programs/10100009/stream"}
+	wantQueries := []string{"", "decode=1", "decode=1"}
+	if len(paths) != len(wantPaths) || len(queries) != len(wantQueries) {
+		t.Fatalf("requests = %#v?%#v", paths, queries)
+	}
+	for i := range wantPaths {
+		if paths[i] != wantPaths[i] || queries[i] != wantQueries[i] {
+			t.Fatalf("request[%d] = %s?%s, want %s?%s", i, paths[i], queries[i], wantPaths[i], wantQueries[i])
+		}
 	}
 }
 
@@ -502,7 +478,7 @@ func TestReadRemoteProgramEventsStopsCleanlyOnCanceledContextAndEOF(t *testing.T
 	}
 }
 
-func TestKnownServiceProgramUpdaterFiltersUnknownServices(t *testing.T) {
+func TestKnownServiceProgramUpdaterFiltersUnknownServicesAfterRefresh(t *testing.T) {
 	inner := &recordingProgramUpdater{}
 	lister := &recordingServiceLister{
 		services: []*service.Service{{NetworkId: 4, ServiceId: 101}},

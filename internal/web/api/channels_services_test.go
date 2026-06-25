@@ -201,105 +201,92 @@ func TestGetServiceReturnsNotFound(t *testing.T) {
 }
 
 func TestApiServiceExposesEPGStatus(t *testing.T) {
-	ctx := context.Background()
-	database, err := db.OpenInMemory()
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name             string
+		setup            func(context.Context, *service.ServiceManager, *testing.T)
+		wantReady        bool
+		wantAttempt      apigen.OptUnixtimeMS
+		wantUpdated      apigen.OptUnixtimeMS
+		wantLastError    apigen.OptString
+		wantUpdatedIsSet bool
+	}{
+		{
+			name:      "no attempt",
+			wantReady: false,
+		},
+		{
+			name: "latest failed attempt",
+			setup: func(ctx context.Context, sm *service.ServiceManager, t *testing.T) {
+				t.Helper()
+				if err := sm.SetEPGAttempt(ctx, 1, 101, 1000, "boom"); err != nil {
+					t.Fatal(err)
+				}
+				if err := sm.SetEPGAttempt(ctx, 1, 101, 2000, "still bad"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantReady:     false,
+			wantAttempt:   apigen.NewOptUnixtimeMS(2000),
+			wantLastError: apigen.NewOptString("still bad"),
+		},
+		{
+			name: "success",
+			setup: func(ctx context.Context, sm *service.ServiceManager, t *testing.T) {
+				t.Helper()
+				if err := sm.SetEPGSuccess(ctx, 1, 101, 2000); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantReady:        true,
+			wantAttempt:      apigen.NewOptUnixtimeMS(2000),
+			wantUpdated:      apigen.NewOptUnixtimeMS(2000),
+			wantUpdatedIsSet: true,
+		},
 	}
-	t.Cleanup(func() { database.Close() })
-	store := service.NewSQLiteStore(database)
-	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	sm := service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
-	if err := sm.SetEPGAttempt(ctx, 1, 101, 1000, "boom"); err != nil {
-		t.Fatal(err)
-	}
-	if err := sm.SetEPGAttempt(ctx, 1, 101, 2000, "still bad"); err != nil {
-		t.Fatal(err)
-	}
-	handler := NewHandler(HandlerConfig{ServiceManager: sm})
-	res, err := handler.GetServices(context.Background(), apigen.GetServicesParams{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	services, ok := res.(*apigen.GetServicesOKApplicationJSON)
-	if !ok {
-		t.Fatalf("response type = %T, want *GetServicesOKApplicationJSON", res)
-	}
-	if len(*services) != 1 {
-		t.Fatalf("services = %d, want 1", len(*services))
-	}
-	s := (*services)[0]
-	if s.EpgReady.Value {
-		t.Errorf("EpgReady = true, want false without success")
-	}
-	if s.EpgLastAttemptAt.Value != apigen.UnixtimeMS(2000) {
-		t.Errorf("EpgLastAttemptAt = %d, want 2000", s.EpgLastAttemptAt.Value)
-	}
-	if s.EpgLastError.Value != "still bad" {
-		t.Errorf("EpgLastError = %q, want still bad", s.EpgLastError.Value)
-	}
-	if s.EpgUpdatedAt.IsSet() {
-		t.Errorf("EpgUpdatedAt = %d, want unset", s.EpgUpdatedAt.Value)
-	}
-}
-
-func TestApiServiceEpgReadyTrueAfterSuccess(t *testing.T) {
-	ctx := context.Background()
-	database, err := db.OpenInMemory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { database.Close() })
-	store := service.NewSQLiteStore(database)
-	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	sm := service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
-	if err := sm.SetEPGSuccess(ctx, 1, 101, 2000); err != nil {
-		t.Fatal(err)
-	}
-	handler := NewHandler(HandlerConfig{ServiceManager: sm})
-	res, err := handler.GetServices(context.Background(), apigen.GetServicesParams{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	services := res.(*apigen.GetServicesOKApplicationJSON)
-	if !(*services)[0].EpgReady.Value {
-		t.Errorf("EpgReady = false, want true after success")
-	}
-	if (*services)[0].EpgLastError.IsSet() {
-		t.Errorf("EpgLastError = %q, want unset after success", (*services)[0].EpgLastError.Value)
-	}
-}
-
-func TestApiServiceEpgReadyFalseWithoutSuccess(t *testing.T) {
-	ctx := context.Background()
-	database, err := db.OpenInMemory()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { database.Close() })
-	store := service.NewSQLiteStore(database)
-	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "0000100101", ServiceId: 101, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	sm := service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
-	handler := NewHandler(HandlerConfig{ServiceManager: sm})
-	res, err := handler.GetServices(context.Background(), apigen.GetServicesParams{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	services := res.(*apigen.GetServicesOKApplicationJSON)
-	if (*services)[0].EpgReady.Value {
-		t.Errorf("EpgReady = true, want false for service without success")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			database, err := db.OpenInMemory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { database.Close() })
+			store := service.NewSQLiteStore(database)
+			if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
+				{Id: "0000100101", ServiceId: 101, NetworkId: 1, ChannelType: "GR", ChannelId: "27"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			sm := service.NewServiceManager(store, config.ChannelsConfig{{Type: "GR", Channel: "27"}})
+			if tt.setup != nil {
+				tt.setup(ctx, sm, t)
+			}
+			handler := NewHandler(HandlerConfig{ServiceManager: sm})
+			res, err := handler.GetServices(context.Background(), apigen.GetServicesParams{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			services, ok := res.(*apigen.GetServicesOKApplicationJSON)
+			if !ok {
+				t.Fatalf("response type = %T, want *GetServicesOKApplicationJSON", res)
+			}
+			if len(*services) != 1 {
+				t.Fatalf("services = %d, want 1", len(*services))
+			}
+			s := (*services)[0]
+			if s.EpgReady.Value != tt.wantReady {
+				t.Errorf("EpgReady = %v, want %v", s.EpgReady.Value, tt.wantReady)
+			}
+			if s.EpgLastAttemptAt != tt.wantAttempt {
+				t.Errorf("EpgLastAttemptAt = %#v, want %#v", s.EpgLastAttemptAt, tt.wantAttempt)
+			}
+			if s.EpgUpdatedAt != tt.wantUpdated || s.EpgUpdatedAt.IsSet() != tt.wantUpdatedIsSet {
+				t.Errorf("EpgUpdatedAt = %#v, want %#v", s.EpgUpdatedAt, tt.wantUpdated)
+			}
+			if s.EpgLastError != tt.wantLastError {
+				t.Errorf("EpgLastError = %#v, want %#v", s.EpgLastError, tt.wantLastError)
+			}
+		})
 	}
 }
 

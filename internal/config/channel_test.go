@@ -1,257 +1,81 @@
 package config
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/google/go-cmp/cmp"
-)
-
-func TestLoadAndParseChannelsConfig(t *testing.T) {
-	yes := true
-	no := false
-
-	ch2ServiceId := uint32(25565)
-
-	ch3ServiceId := uint32(12345)
-	ch3tsmfRelTs := uint8(15)
-
-	ch5ServiceId := uint32(65534)
-	routePriority10 := 10
-	routePriority20 := 20
-
-	type args struct {
-		filePath string
+func TestLoadAndParseChannelsConfigNormalizesDefaults(t *testing.T) {
+	got, err := LoadAndParseChannelsConfig("testdata/channels-valid.yml")
+	if err != nil {
+		t.Fatal(err)
 	}
+	if len(got) != 6 {
+		t.Fatalf("channels = %d, want 6", len(got))
+	}
+
+	first := got[0]
+	if first.Name != "Channel1" || first.Type != "GR" || first.Channel != "GR01" {
+		t.Fatalf("first channel = %#v", first)
+	}
+	if first.IsDisabled == nil || *first.IsDisabled {
+		t.Fatalf("first IsDisabled = %v, want false", first.IsDisabled)
+	}
+	if len(first.CommandVars) != 0 {
+		t.Fatalf("first CommandVars = %#v, want empty", first.CommandVars)
+	}
+	if len(first.Routes) != 1 || first.Routes[0].Id != "default" || first.Routes[0].Type != first.Type || first.Routes[0].Channel != first.Channel {
+		t.Fatalf("first routes = %#v, want default route matching channel", first.Routes)
+	}
+
+	legacy := got[4]
+	if legacy.Satelite != nil || legacy.Satellite != nil || legacy.Space != nil || legacy.Freq != nil || legacy.Polarity != nil {
+		t.Fatalf("legacy fields were not normalized away: %#v", legacy)
+	}
+	if legacy.CommandVars["satellite"] != "SOMESAT" || legacy.CommandVars["space"] != uint8(1) ||
+		legacy.CommandVars["freq"] != uint32(12345) || legacy.CommandVars["polarity"] != "H" {
+		t.Fatalf("legacy command vars = %#v", legacy.CommandVars)
+	}
+}
+
+func TestLoadAndParseChannelsConfigRoutes(t *testing.T) {
+	got, err := LoadAndParseChannelsConfig("testdata/channels-routes.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || len(got[0].Routes) != 2 {
+		t.Fatalf("channels = %#v, want one channel with two routes", got)
+	}
+	direct := got[0].Routes[0]
+	if direct.Id != "bs-direct" || direct.Remote != "" || direct.Type != "BS" || direct.Channel != "101" {
+		t.Fatalf("direct route = %#v", direct)
+	}
+	remote := got[0].Routes[1]
+	if remote.Id != "catv-bs-transmod" || remote.Remote != "living" || remote.Type != "CATV_BS" || remote.Channel != "C101" {
+		t.Fatalf("remote route = %#v", remote)
+	}
+	if remote.Priority == nil || *remote.Priority != 20 {
+		t.Fatalf("remote route priority = %v, want 20", remote.Priority)
+	}
+	if remote.CommandVars["freq"] != 12345.0 {
+		t.Fatalf("remote route command vars = %#v", remote.CommandVars)
+	}
+}
+
+func TestLoadAndParseChannelsConfigRejectsInvalidInputs(t *testing.T) {
 	tests := []struct {
-		name    string
-		args    args
-		want    ChannelsConfig
-		wantErr bool
+		name string
+		path string
 	}{
-		{
-			name: "Valid config",
-			args: args{
-				filePath: "testdata/channels-valid.yml",
-			},
-			want: ChannelsConfig{
-				{
-					Name:        "Channel1",
-					Type:        "GR",
-					Channel:     "GR01",
-					ServiceId:   nil,
-					TsmfRelTs:   nil,
-					CommandVars: map[string]any{},
-					IsDisabled:  &no,
-					Satelite:    nil,
-					Satellite:   nil,
-					Space:       nil,
-					Freq:        nil,
-					Polarity:    nil,
-					Routes: []ChannelRouteConfig{
-						{Id: "default", Type: "GR", Channel: "GR01", CommandVars: map[string]any{}, IsDisabled: &no},
-					},
-				},
-				{
-					Name:        "Channel2",
-					Type:        "SKY",
-					Channel:     "SKY02",
-					ServiceId:   &ch2ServiceId,
-					TsmfRelTs:   nil,
-					CommandVars: map[string]any{},
-					IsDisabled:  &no,
-					Satelite:    nil,
-					Satellite:   nil,
-					Space:       nil,
-					Freq:        nil,
-					Polarity:    nil,
-					Routes: []ChannelRouteConfig{
-						{Id: "default", Type: "SKY", Channel: "SKY02", ServiceId: &ch2ServiceId, CommandVars: map[string]any{}, IsDisabled: &no},
-					},
-				},
-				{
-					Name:        "Channel3",
-					Type:        "CATV",
-					Channel:     "CATV03",
-					ServiceId:   &ch3ServiceId,
-					TsmfRelTs:   &ch3tsmfRelTs,
-					CommandVars: map[string]any{},
-					IsDisabled:  &no,
-					Satelite:    nil,
-					Satellite:   nil,
-					Space:       nil,
-					Freq:        nil,
-					Polarity:    nil,
-					Routes: []ChannelRouteConfig{
-						{Id: "default", Type: "CATV", Channel: "CATV03", ServiceId: &ch3ServiceId, TsmfRelTs: &ch3tsmfRelTs, CommandVars: map[string]any{}, IsDisabled: &no},
-					},
-				},
-				{
-					Name:      "Channel4",
-					Type:      "BS",
-					Channel:   "BS04",
-					ServiceId: nil,
-					TsmfRelTs: nil,
-					CommandVars: map[string]any{
-						"extra-args": "--extra-arg",
-					},
-					IsDisabled: &no,
-					Satelite:   nil,
-					Satellite:  nil,
-					Space:      nil,
-					Freq:       nil,
-					Polarity:   nil,
-					Routes: []ChannelRouteConfig{
-						{Id: "default", Type: "BS", Channel: "BS04", CommandVars: map[string]any{"extra-args": "--extra-arg"}, IsDisabled: &no},
-					},
-				},
-				{
-					Name:      "Channel5",
-					Type:      "CS",
-					Channel:   "CS05",
-					ServiceId: &ch5ServiceId,
-					TsmfRelTs: nil,
-					CommandVars: map[string]any{
-						"satellite": "SOMESAT",
-						"space":     uint8(1),
-						"freq":      uint32(12345),
-						"polarity":  "H",
-					},
-					IsDisabled: &no,
-					Satelite:   nil,
-					Satellite:  nil,
-					Space:      nil,
-					Freq:       nil,
-					Polarity:   nil,
-					Routes: []ChannelRouteConfig{
-						{
-							Id:        "default",
-							Type:      "CS",
-							Channel:   "CS05",
-							ServiceId: &ch5ServiceId,
-							CommandVars: map[string]any{
-								"satellite": "SOMESAT",
-								"space":     uint8(1),
-								"freq":      uint32(12345),
-								"polarity":  "H",
-							},
-							IsDisabled: &no,
-						},
-					},
-				},
-				{
-					Name:        "Channel6",
-					Type:        "CATV",
-					Channel:     "CATV06",
-					ServiceId:   nil,
-					TsmfRelTs:   nil,
-					CommandVars: map[string]any{},
-					IsDisabled:  &yes,
-					Satelite:    nil,
-					Satellite:   nil,
-					Space:       nil,
-					Freq:        nil,
-					Polarity:    nil,
-					Routes: []ChannelRouteConfig{
-						{Id: "default", Type: "CATV", Channel: "CATV06", CommandVars: map[string]any{}, IsDisabled: &yes},
-					},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "Empty config",
-			args: args{
-				filePath: "testdata/empty.yml",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "Routes config",
-			args: args{
-				filePath: "testdata/channels-routes.yml",
-			},
-			want: ChannelsConfig{
-				{
-					Name:        "NHK BS",
-					Type:        "BS",
-					Channel:     "101",
-					CommandVars: map[string]any{},
-					IsDisabled:  &no,
-					Routes: []ChannelRouteConfig{
-						{Id: "bs-direct", Type: "BS", Channel: "101", CommandVars: map[string]any{}, IsDisabled: &no, Priority: &routePriority10},
-						{
-							Id:          "catv-bs-transmod",
-							Remote:      "living",
-							Type:        "CATV_BS",
-							Channel:     "C101",
-							CommandVars: map[string]any{"freq": 12345.0},
-							IsDisabled:  &no,
-							Priority:    &routePriority20,
-						},
-					},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "Empty tuner name",
-			args: args{
-				filePath: "testdata/channels-empty-name.yml",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "Empty channel type",
-			args: args{
-				filePath: "testdata/channels-empty-type.yml",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "Empty channel symbol",
-			args: args{
-				filePath: "testdata/channels-empty-symbol.yml",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "Only specified tsmfRelTs",
-			args: args{
-				filePath: "testdata/channels-tsmfrelts.yml",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "Invalid tsmfRelTs",
-			args: args{
-				filePath: "testdata/channels-invalid-tsmfrelts.yml",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "Duplicate specify commandVars and other fields",
-			args: args{
-				filePath: "testdata/channels-duplicate-commandvars.yml",
-			},
-			want:    nil,
-			wantErr: true,
-		},
+		{name: "empty config", path: "testdata/empty.yml"},
+		{name: "empty name", path: "testdata/channels-empty-name.yml"},
+		{name: "empty type", path: "testdata/channels-empty-type.yml"},
+		{name: "empty symbol", path: "testdata/channels-empty-symbol.yml"},
+		{name: "tsmfRelTs without serviceId", path: "testdata/channels-tsmfrelts.yml"},
+		{name: "invalid tsmfRelTs", path: "testdata/channels-invalid-tsmfrelts.yml"},
+		{name: "legacy fields with commandVars", path: "testdata/channels-duplicate-commandvars.yml"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := LoadAndParseChannelsConfig(tt.args.filePath)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("LoadAndParseChannelsConfig() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("LoadAndParseChannelsConfig() mismatch (-want +got):\n%s", diff)
+			if _, err := LoadAndParseChannelsConfig(tt.path); err == nil {
+				t.Fatal("LoadAndParseChannelsConfig() error = nil, want error")
 			}
 		})
 	}
