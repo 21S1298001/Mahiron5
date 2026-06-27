@@ -317,6 +317,163 @@ func TestManagerPassesBackgroundWaitToAllocator(t *testing.T) {
 	}
 }
 
+func TestManagerDoesNotBlockHasSessionDuringAcquire(t *testing.T) {
+	no := false
+	tuners := newBlockingTunerManager("27")
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
+		TunerManager: tuners,
+	})
+
+	acquireDone := make(chan error, 1)
+	go func() {
+		_, err := manager.GetOrCreateWait(context.Background(), "GR", "27")
+		acquireDone <- err
+	}()
+	tuners.waitEntered(t, "27")
+
+	hasSessionDone := make(chan bool, 1)
+	go func() { hasSessionDone <- manager.HasSession("GR", "27") }()
+	select {
+	case ok := <-hasSessionDone:
+		if ok {
+			t.Fatal("HasSession = true while session is still being created")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("HasSession blocked while session source acquisition was in progress")
+	}
+
+	tuners.releaseBlocked()
+	if err := <-acquireDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestManagerAllowsDifferentSessionCreationDuringAcquire(t *testing.T) {
+	no := false
+	tuners := newBlockingTunerManager("27")
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{Name: "NHK 1", Type: "GR", Channel: "27", IsDisabled: &no},
+			{Name: "NHK 2", Type: "GR", Channel: "28", IsDisabled: &no},
+		},
+		TunerManager: tuners,
+	})
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := manager.GetOrCreateWait(context.Background(), "GR", "27")
+		firstDone <- err
+	}()
+	tuners.waitEntered(t, "27")
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := manager.GetOrCreate(context.Background(), "GR", "28")
+		secondDone <- err
+	}()
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("different session creation blocked while another source acquisition was in progress")
+	}
+
+	tuners.releaseBlocked()
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestManagerCoalescesConcurrentSameSessionCreation(t *testing.T) {
+	no := false
+	tuners := newBlockingTunerManager("27")
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
+		TunerManager: tuners,
+	})
+
+	var first Session
+	var second Session
+	firstDone := make(chan error, 1)
+	go func() {
+		var err error
+		first, err = manager.GetOrCreateWait(context.Background(), "GR", "27")
+		firstDone <- err
+	}()
+	tuners.waitEntered(t, "27")
+
+	secondDone := make(chan error, 1)
+	go func() {
+		var err error
+		second, err = manager.GetOrCreateWait(context.Background(), "GR", "27")
+		secondDone <- err
+	}()
+
+	tuners.releaseBlocked()
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatal(err)
+	}
+	if first == nil || first != second {
+		t.Fatalf("sessions = %T/%T, want same non-nil session", first, second)
+	}
+	if got := tuners.acquireCount(); got != 1 {
+		t.Fatalf("tuner acquires = %d, want 1", got)
+	}
+}
+
+func TestManagerShutdownWaitsForInflightSessionWithoutHoldingLock(t *testing.T) {
+	no := false
+	device := &fakeLiveTunerDevice{}
+	tuners := newBlockingTunerManager("27")
+	tuners.devices["27"] = device
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels:     config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27", IsDisabled: &no}},
+		TunerManager: tuners,
+	})
+
+	createDone := make(chan error, 1)
+	go func() {
+		_, err := manager.GetOrCreateWait(context.Background(), "GR", "27")
+		createDone <- err
+	}()
+	tuners.waitEntered(t, "27")
+
+	shutdownDone := make(chan error, 1)
+	go func() { shutdownDone <- manager.Shutdown(context.Background()) }()
+	if !eventually(time.Second, func() bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+		_, err := manager.GetOrCreate(ctx, "GR", "27")
+		return errors.Is(err, ErrStreamManagerShutdown)
+	}) {
+		t.Fatal("manager did not reject new sessions after shutdown started")
+	}
+	hasSessionDone := make(chan bool, 1)
+	go func() { hasSessionDone <- manager.HasSession("GR", "27") }()
+	select {
+	case <-hasSessionDone:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("HasSession blocked while Shutdown waited for in-flight session creation")
+	}
+
+	tuners.releaseBlocked()
+	if err := <-createDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-shutdownDone; err != nil {
+		t.Fatal(err)
+	}
+	if got := device.stopCount(); got != 1 {
+		t.Fatalf("tuner device stops = %d, want 1", got)
+	}
+}
+
 func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
 	no := false
 	priorityLocal := 10
@@ -744,6 +901,68 @@ func (m *priorityCapturingTunerManager) AcquireDevice(ctx context.Context, _ str
 	m.priority = user.Priority
 	m.wait = wait
 	return &fakeTunerDevice{done: make(chan struct{})}, "", nil
+}
+
+type blockingTunerManager struct {
+	blockChannel string
+	devices      map[string]tuner.Device
+	entered      chan string
+	release      chan struct{}
+	mu           sync.Mutex
+	count        int
+}
+
+func newBlockingTunerManager(blockChannel string) *blockingTunerManager {
+	return &blockingTunerManager{
+		blockChannel: blockChannel,
+		devices:      map[string]tuner.Device{},
+		entered:      make(chan string, 8),
+		release:      make(chan struct{}),
+	}
+}
+
+func (m *blockingTunerManager) NewDeviceByType(string, *config.ChannelConfig) (tuner.Device, error) {
+	return &fakeTunerDevice{done: make(chan struct{})}, nil
+}
+
+func (m *blockingTunerManager) AcquireDevice(ctx context.Context, _ string, requested, _ *config.ChannelConfig, _ bool) (tuner.Device, string, error) {
+	m.mu.Lock()
+	m.count++
+	m.mu.Unlock()
+	if requested.Channel == m.blockChannel {
+		m.entered <- requested.Channel
+		select {
+		case <-m.release:
+		case <-ctx.Done():
+			return nil, "", ctx.Err()
+		}
+	}
+	if device := m.devices[requested.Channel]; device != nil {
+		return device, "", nil
+	}
+	return &fakeTunerDevice{done: make(chan struct{})}, "", nil
+}
+
+func (m *blockingTunerManager) waitEntered(t *testing.T, channel string) {
+	t.Helper()
+	select {
+	case got := <-m.entered:
+		if got != channel {
+			t.Fatalf("entered channel = %q, want %q", got, channel)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for channel %q acquisition", channel)
+	}
+}
+
+func (m *blockingTunerManager) releaseBlocked() {
+	close(m.release)
+}
+
+func (m *blockingTunerManager) acquireCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.count
 }
 
 type fakeTunerManager struct {

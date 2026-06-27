@@ -27,7 +27,9 @@ type StreamManager struct {
 	remoteEventSyncWG     sync.WaitGroup
 	remotes               map[string]*RemoteClient
 	serviceLister         ServiceLister
+	sessionCreates        map[sessionKey]*sessionCreate
 	sessions              map[sessionKey]sessionEntry
+	shuttingDown          bool
 	sources               *SourcePool
 }
 
@@ -52,6 +54,12 @@ type sessionEntry struct {
 	routeType string
 	source    string
 	startedAt time.Time
+}
+
+type sessionCreate struct {
+	done    chan struct{}
+	err     error
+	session Session
 }
 
 const (
@@ -84,6 +92,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		programUpdater: cfg.ProgramUpdater,
 		remotes:        remotes,
 		serviceLister:  cfg.ServiceLister,
+		sessionCreates: map[sessionKey]*sessionCreate{},
 		sessions:       map[sessionKey]sessionEntry{},
 		sources:        NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
 	}
@@ -185,38 +194,79 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	key := sessionKey{typ: channelType, channel: channel}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if entry, ok := m.sessions[key]; ok {
+		m.mu.Unlock()
 		recordStart = false
 		slog.Debug("reusing stream session", "type", channelType, "channel", channel)
 		return entry.session, nil
 	}
+	if m.shuttingDown {
+		m.mu.Unlock()
+		return nil, ErrStreamManagerShutdown
+	}
+	if create, ok := m.sessionCreates[key]; ok {
+		m.mu.Unlock()
+		select {
+		case <-create.done:
+			if create.err != nil {
+				return nil, create.err
+			}
+			recordStart = false
+			slog.Debug("reusing stream session", "type", channelType, "channel", channel)
+			return create.session, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	create := &sessionCreate{done: make(chan struct{})}
+	m.sessionCreates[key] = create
+	m.mu.Unlock()
 
 	slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
-	lease, err := m.sources.Acquire(ctx, channelType, channel, wait)
+	session, routeType, source, err := m.createSession(ctx, key, channelType, channel, wait)
 	if err != nil {
 		slog.Debug("failed to acquire stream source", "type", channelType, "channel", channel, "wait", wait, "err", err)
+	}
+
+	m.mu.Lock()
+	if err == nil {
+		m.addSessionLocked(key, session, routeType, source)
+	}
+	create.session = session
+	create.err = err
+	delete(m.sessionCreates, key)
+	close(create.done)
+	m.mu.Unlock()
+
+	if err != nil {
 		return nil, err
 	}
-	if lease.Session != nil {
-		source := streamSessionSource(lease)
-		m.addSessionLocked(key, lease.Session, lease.RouteType, source)
-		observability.RecordStreamSessionStart(ctx, channelType, lease.RouteType, source, "success")
-		recordStart = false
-		slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", lease.RouteType, "source", "remote")
-		return lease.Session, nil
+	observability.RecordStreamSessionStart(ctx, channelType, routeType, source, "success")
+	recordStart = false
+	slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", routeType, "source", source)
+	return session, nil
+}
+
+func (m *StreamManager) createSession(ctx context.Context, key sessionKey, channelType, channel string, wait bool) (Session, string, string, error) {
+	lease, err := m.sources.Acquire(ctx, channelType, channel, wait)
+	if err != nil {
+		return nil, "", "", err
 	}
+	source := streamSessionSource(lease)
+	if lease.Session != nil {
+		return lease.Session, lease.RouteType, source, nil
+	}
+
 	broadcast := lease.Broadcast
 	if broadcast == nil {
 		broadcast = NewBroadcast(lease.Source, func() { m.remove(key) })
 	} else {
 		if !broadcast.AddOnStop(func() { m.remove(key) }) {
-			return nil, errors.New("broadcast stopped")
+			return nil, "", "", errors.New("broadcast stopped")
 		}
 	}
 
-	session = NewChannelSession(ChannelSessionConfig{
+	session := NewChannelSession(ChannelSessionConfig{
 		Channel:     channel,
 		Broadcast:   broadcast,
 		Descrambler: lease.Descrambler,
@@ -225,12 +275,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		OnStop:      func() { m.remove(key) },
 		Type:        channelType,
 	})
-	source := streamSessionSource(lease)
-	m.addSessionLocked(key, session, lease.RouteType, source)
-	observability.RecordStreamSessionStart(ctx, channelType, lease.RouteType, source, "success")
-	recordStart = false
-	slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", lease.RouteType, "source", "local")
-	return session, nil
+	return session, lease.RouteType, source, nil
 }
 
 func (m *StreamManager) HasSession(channelType, channel string) bool {
@@ -264,6 +309,15 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 	if m.remoteEventSyncCancel != nil {
 		m.remoteEventSyncCancel()
 	}
+
+	m.mu.Lock()
+	m.shuttingDown = true
+	creates := make([]*sessionCreate, 0, len(m.sessionCreates))
+	for _, create := range m.sessionCreates {
+		creates = append(creates, create)
+	}
+	m.mu.Unlock()
+
 	eventSyncDone := make(chan struct{})
 	go func() {
 		m.remoteEventSyncWG.Wait()
@@ -273,6 +327,10 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 	case <-eventSyncDone:
 	case <-ctx.Done():
 		result = errors.Join(result, ctx.Err())
+	}
+
+	if err := waitSessionCreates(ctx, creates); err != nil {
+		result = errors.Join(result, err)
 	}
 
 	m.mu.Lock()
@@ -292,6 +350,18 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 		m.removeSessionLocked(key)
 	}
 	m.mu.Unlock()
+	return result
+}
+
+func waitSessionCreates(ctx context.Context, creates []*sessionCreate) error {
+	var result error
+	for _, create := range creates {
+		select {
+		case <-create.done:
+		case <-ctx.Done():
+			result = errors.Join(result, ctx.Err())
+		}
+	}
 	return result
 }
 
@@ -357,6 +427,7 @@ var (
 	ErrChannelNotFound            = errors.New("channel not found")
 	ErrEITObservationUnsupported  = errors.New("EIT observation is not supported by remote sessions")
 	ErrLogoObservationUnsupported = errors.New("logo observation is not supported by remote sessions")
+	ErrStreamManagerShutdown      = errors.New("stream manager is shut down")
 	ErrTunerNotFound              = tuner.ErrTunerNotFound
 	ErrUnsupportedTuner           = tuner.ErrUnsupportedTuner
 	ErrTunerUnavailable           = tuner.ErrTunerUnavailable
