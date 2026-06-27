@@ -126,19 +126,19 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 	var result error
 	for _, candidate := range ordered {
 		slog.Info("starting network EPG collection", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel, "services", len(serviceKeys), "activeSession", active[candidate])
-		candidateCtx, cancel := context.WithTimeout(ctx, retrievalTime)
-		candidateCtx, candidateSpan := observability.StartSpan(candidateCtx, observability.SpanEPGGatherCandidate,
+		candidateCtx, candidateSpan := observability.StartSpan(ctx, observability.SpanEPGGatherCandidate,
 			observability.AttrEPGNetworkID.Int(int(networkID)),
 			observability.AttrChannelType.String(candidate.Type),
 			observability.AttrChannelID.String(candidate.Channel),
 			observability.AttrStreamActiveSession.Bool(active[candidate]),
 		)
 		var candidateErr error
-		session, candidateErr := streams.GetOrCreateWait(candidateCtx, candidate.Type, candidate.Channel)
+		sessionCtx, cancel := context.WithTimeout(candidateCtx, retrievalTime)
+		session, candidateErr := streams.GetOrCreateWait(sessionCtx, candidate.Type, candidate.Channel)
+		cancel()
 		if candidateErr == nil {
 			candidateErr = CollectServiceSnapshots(candidateCtx, programStore, serviceStore, session, serviceKeys, retrievalTime)
 		}
-		cancel()
 		observability.EndSpan(candidateSpan, candidateErr)
 		if candidateErr == nil {
 			slog.Debug("finished network EPG collection", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel)

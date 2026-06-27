@@ -75,6 +75,31 @@ func TestGatherNetworkTimesOutWhileWaitingForSession(t *testing.T) {
 	}
 }
 
+func TestGatherNetworkMergesAfterCollectionTimeout(t *testing.T) {
+	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	store := &contextCheckingProgramStore{}
+	streams := staticEPGStreams{session: &collectEITSession{sections: []*ts.EIT{
+		testEIT(ts.TableIDEITSStart, key, 10),
+	}}}
+
+	err := gatherNetwork(
+		context.Background(),
+		store,
+		newRemoteSyncServiceStore(),
+		streams,
+		key.NetworkID,
+		[]Candidate{{Type: "GR", Channel: "27"}},
+		[]ServiceKey{key},
+		20*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.calls != 1 {
+		t.Fatalf("upsert calls = %d, want 1", store.calls)
+	}
+}
+
 func TestServiceCleanupUsesCleanupMetricSource(t *testing.T) {
 	store := &collectProgramStore{}
 	service := NewService(store, newRemoteSyncServiceStore(), nil, nil, 1, time.Second)
@@ -96,6 +121,23 @@ func (blockingEPGStreams) GetOrCreateWait(ctx context.Context, _, _ string) (int
 }, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
+}
+
+type staticEPGStreams struct {
+	session interface {
+		CollectEIT(context.Context, func(*ts.EIT) error) error
+	}
+}
+
+func (staticEPGStreams) HasSession(string, string) bool { return false }
+
+func (s staticEPGStreams) GetOrCreateWait(ctx context.Context, _, _ string) (interface {
+	CollectEIT(context.Context, func(*ts.EIT) error) error
+}, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return s.session, nil
 }
 
 type collectEITSession struct {
@@ -148,6 +190,23 @@ func (s *collectProgramStore) eventIDs() []uint16 {
 		}
 	}
 	return ids
+}
+
+type contextCheckingProgramStore struct {
+	calls int
+}
+
+func (s *contextCheckingProgramStore) UpsertPrograms(ctx context.Context, programs []*program.Program) error {
+	s.calls++
+	return ctx.Err()
+}
+
+func (s *contextCheckingProgramStore) DeleteEndedBefore(context.Context, int64) error {
+	return nil
+}
+
+func (s *contextCheckingProgramStore) ReplaceServicePrograms(context.Context, uint16, uint16, int64, []*program.Program) error {
+	return nil
 }
 
 func testEIT(tableID byte, key ServiceKey, eventID uint16) *ts.EIT {
