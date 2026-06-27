@@ -110,49 +110,13 @@ func apiProgramVideo(video *program.Video) apigen.ProgramVideo {
 		StreamContent: apigen.NewOptInt(video.StreamContent),
 		ComponentType: apigen.NewOptInt(video.ComponentType),
 	}
-	if videoType, ok := apiProgramVideoType(video.StreamContent); ok {
-		out.Type = apigen.NewOptProgramVideoType(videoType)
+	if videoType, ok := program.VideoType(video.StreamContent); ok {
+		out.Type = apigen.NewOptProgramVideoType(apigen.ProgramVideoType(videoType))
 	}
-	if resolution, ok := apiProgramVideoResolution(video.ComponentType); ok {
-		out.Resolution = apigen.NewOptProgramVideoResolution(resolution)
+	if resolution, ok := program.VideoResolution(video.ComponentType); ok {
+		out.Resolution = apigen.NewOptProgramVideoResolution(apigen.ProgramVideoResolution(resolution))
 	}
 	return out
-}
-
-func apiProgramVideoType(streamContent int) (apigen.ProgramVideoType, bool) {
-	switch streamContent {
-	case 0x1:
-		return apigen.ProgramVideoTypeMpeg2, true
-	case 0x5:
-		return apigen.ProgramVideoTypeH264, true
-	case 0x9:
-		return apigen.ProgramVideoTypeH265, true
-	default:
-		return "", false
-	}
-}
-
-func apiProgramVideoResolution(componentType int) (apigen.ProgramVideoResolution, bool) {
-	switch {
-	case componentType >= 0x01 && componentType <= 0x04:
-		return apigen.ProgramVideoResolution480i, true
-	case componentType == 0x83:
-		return apigen.ProgramVideoResolution4320p, true
-	case componentType >= 0x91 && componentType <= 0x94:
-		return apigen.ProgramVideoResolution2160p, true
-	case componentType >= 0xA1 && componentType <= 0xA4:
-		return apigen.ProgramVideoResolution480p, true
-	case componentType >= 0xB1 && componentType <= 0xB4:
-		return apigen.ProgramVideoResolution1080i, true
-	case componentType >= 0xC1 && componentType <= 0xC4:
-		return apigen.ProgramVideoResolution720p, true
-	case componentType >= 0xD1 && componentType <= 0xD4:
-		return apigen.ProgramVideoResolution240p, true
-	case componentType >= 0xE1 && componentType <= 0xE4:
-		return apigen.ProgramVideoResolution1080p, true
-	default:
-		return "", false
-	}
 }
 
 func apiRelatedItems(items []program.RelatedItem) []apigen.RelatedItem {

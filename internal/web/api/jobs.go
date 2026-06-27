@@ -85,6 +85,9 @@ func apiJobItem(j *job.Job) *apigen.JobItem {
 			item.Duration = apigen.NewOptInt(int(j.FinishedAt.Sub(*j.StartedAt).Milliseconds()))
 		}
 	}
+	if j.NextRunAt != nil {
+		item.NextRunAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(j.NextRunAt.UnixMilli()))
+	}
 	return item
 }
 
@@ -92,6 +95,8 @@ func apiJobStatus(status job.JobStatus) apigen.JobItemStatus {
 	switch status {
 	case job.StatusQueued:
 		return apigen.JobItemStatusQueued
+	case job.StatusStandby:
+		return apigen.JobItemStatusStandby
 	case job.StatusRunning:
 		return apigen.JobItemStatusRunning
 	case job.StatusFinished:

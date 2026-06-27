@@ -10,9 +10,11 @@ import (
 )
 
 const (
-	ResourceProgram = "program"
-	ResourceService = "service"
-	ResourceTuner   = "tuner"
+	ResourceProgram     = "program"
+	ResourceService     = "service"
+	ResourceTuner       = "tuner"
+	ResourceJob         = "job"
+	ResourceJobSchedule = "job_schedule"
 
 	TypeCreate = "create"
 	TypeUpdate = "update"
@@ -93,6 +95,14 @@ func (h *Hub) PublishTunerStatusEvent(typ string, data map[string]any) {
 
 func (h *Hub) PublishProgramEvent(typ string, data map[string]any) {
 	h.PublishEvent(ResourceProgram, typ, data)
+}
+
+func (h *Hub) PublishJobEvent(typ string, data map[string]any) {
+	h.PublishEvent(ResourceJob, typ, data)
+}
+
+func (h *Hub) PublishJobScheduleEvent(typ string, data map[string]any) {
+	h.PublishEvent(ResourceJobSchedule, typ, data)
 }
 
 func (h *Hub) Log() []Event {

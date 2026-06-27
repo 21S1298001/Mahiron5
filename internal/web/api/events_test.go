@@ -131,6 +131,48 @@ func TestGetEventsReturnsMirakurunCompatibleData(t *testing.T) {
 	}
 }
 
+func TestGetEventsReturnsJobResources(t *testing.T) {
+	hub := event.New()
+	hub.PublishJobEvent(event.TypeUpdate, map[string]any{
+		"key":        "test-job",
+		"name":       "Test Job",
+		"id":         "job-id",
+		"status":     "queued",
+		"retryCount": 0,
+		"isAborting": false,
+		"createdAt":  int64(1000),
+		"updatedAt":  int64(1000),
+	})
+	hub.PublishJobScheduleEvent(event.TypeCreate, map[string]any{
+		"key":      "test-schedule",
+		"schedule": "5 6 * * *",
+		"job": map[string]any{
+			"key":  "test-job",
+			"name": "Test Job",
+		},
+	})
+	handler := NewHandler(HandlerConfig{EventHub: hub})
+
+	res, err := handler.GetEvents(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := res.(*apigen.GetEventsOKApplicationJSON)
+	if got, want := len(*events), 2; got != want {
+		t.Fatalf("events length = %d, want %d", got, want)
+	}
+	if (*events)[0].Resource != apigen.EventResourceJob || (*events)[1].Resource != apigen.EventResourceJobSchedule {
+		t.Fatalf("event resources = %q, %q", (*events)[0].Resource, (*events)[1].Resource)
+	}
+	var status string
+	if err := json.Unmarshal((*events)[0].Data["status"], &status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "queued" {
+		t.Fatalf("job status = %q, want queued", status)
+	}
+}
+
 func TestGetEventsStreamReceivesEventsPublishedAfterSubscribe(t *testing.T) {
 	hub := event.New()
 	hub.PublishEvent(event.ResourceProgram, event.TypeUpdate, map[string]any{"id": 1})
@@ -186,6 +228,29 @@ func TestGetEventsStreamFiltersSubscribedEvents(t *testing.T) {
 	}
 	if got, want := strings.Count(body, "\n,\n"), 1; got != want {
 		t.Fatalf("event separator count = %d, want %d\n%s", got, want, body)
+	}
+}
+
+func TestGetEventsStreamFiltersJobUpdateEvents(t *testing.T) {
+	var buf bytes.Buffer
+	events := []event.Event{
+		mustTestEvent(t, event.ResourceService, event.TypeUpdate, map[string]any{"id": 1}),
+		mustTestEvent(t, event.ResourceJob, event.TypeUpdate, map[string]any{"id": "job-id", "status": "queued"}),
+		mustTestEvent(t, event.ResourceJob, event.TypeRemove, map[string]any{"id": "removed-job"}),
+	}
+	if err := writeEventsOpenJSONArrayEvents(&buf, events, apigen.GetEventsStreamParams{
+		Resource: apigen.NewOptGetEventsStreamResource(apigen.GetEventsStreamResourceJob),
+		Type:     apigen.NewOptGetEventsStreamType(apigen.GetEventsStreamTypeUpdate),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	body := buf.String()
+	if got, want := strings.Count(body, "\n,\n"), 1; got != want {
+		t.Fatalf("event separator count = %d, want %d\n%s", got, want, body)
+	}
+	if !strings.Contains(body, `"resource":"job"`) || !strings.Contains(body, `"status":"queued"`) {
+		t.Fatalf("filtered stream body = %s", body)
 	}
 }
 

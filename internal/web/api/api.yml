@@ -355,6 +355,8 @@ paths:
               - program
               - service
               - tuner
+              - job
+              - job_schedule
         - name: type
           in: query
           schema:
@@ -1798,6 +1800,8 @@ components:
         - program
         - service
         - tuner
+        - job
+        - job_schedule
     EventType:
       type: string
       enum:

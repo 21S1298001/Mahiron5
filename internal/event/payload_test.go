@@ -102,6 +102,10 @@ func TestProgramEventDataIncludesNestedFields(t *testing.T) {
 	if decoded["series"].(map[string]any)["expiresAt"] != float64(expiresAt) {
 		t.Fatalf("program series data = %#v", decoded["series"])
 	}
+	video := decoded["video"].(map[string]any)
+	if video["type"] != "mpeg2" || video["resolution"] != "1080i" {
+		t.Fatalf("program video data = %#v", video)
+	}
 }
 
 func TestProgramEventDataIncludesEmptyArrays(t *testing.T) {

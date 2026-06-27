@@ -22,6 +22,7 @@ type Job struct {
 	RetryCount int
 	IsAborting bool
 	HasAborted bool
+	HasSkipped bool
 	HasFailed  bool
 	Error      string
 	CreatedAt  time.Time
@@ -44,6 +45,58 @@ type JobDefinition struct {
 
 type ScheduleInfo struct {
 	Key, Schedule, JobKey, JobName string
+}
+
+func (j *Job) EventData() map[string]any {
+	data := map[string]any{
+		"key":        j.Key,
+		"name":       j.Name,
+		"id":         j.ID,
+		"status":     string(j.Status),
+		"retryCount": j.RetryCount,
+		"isAborting": j.IsAborting,
+		"hasAborted": j.HasAborted,
+		"hasSkipped": j.HasSkipped,
+		"hasFailed":  j.HasFailed,
+		"createdAt":  j.CreatedAt.UnixMilli(),
+		"updatedAt":  j.UpdatedAt.UnixMilli(),
+	}
+	if j.definition != nil {
+		data["isRerunnable"] = j.definition.IsRerunnable
+		data["retryOnAbort"] = false
+		if len(j.definition.RetryDelays) > 0 {
+			data["retryOnFail"] = true
+			data["retryMax"] = len(j.definition.RetryDelays)
+			data["retryDelay"] = int(j.definition.RetryDelays[0].Milliseconds())
+		}
+	}
+	if j.Error != "" {
+		data["error"] = j.Error
+	}
+	if j.StartedAt != nil {
+		data["startedAt"] = j.StartedAt.UnixMilli()
+	}
+	if j.FinishedAt != nil {
+		data["finishedAt"] = j.FinishedAt.UnixMilli()
+		if j.StartedAt != nil {
+			data["duration"] = int(j.FinishedAt.Sub(*j.StartedAt).Milliseconds())
+		}
+	}
+	if j.NextRunAt != nil {
+		data["nextRunAt"] = j.NextRunAt.UnixMilli()
+	}
+	return data
+}
+
+func (s ScheduleInfo) EventData() map[string]any {
+	return map[string]any{
+		"key":      s.Key,
+		"schedule": s.Schedule,
+		"job": map[string]any{
+			"key":  s.JobKey,
+			"name": s.JobName,
+		},
+	}
 }
 
 type JobError struct{ Code, Message string }

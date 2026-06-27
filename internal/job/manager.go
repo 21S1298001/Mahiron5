@@ -13,6 +13,11 @@ import (
 	"github.com/google/uuid"
 )
 
+type eventPublisher interface {
+	PublishJobEvent(typ string, data map[string]any)
+	PublishJobScheduleEvent(typ string, data map[string]any)
+}
+
 type JobManager struct {
 	scheduler      gocron.Scheduler
 	definitions    map[string]*JobDefinition
@@ -29,6 +34,7 @@ type JobManager struct {
 	shutdownCtx    context.Context
 	shutdownCancel context.CancelFunc
 	changed        chan struct{}
+	events         eventPublisher
 }
 
 type Config struct {
@@ -36,7 +42,7 @@ type Config struct {
 	MaxConcurrentJobs int
 }
 
-func NewManager(cfg Config) (*JobManager, error) {
+func NewManager(cfg Config, events ...eventPublisher) (*JobManager, error) {
 	if cfg.MaxHistory <= 0 {
 		cfg.MaxHistory = 100
 	}
@@ -48,6 +54,10 @@ func NewManager(cfg Config) (*JobManager, error) {
 		return nil, err
 	}
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+	var publisher eventPublisher
+	if len(events) > 0 {
+		publisher = events[0]
+	}
 	return &JobManager{
 		scheduler:      scheduler,
 		definitions:    make(map[string]*JobDefinition),
@@ -59,6 +69,7 @@ func NewManager(cfg Config) (*JobManager, error) {
 		shutdownCtx:    shutdownCtx,
 		shutdownCancel: shutdownCancel,
 		changed:        make(chan struct{}),
+		events:         publisher,
 	}, nil
 }
 
@@ -87,6 +98,7 @@ func (m *JobManager) AddSchedule(key, schedule string) error {
 	}
 	m.gocronIDs[key] = gocronJob.ID()
 	slog.Info("job schedule added", "key", key, "name", def.Name, "schedule", schedule)
+	m.publishJobScheduleLocked(ScheduleInfo{Key: key, Schedule: schedule, JobKey: key, JobName: def.Name})
 	return nil
 }
 
@@ -167,6 +179,7 @@ func (m *JobManager) enqueueLocked(def *JobDefinition) (string, error) {
 	m.queue = append(m.queue, item)
 	m.activeKeys[def.Key] = true
 	m.notifyLocked()
+	m.publishJobLocked("create", item)
 	slog.Info("job queued", "key", item.Key, "name", item.Name, "id", item.ID)
 	m.dispatchLocked()
 	return item.ID, nil
@@ -184,6 +197,7 @@ func (m *JobManager) dispatchLocked() {
 		m.active[item.ID] = cancel
 		m.running++
 		m.notifyLocked()
+		m.publishJobLocked("update", item)
 		m.wg.Add(1)
 		slog.Info("job started", "key", item.Key, "name", item.Name, "id", item.ID)
 		go m.run(ctx, item)
@@ -228,6 +242,7 @@ func (m *JobManager) standbyLocked(item *Job, err error) {
 	item.NextRunAt = &next
 	item.Error = err.Error()
 	m.notifyLocked()
+	m.publishJobLocked("update", item)
 	slog.Warn("job retry scheduled", "key", item.Key, "id", item.ID, "retry", item.RetryCount, "nextRunAt", next, "err", err)
 	m.wg.Add(1)
 	go func() {
@@ -249,6 +264,7 @@ func (m *JobManager) standbyLocked(item *Job, err error) {
 		item.NextRunAt = nil
 		m.queue = append(m.queue, item)
 		m.notifyLocked()
+		m.publishJobLocked("update", item)
 		slog.Info("job retry enqueued", "key", item.Key, "name", item.Name, "id", item.ID, "retry", item.RetryCount)
 		m.dispatchLocked()
 	}()
@@ -271,6 +287,7 @@ func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
 	delete(m.activeKeys, item.Key)
 	close(item.done)
 	m.notifyLocked()
+	m.publishJobLocked("update", item)
 	m.trimHistory()
 	if item.StartedAt != nil {
 		result := "success"
@@ -299,6 +316,20 @@ func (m *JobManager) Changes() <-chan struct{} {
 func (m *JobManager) notifyLocked() {
 	close(m.changed)
 	m.changed = make(chan struct{})
+}
+
+func (m *JobManager) publishJobLocked(typ string, item *Job) {
+	if m.events == nil {
+		return
+	}
+	m.events.PublishJobEvent(typ, item.EventData())
+}
+
+func (m *JobManager) publishJobScheduleLocked(schedule ScheduleInfo) {
+	if m.events == nil {
+		return
+	}
+	m.events.PublishJobScheduleEvent("create", schedule.EventData())
 }
 
 // Wait blocks until the identified execution reaches its terminal state.  It
@@ -336,6 +367,8 @@ func (m *JobManager) Abort(id string) error {
 			item.IsAborting = true
 			item.HasAborted = true
 			item.UpdatedAt = time.Now()
+			m.notifyLocked()
+			m.publishJobLocked("update", item)
 			slog.Info("job abort requested", "key", item.Key, "name", item.Name, "id", item.ID, "status", item.Status)
 		}
 		cancel()
@@ -498,5 +531,3 @@ func (m *JobManager) wrapHandler(def *JobDefinition) func(context.Context) error
 		return err
 	}
 }
-
-

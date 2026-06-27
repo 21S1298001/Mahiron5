@@ -191,6 +191,10 @@ func (s EventResource) Validate() error {
 		return nil
 	case "tuner":
 		return nil
+	case "job":
+		return nil
+	case "job_schedule":
+		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)
 	}
@@ -291,6 +295,10 @@ func (s GetEventsStreamResource) Validate() error {
 	case "service":
 		return nil
 	case "tuner":
+		return nil
+	case "job":
+		return nil
+	case "job_schedule":
 		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)

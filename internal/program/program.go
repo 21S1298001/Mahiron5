@@ -96,10 +96,17 @@ func (p *Program) EventData() map[string]any {
 		data["description"] = p.Description
 	}
 	if p.Video != nil {
-		data["video"] = map[string]any{
+		video := map[string]any{
 			"streamContent": p.Video.StreamContent,
 			"componentType": p.Video.ComponentType,
 		}
+		if videoType, ok := VideoType(p.Video.StreamContent); ok {
+			video["type"] = videoType
+		}
+		if resolution, ok := VideoResolution(p.Video.ComponentType); ok {
+			video["resolution"] = resolution
+		}
+		data["video"] = video
 	}
 	if len(p.Extended) > 0 {
 		data["extended"] = p.Extended
@@ -121,6 +128,42 @@ func (p *Program) EventData() map[string]any {
 		data["series"] = series
 	}
 	return data
+}
+
+func VideoType(streamContent int) (string, bool) {
+	switch streamContent {
+	case 0x1:
+		return "mpeg2", true
+	case 0x5:
+		return "h.264", true
+	case 0x9:
+		return "h.265", true
+	default:
+		return "", false
+	}
+}
+
+func VideoResolution(componentType int) (string, bool) {
+	switch {
+	case componentType >= 0x01 && componentType <= 0x04:
+		return "480i", true
+	case componentType == 0x83:
+		return "4320p", true
+	case componentType >= 0x91 && componentType <= 0x94:
+		return "2160p", true
+	case componentType >= 0xA1 && componentType <= 0xA4:
+		return "480p", true
+	case componentType >= 0xB1 && componentType <= 0xB4:
+		return "1080i", true
+	case componentType >= 0xC1 && componentType <= 0xC4:
+		return "720p", true
+	case componentType >= 0xD1 && componentType <= 0xD4:
+		return "240p", true
+	case componentType >= 0xE1 && componentType <= 0xE4:
+		return "1080p", true
+	default:
+		return "", false
+	}
 }
 
 func genreListEventData(genres []Genre) []map[string]any {

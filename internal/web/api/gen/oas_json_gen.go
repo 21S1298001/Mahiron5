@@ -1434,6 +1434,10 @@ func (s *EventResource) Decode(d *jx.Decoder) error {
 		*s = EventResourceService
 	case EventResourceTuner:
 		*s = EventResourceTuner
+	case EventResourceJob:
+		*s = EventResourceJob
+	case EventResourceJobSchedule:
+		*s = EventResourceJobSchedule
 	default:
 		*s = EventResource(v)
 	}

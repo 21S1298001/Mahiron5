@@ -668,9 +668,11 @@ type EventId int
 type EventResource string
 
 const (
-	EventResourceProgram EventResource = "program"
-	EventResourceService EventResource = "service"
-	EventResourceTuner   EventResource = "tuner"
+	EventResourceProgram     EventResource = "program"
+	EventResourceService     EventResource = "service"
+	EventResourceTuner       EventResource = "tuner"
+	EventResourceJob         EventResource = "job"
+	EventResourceJobSchedule EventResource = "job_schedule"
 )
 
 // AllValues returns all EventResource values.
@@ -679,6 +681,8 @@ func (EventResource) AllValues() []EventResource {
 		EventResourceProgram,
 		EventResourceService,
 		EventResourceTuner,
+		EventResourceJob,
+		EventResourceJobSchedule,
 	}
 }
 
@@ -690,6 +694,10 @@ func (s EventResource) MarshalText() ([]byte, error) {
 	case EventResourceService:
 		return []byte(s), nil
 	case EventResourceTuner:
+		return []byte(s), nil
+	case EventResourceJob:
+		return []byte(s), nil
+	case EventResourceJobSchedule:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -707,6 +715,12 @@ func (s *EventResource) UnmarshalText(data []byte) error {
 		return nil
 	case EventResourceTuner:
 		*s = EventResourceTuner
+		return nil
+	case EventResourceJob:
+		*s = EventResourceJob
+		return nil
+	case EventResourceJobSchedule:
+		*s = EventResourceJobSchedule
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
@@ -875,9 +889,11 @@ func (*GetEventsStreamOK) getEventsStreamRes() {}
 type GetEventsStreamResource string
 
 const (
-	GetEventsStreamResourceProgram GetEventsStreamResource = "program"
-	GetEventsStreamResourceService GetEventsStreamResource = "service"
-	GetEventsStreamResourceTuner   GetEventsStreamResource = "tuner"
+	GetEventsStreamResourceProgram     GetEventsStreamResource = "program"
+	GetEventsStreamResourceService     GetEventsStreamResource = "service"
+	GetEventsStreamResourceTuner       GetEventsStreamResource = "tuner"
+	GetEventsStreamResourceJob         GetEventsStreamResource = "job"
+	GetEventsStreamResourceJobSchedule GetEventsStreamResource = "job_schedule"
 )
 
 // AllValues returns all GetEventsStreamResource values.
@@ -886,6 +902,8 @@ func (GetEventsStreamResource) AllValues() []GetEventsStreamResource {
 		GetEventsStreamResourceProgram,
 		GetEventsStreamResourceService,
 		GetEventsStreamResourceTuner,
+		GetEventsStreamResourceJob,
+		GetEventsStreamResourceJobSchedule,
 	}
 }
 
@@ -897,6 +915,10 @@ func (s GetEventsStreamResource) MarshalText() ([]byte, error) {
 	case GetEventsStreamResourceService:
 		return []byte(s), nil
 	case GetEventsStreamResourceTuner:
+		return []byte(s), nil
+	case GetEventsStreamResourceJob:
+		return []byte(s), nil
+	case GetEventsStreamResourceJobSchedule:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -914,6 +936,12 @@ func (s *GetEventsStreamResource) UnmarshalText(data []byte) error {
 		return nil
 	case GetEventsStreamResourceTuner:
 		*s = GetEventsStreamResourceTuner
+		return nil
+	case GetEventsStreamResourceJob:
+		*s = GetEventsStreamResourceJob
+		return nil
+	case GetEventsStreamResourceJobSchedule:
+		*s = GetEventsStreamResourceJobSchedule
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)
