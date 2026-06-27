@@ -59,7 +59,7 @@ type TSInformationDescriptor struct {
 }
 
 func ParseTSInformationDescriptor(d Descriptor) (*TSInformationDescriptor, error) {
-	if len(d) < 2 {
+	if len(d) < 2 || len(d) < 2+d.Length() {
 		return nil, ErrInvalidSection
 	}
 	if d.Tag() != DescriptorTagTSInformation {
@@ -102,6 +102,68 @@ func ParseTSInformationDescriptor(d Descriptor) (*TSInformationDescriptor, error
 			off += 2
 		}
 		result.TransmissionTypes = append(result.TransmissionTypes, item)
+	}
+	return result, nil
+}
+
+type ServiceListEntry struct {
+	ServiceID   uint16
+	ServiceType uint8
+}
+
+type ServiceListDescriptor struct {
+	Services []ServiceListEntry
+}
+
+func ParseServiceListDescriptor(d Descriptor) (*ServiceListDescriptor, error) {
+	if len(d) < 2 || len(d) < 2+d.Length() {
+		return nil, ErrInvalidSection
+	}
+	if d.Tag() != DescriptorTagServiceList {
+		return nil, fmt.Errorf("ts: unexpected descriptor tag %#02x", d.Tag())
+	}
+	data := d.Data()
+	if len(data)%3 != 0 {
+		return nil, ErrInvalidSection
+	}
+	result := &ServiceListDescriptor{
+		Services: make([]ServiceListEntry, 0, len(data)/3),
+	}
+	for off := 0; off < len(data); off += 3 {
+		result.Services = append(result.Services, ServiceListEntry{
+			ServiceID:   uint16(data[off])<<8 | uint16(data[off+1]),
+			ServiceType: data[off+2],
+		})
+	}
+	return result, nil
+}
+
+type TerrestrialDeliverySystemDescriptor struct {
+	AreaCode         uint16
+	GuardInterval    byte
+	TransmissionMode byte
+	Frequencies      []uint16
+}
+
+func ParseTerrestrialDeliverySystemDescriptor(d Descriptor) (*TerrestrialDeliverySystemDescriptor, error) {
+	if len(d) < 2 || len(d) < 2+d.Length() {
+		return nil, ErrInvalidSection
+	}
+	if d.Tag() != DescriptorTagTerrestrialDeliverySystem {
+		return nil, fmt.Errorf("ts: unexpected descriptor tag %#02x", d.Tag())
+	}
+	data := d.Data()
+	if len(data) < 2 || len(data[2:])%2 != 0 {
+		return nil, ErrInvalidSection
+	}
+	result := &TerrestrialDeliverySystemDescriptor{
+		AreaCode:         uint16(data[0])<<4 | uint16(data[1]>>4),
+		GuardInterval:    (data[1] >> 2) & 0x03,
+		TransmissionMode: data[1] & 0x03,
+		Frequencies:      make([]uint16, 0, len(data[2:])/2),
+	}
+	for off := 2; off < len(data); off += 2 {
+		result.Frequencies = append(result.Frequencies, uint16(data[off])<<8|uint16(data[off+1]))
 	}
 	return result, nil
 }

@@ -229,38 +229,19 @@ func (s *serviceScanState) applyRemoteKeys() {
 
 func remoteKeysFromNIT(section Section) map[uint16]uint8 {
 	keys := map[uint16]uint8{}
-	if len(section) < 12 || section.TableID() != TableIDNIT0 || section.TotalLength() > len(section) || !section.ValidateCRC() {
+	nit, err := ParseNIT(section)
+	if err != nil || nit.TableID != TableIDNIT0 {
 		return keys
 	}
-	sectionEnd := section.TotalLength() - 4
-	networkDescriptorsLen := int(uint16(section[8]&0x0f)<<8 | uint16(section[9]))
-	off := 10 + networkDescriptorsLen
-	if off+2 > sectionEnd {
-		return keys
-	}
-	transportStreamLoopLen := int(uint16(section[off]&0x0f)<<8 | uint16(section[off+1]))
-	off += 2
-	loopEnd := off + transportStreamLoopLen
-	if loopEnd > sectionEnd {
-		return keys
-	}
-	for off+6 <= loopEnd {
-		tsid := uint16(section[off])<<8 | uint16(section[off+1])
-		descriptorsLen := int(uint16(section[off+4]&0x0f)<<8 | uint16(section[off+5]))
-		descStart := off + 6
-		descEnd := descStart + descriptorsLen
-		if descEnd > loopEnd {
-			return keys
-		}
-		for _, desc := range ParseDescriptors(section[descStart:descEnd]) {
+	for _, transportStream := range nit.TransportStreams {
+		for _, desc := range transportStream.Descriptors {
 			if desc.Tag() == DescriptorTagTSInformation {
 				info, err := ParseTSInformationDescriptor(desc)
 				if err == nil {
-					keys[tsid] = info.RemoteControlKeyID
+					keys[transportStream.TransportStreamID] = info.RemoteControlKeyID
 				}
 			}
 		}
-		off = descEnd
 	}
 	return keys
 }
