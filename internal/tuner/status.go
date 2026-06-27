@@ -116,6 +116,11 @@ type tunerRuntime struct {
 	users               map[string]*trackedUser
 }
 
+type tunerStatusUpdate struct {
+	status  Status
+	publish bool
+}
+
 func (r *tunerRuntime) effectivePriority() int {
 	priority := r.reservationPriority
 	for _, tracked := range r.users {
@@ -124,6 +129,20 @@ func (r *tunerRuntime) effectivePriority() int {
 		}
 	}
 	return priority
+}
+
+func (r *tunerRuntime) resetReservation() bool {
+	wasFaulted := r.fault
+	r.inUse = false
+	r.running = false
+	r.stopped = false
+	r.fault = false
+	r.reservationPriority = 0
+	r.device = nil
+	r.requested = nil
+	r.tuned = nil
+	r.users = make(map[string]*trackedUser)
+	return wasFaulted
 }
 
 func (tm *TunerManager) Statuses() []Status {
@@ -222,7 +241,6 @@ func (tm *TunerManager) addUser(item *Tuner, user User) {
 	if user.ID == "" {
 		return
 	}
-	var status Status
 	tm.mu.Lock()
 	runtime := tm.runtime[item]
 	if tracked := runtime.users[user.ID]; tracked != nil {
@@ -232,16 +250,16 @@ func (tm *TunerManager) addUser(item *Tuner, user User) {
 		}
 		tracked.user = user
 		slog.Debug("tuner user reference added", "name", item.Name(), "userId", user.ID, "refs", tracked.refs)
-		status = tm.statusLockedByTuner(item)
+		update := tm.statusUpdateLocked(item)
 		tm.mu.Unlock()
-		tm.publishStatus(eventTypeUpdate, status)
+		tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 		return
 	}
 	runtime.users[user.ID] = &trackedUser{user: user, refs: 1}
 	slog.Debug("tuner user added", "name", item.Name(), "userId", user.ID, "agent", user.Agent, "url", user.URL, "priority", user.Priority, "disableDecoder", user.DisableDecoder)
-	status = tm.statusLockedByTuner(item)
+	update := tm.statusUpdateLocked(item)
 	tm.mu.Unlock()
-	tm.publishStatus(eventTypeUpdate, status)
+	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 }
 
 func (tm *TunerManager) updateUserStreamInfo(item *Tuner, userID, key string, info StreamInfo) {
@@ -259,8 +277,6 @@ func (tm *TunerManager) updateUserStreamInfo(item *Tuner, userID, key string, in
 }
 
 func (tm *TunerManager) removeUser(item *Tuner, id string) {
-	var status Status
-	publish := false
 	tm.mu.Lock()
 	runtime := tm.runtime[item]
 	tracked := runtime.users[id]
@@ -272,21 +288,15 @@ func (tm *TunerManager) removeUser(item *Tuner, id string) {
 	if tracked.refs == 0 {
 		delete(runtime.users, id)
 		slog.Debug("tuner user removed", "name", item.Name(), "userId", id)
-		status = tm.statusLockedByTuner(item)
-		publish = true
+		update := tm.statusUpdateLocked(item)
 		tm.mu.Unlock()
-		if publish {
-			tm.publishStatus(eventTypeUpdate, status)
-		}
+		tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 		return
 	}
 	slog.Debug("tuner user reference removed", "name", item.Name(), "userId", id, "refs", tracked.refs)
-	status = tm.statusLockedByTuner(item)
-	publish = true
+	update := tm.statusUpdateLocked(item)
 	tm.mu.Unlock()
-	if publish {
-		tm.publishStatus(eventTypeUpdate, status)
-	}
+	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 }
 
 func (tm *TunerManager) SeedEventLog() {

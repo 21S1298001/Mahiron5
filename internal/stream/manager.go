@@ -27,9 +27,7 @@ type StreamManager struct {
 	remoteEventSyncWG     sync.WaitGroup
 	remotes               map[string]*RemoteClient
 	serviceLister         ServiceLister
-	sessionDetails        map[sessionKey]sessionMetricDetail
-	sessions              map[sessionKey]Session
-	sessionTypes          map[sessionKey]string
+	sessions              map[sessionKey]sessionEntry
 	sources               *SourcePool
 }
 
@@ -49,7 +47,8 @@ type sessionKey struct {
 	typ     string
 }
 
-type sessionMetricDetail struct {
+type sessionEntry struct {
+	session   Session
 	routeType string
 	source    string
 	startedAt time.Time
@@ -85,9 +84,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		programUpdater: cfg.ProgramUpdater,
 		remotes:        remotes,
 		serviceLister:  cfg.ServiceLister,
-		sessionDetails: map[sessionKey]sessionMetricDetail{},
-		sessions:       map[sessionKey]Session{},
-		sessionTypes:   map[sessionKey]string{},
+		sessions:       map[sessionKey]sessionEntry{},
 		sources:        NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
 	}
 }
@@ -190,10 +187,10 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if session := m.sessions[key]; session != nil {
+	if entry, ok := m.sessions[key]; ok {
 		recordStart = false
 		slog.Debug("reusing stream session", "type", channelType, "channel", channel)
-		return session, nil
+		return entry.session, nil
 	}
 
 	slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
@@ -204,9 +201,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	}
 	if lease.Session != nil {
 		source := streamSessionSource(lease)
-		m.sessions[key] = lease.Session
-		m.sessionTypes[key] = lease.RouteType
-		m.sessionDetails[key] = sessionMetricDetail{routeType: lease.RouteType, source: source, startedAt: time.Now()}
+		m.addSessionLocked(key, lease.Session, lease.RouteType, source)
 		observability.RecordStreamSessionStart(ctx, channelType, lease.RouteType, source, "success")
 		recordStart = false
 		slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", lease.RouteType, "source", "remote")
@@ -230,10 +225,9 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		OnStop:      func() { m.remove(key) },
 		Type:        channelType,
 	})
-	m.sessions[key] = session
-	m.sessionTypes[key] = lease.RouteType
-	m.sessionDetails[key] = sessionMetricDetail{routeType: lease.RouteType, source: streamSessionSource(lease), startedAt: time.Now()}
-	observability.RecordStreamSessionStart(ctx, channelType, lease.RouteType, streamSessionSource(lease), "success")
+	source := streamSessionSource(lease)
+	m.addSessionLocked(key, session, lease.RouteType, source)
+	observability.RecordStreamSessionStart(ctx, channelType, lease.RouteType, source, "success")
 	recordStart = false
 	slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", lease.RouteType, "source", "local")
 	return session, nil
@@ -243,7 +237,8 @@ func (m *StreamManager) HasSession(channelType, channel string) bool {
 	key := sessionKey{typ: channelType, channel: channel}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.sessions[key] != nil
+	_, ok := m.sessions[key]
+	return ok
 }
 
 func (m *StreamManager) ActiveSessionCount() int {
@@ -256,8 +251,8 @@ func (m *StreamManager) ActiveSessionCountByType(channelType string) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	count := 0
-	for _, typ := range m.sessionTypes {
-		if typ == channelType {
+	for _, entry := range m.sessions {
+		if entry.routeType == channelType {
 			count++
 		}
 	}
@@ -282,8 +277,8 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 
 	m.mu.Lock()
 	sessions := make([]Session, 0, len(m.sessions))
-	for _, session := range m.sessions {
-		sessions = append(sessions, session)
+	for _, entry := range m.sessions {
+		sessions = append(sessions, entry.session)
 	}
 	m.mu.Unlock()
 
@@ -294,10 +289,7 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 	}
 	m.mu.Lock()
 	for key := range m.sessions {
-		m.recordSessionDurationLocked(key)
-		delete(m.sessions, key)
-		delete(m.sessionTypes, key)
-		delete(m.sessionDetails, key)
+		m.removeSessionLocked(key)
 	}
 	m.mu.Unlock()
 	return result
@@ -306,19 +298,33 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 func (m *StreamManager) remove(key sessionKey) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.recordSessionDurationLocked(key)
-	delete(m.sessions, key)
-	delete(m.sessionTypes, key)
-	delete(m.sessionDetails, key)
+	m.removeSessionLocked(key)
 	slog.Debug("stream session removed", "type", key.typ, "channel", key.channel)
 }
 
-func (m *StreamManager) recordSessionDurationLocked(key sessionKey) {
-	detail, ok := m.sessionDetails[key]
-	if !ok || detail.startedAt.IsZero() {
+func (m *StreamManager) addSessionLocked(key sessionKey, session Session, routeType, source string) {
+	m.sessions[key] = sessionEntry{
+		session:   session,
+		routeType: routeType,
+		source:    source,
+		startedAt: time.Now(),
+	}
+}
+
+func (m *StreamManager) removeSessionLocked(key sessionKey) {
+	entry, ok := m.sessions[key]
+	if !ok {
 		return
 	}
-	observability.RecordStreamSessionDuration(context.Background(), key.typ, detail.routeType, detail.source, time.Since(detail.startedAt).Milliseconds())
+	m.recordSessionDurationLocked(key, entry)
+	delete(m.sessions, key)
+}
+
+func (m *StreamManager) recordSessionDurationLocked(key sessionKey, entry sessionEntry) {
+	if entry.startedAt.IsZero() {
+		return
+	}
+	observability.RecordStreamSessionDuration(context.Background(), key.typ, entry.routeType, entry.source, time.Since(entry.startedAt).Milliseconds())
 }
 
 func streamSessionSource(lease *SourceLease) string {

@@ -107,21 +107,8 @@ func (m *JobManager) Start() { m.scheduler.Start() }
 func (m *JobManager) Shutdown(ctx context.Context) error {
 	m.shutdownCancel()
 	m.mu.Lock()
-	queued := append([]*Job(nil), m.queue...)
-	m.queue = nil
-	for _, item := range queued {
-		item.IsAborting = true
-		m.finishLocked(item, context.Canceled, true)
-	}
-	for _, item := range m.history {
-		if item.Status == StatusStandby {
-			item.IsAborting = true
-			m.finishLocked(item, context.Canceled, true)
-		}
-	}
-	for _, cancel := range m.active {
-		cancel()
-	}
+	m.abortQueuedAndStandbyLocked()
+	m.cancelActiveLocked()
 	m.mu.Unlock()
 	if err := m.scheduler.ShutdownWithContext(ctx); err != nil {
 		return err
@@ -174,12 +161,10 @@ func (m *JobManager) enqueueLocked(def *JobDefinition) (string, error) {
 		Status: StatusQueued, CreatedAt: now, UpdatedAt: now, definition: def,
 		done: make(chan struct{}),
 	}
-	m.history = append(m.history, item)
-	m.trimHistory()
-	m.queue = append(m.queue, item)
+	m.addHistoryLocked(item)
+	m.enqueueItemLocked(item)
 	m.activeKeys[def.Key] = true
-	m.notifyLocked()
-	m.publishJobLocked("create", item)
+	m.publishJobChangeLocked("create", item)
 	slog.Info("job queued", "key", item.Key, "name", item.Name, "id", item.ID)
 	m.dispatchLocked()
 	return item.ID, nil
@@ -187,19 +172,8 @@ func (m *JobManager) enqueueLocked(def *JobDefinition) (string, error) {
 
 func (m *JobManager) dispatchLocked() {
 	for m.running < m.maxConcurrent && len(m.queue) > 0 && m.shutdownCtx.Err() == nil {
-		item := m.queue[0]
-		m.queue = m.queue[1:]
-		now := time.Now()
-		item.Status = StatusRunning
-		item.StartedAt = &now
-		item.UpdatedAt = now
-		ctx, cancel := context.WithCancel(m.shutdownCtx)
-		m.active[item.ID] = cancel
-		m.running++
-		m.notifyLocked()
-		m.publishJobLocked("update", item)
-		m.wg.Add(1)
-		slog.Info("job started", "key", item.Key, "name", item.Name, "id", item.ID)
+		item := m.popQueueLocked()
+		ctx := m.startJobLocked(item)
 		go m.run(ctx, item)
 	}
 }
@@ -215,8 +189,7 @@ func (m *JobManager) run(ctx context.Context, item *Job) {
 	err := item.definition.Handler(ctx)
 	observability.EndSpan(span, err)
 	m.mu.Lock()
-	delete(m.active, item.ID)
-	m.running--
+	m.completeActiveLocked(item)
 	if !item.HasAborted && m.shouldRetryLocked(item, err) {
 		m.standbyLocked(item, err)
 	} else {
@@ -241,8 +214,7 @@ func (m *JobManager) standbyLocked(item *Job, err error) {
 	item.UpdatedAt = time.Now()
 	item.NextRunAt = &next
 	item.Error = err.Error()
-	m.notifyLocked()
-	m.publishJobLocked("update", item)
+	m.publishJobChangeLocked("update", item)
 	slog.Warn("job retry scheduled", "key", item.Key, "id", item.ID, "retry", item.RetryCount, "nextRunAt", next, "err", err)
 	m.wg.Add(1)
 	go func() {
@@ -259,12 +231,7 @@ func (m *JobManager) standbyLocked(item *Job, err error) {
 		if item.Status != StatusStandby || item.HasAborted || m.shutdownCtx.Err() != nil {
 			return
 		}
-		item.Status = StatusQueued
-		item.UpdatedAt = time.Now()
-		item.NextRunAt = nil
-		m.queue = append(m.queue, item)
-		m.notifyLocked()
-		m.publishJobLocked("update", item)
+		m.retryToQueueLocked(item)
 		slog.Info("job retry enqueued", "key", item.Key, "name", item.Name, "id", item.ID, "retry", item.RetryCount)
 		m.dispatchLocked()
 	}()
@@ -286,8 +253,7 @@ func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
 	}
 	delete(m.activeKeys, item.Key)
 	close(item.done)
-	m.notifyLocked()
-	m.publishJobLocked("update", item)
+	m.publishJobChangeLocked("update", item)
 	m.trimHistory()
 	if item.StartedAt != nil {
 		result := "success"
@@ -302,6 +268,72 @@ func (m *JobManager) finishLocked(item *Job, err error, aborted bool) {
 		} else {
 			slog.Info("job completed", "key", item.Key, "id", item.ID, "duration", now.Sub(*item.StartedAt))
 		}
+	}
+}
+
+func (m *JobManager) addHistoryLocked(item *Job) {
+	m.history = append(m.history, item)
+	m.trimHistory()
+}
+
+func (m *JobManager) enqueueItemLocked(item *Job) {
+	m.queue = append(m.queue, item)
+}
+
+func (m *JobManager) popQueueLocked() *Job {
+	item := m.queue[0]
+	m.queue = m.queue[1:]
+	return item
+}
+
+func (m *JobManager) startJobLocked(item *Job) context.Context {
+	now := time.Now()
+	item.Status = StatusRunning
+	item.StartedAt = &now
+	item.UpdatedAt = now
+	ctx, cancel := context.WithCancel(m.shutdownCtx)
+	m.active[item.ID] = cancel
+	m.running++
+	m.publishJobChangeLocked("update", item)
+	m.wg.Add(1)
+	slog.Info("job started", "key", item.Key, "name", item.Name, "id", item.ID)
+	return ctx
+}
+
+func (m *JobManager) completeActiveLocked(item *Job) {
+	delete(m.active, item.ID)
+	m.running--
+}
+
+func (m *JobManager) retryToQueueLocked(item *Job) {
+	item.Status = StatusQueued
+	item.UpdatedAt = time.Now()
+	item.NextRunAt = nil
+	m.enqueueItemLocked(item)
+	m.publishJobChangeLocked("update", item)
+}
+
+func (m *JobManager) abortQueuedAndStandbyLocked() {
+	queued := append([]*Job(nil), m.queue...)
+	m.queue = nil
+	for _, item := range queued {
+		m.abortPendingLocked(item)
+	}
+	for _, item := range m.history {
+		if item.Status == StatusStandby {
+			m.abortPendingLocked(item)
+		}
+	}
+}
+
+func (m *JobManager) abortPendingLocked(item *Job) {
+	item.IsAborting = true
+	m.finishLocked(item, context.Canceled, true)
+}
+
+func (m *JobManager) cancelActiveLocked() {
+	for _, cancel := range m.active {
+		cancel()
 	}
 }
 
@@ -323,6 +355,11 @@ func (m *JobManager) publishJobLocked(typ string, item *Job) {
 		return
 	}
 	m.events.PublishJobEvent(typ, item.EventData())
+}
+
+func (m *JobManager) publishJobChangeLocked(typ string, item *Job) {
+	m.notifyLocked()
+	m.publishJobLocked(typ, item)
 }
 
 func (m *JobManager) publishJobScheduleLocked(schedule ScheduleInfo) {
@@ -362,36 +399,57 @@ func (m *JobManager) Wait(ctx context.Context, id string) (*Job, error) {
 func (m *JobManager) Abort(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if cancel, ok := m.active[id]; ok {
-		if item := m.findJob(id); item != nil {
-			item.IsAborting = true
-			item.HasAborted = true
-			item.UpdatedAt = time.Now()
-			m.notifyLocked()
-			m.publishJobLocked("update", item)
-			slog.Info("job abort requested", "key", item.Key, "name", item.Name, "id", item.ID, "status", item.Status)
-		}
-		cancel()
+	if m.abortActiveLocked(id) {
 		return nil
 	}
-	for i, item := range m.queue {
-		if item.ID == id {
-			m.queue = append(m.queue[:i], m.queue[i+1:]...)
-			item.IsAborting = true
-			slog.Info("queued job aborted", "key", item.Key, "name", item.Name, "id", item.ID)
-			m.finishLocked(item, context.Canceled, true)
-			return nil
-		}
+	if m.abortQueuedLocked(id) {
+		return nil
 	}
-	if item := m.findJob(id); item != nil && item.Status == StatusStandby {
-		item.IsAborting = true
-		item.HasAborted = true
-		slog.Info("standby job aborted", "key", item.Key, "name", item.Name, "id", item.ID)
-		m.finishLocked(item, context.Canceled, true)
+	if m.abortStandbyLocked(id) {
 		return nil
 	}
 	slog.Debug("job abort skipped", "id", id, "err", ErrJobNotRunning)
 	return ErrJobNotRunning
+}
+
+func (m *JobManager) abortActiveLocked(id string) bool {
+	cancel, ok := m.active[id]
+	if !ok {
+		return false
+	}
+	if item := m.findJob(id); item != nil {
+		item.IsAborting = true
+		item.HasAborted = true
+		item.UpdatedAt = time.Now()
+		m.publishJobChangeLocked("update", item)
+		slog.Info("job abort requested", "key", item.Key, "name", item.Name, "id", item.ID, "status", item.Status)
+	}
+	cancel()
+	return true
+}
+
+func (m *JobManager) abortQueuedLocked(id string) bool {
+	for i, item := range m.queue {
+		if item.ID != id {
+			continue
+		}
+		m.queue = append(m.queue[:i], m.queue[i+1:]...)
+		slog.Info("queued job aborted", "key", item.Key, "name", item.Name, "id", item.ID)
+		m.abortPendingLocked(item)
+		return true
+	}
+	return false
+}
+
+func (m *JobManager) abortStandbyLocked(id string) bool {
+	item := m.findJob(id)
+	if item == nil || item.Status != StatusStandby {
+		return false
+	}
+	item.HasAborted = true
+	slog.Info("standby job aborted", "key", item.Key, "name", item.Name, "id", item.ID)
+	m.abortPendingLocked(item)
+	return true
 }
 
 func (m *JobManager) Rerun(id string) error {

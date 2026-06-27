@@ -281,35 +281,22 @@ func (tm *TunerManager) KillProcess(ctx context.Context, index int) error {
 }
 
 func (tm *TunerManager) release(item *Tuner) {
-	var status Status
-	publish := false
+	var update tunerStatusUpdate
+	wasFaulted := false
 	tm.mu.Lock()
 	if tm.inUse[item] {
 		delete(tm.inUse, item)
 		runtime := tm.runtime[item]
-		wasFaulted := runtime.fault
-		runtime.inUse = false
-		runtime.running = false
-		runtime.stopped = false
-		runtime.fault = false
-		runtime.reservationPriority = 0
-		runtime.device = nil
-		runtime.requested = nil
-		runtime.tuned = nil
-		runtime.users = make(map[string]*trackedUser)
-		close(tm.changed)
-		tm.changed = make(chan struct{})
-		status = tm.statusLockedByTuner(item)
-		publish = true
+		wasFaulted = runtime.resetReservation()
+		tm.notifyChangedLocked()
+		update = tm.statusUpdateLocked(item)
 		if wasFaulted {
 			slog.Info("tuner fault cleared", "name", item.Name())
 		}
 		slog.Info("tuner released", "name", item.Name())
 	}
 	tm.mu.Unlock()
-	if publish {
-		tm.publishStatus(eventTypeUpdate, status)
-	}
+	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 }
 
 func (tm *TunerManager) DecoderCommandByType(channelType string) string {
@@ -413,54 +400,70 @@ func (d *managedDevice) UpdateUserStreamInfo(userID, key string, info StreamInfo
 func (d *managedDevice) releaseOnce() { d.once.Do(func() { d.manager.release(d.tuner) }) }
 
 func (tm *TunerManager) markRunning(item *Tuner, device *managedDevice) {
-	var status Status
-	publish := false
 	tm.mu.Lock()
-	runtime := tm.runtime[item]
-	if runtime.inUse && runtime.device == device {
+	update := tm.updateRuntimeStatusLocked(item, func(runtime *tunerRuntime) bool {
+		if !runtime.inUse || runtime.device != device {
+			return false
+		}
 		runtime.running = true
 		runtime.stopped = false
-		status = tm.statusLockedByTuner(item)
-		publish = true
-	}
+		return true
+	})
 	tm.mu.Unlock()
-	if publish {
-		tm.publishStatus(eventTypeUpdate, status)
-	}
+	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 }
 
 func (tm *TunerManager) markStopped(item *Tuner, device *managedDevice) {
-	var status Status
-	publish := false
 	tm.mu.Lock()
-	runtime := tm.runtime[item]
-	if runtime.inUse && runtime.device == device {
+	update := tm.updateRuntimeStatusLocked(item, func(runtime *tunerRuntime) bool {
+		if !runtime.inUse || runtime.device != device {
+			return false
+		}
 		runtime.running = false
 		runtime.stopped = true
-		status = tm.statusLockedByTuner(item)
-		publish = true
-	}
+		return true
+	})
 	tm.mu.Unlock()
-	if publish {
-		tm.publishStatus(eventTypeUpdate, status)
-	}
+	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
 }
 
 func (tm *TunerManager) markFault(item *Tuner, device *managedDevice) {
-	var status Status
 	tm.mu.Lock()
-	runtime := tm.runtime[item]
-	marked := false
-	if runtime.inUse && runtime.device == device {
+	update := tm.updateRuntimeStatusLocked(item, func(runtime *tunerRuntime) bool {
+		if !runtime.inUse || runtime.device != device {
+			return false
+		}
 		runtime.running = false
 		runtime.fault = true
-		marked = true
-		status = tm.statusLockedByTuner(item)
-	}
+		return true
+	})
 	tm.mu.Unlock()
-	if marked {
+	if update.publish {
 		slog.Warn("tuner marked fault", "name", item.Name())
-		tm.publishStatus(eventTypeUpdate, status)
+	}
+	tm.publishTunerStatusUpdate(eventTypeUpdate, update)
+}
+
+func (tm *TunerManager) notifyChangedLocked() {
+	close(tm.changed)
+	tm.changed = make(chan struct{})
+}
+
+func (tm *TunerManager) updateRuntimeStatusLocked(item *Tuner, update func(*tunerRuntime) bool) tunerStatusUpdate {
+	runtime := tm.runtime[item]
+	if runtime == nil || !update(runtime) {
+		return tunerStatusUpdate{}
+	}
+	return tm.statusUpdateLocked(item)
+}
+
+func (tm *TunerManager) statusUpdateLocked(item *Tuner) tunerStatusUpdate {
+	return tunerStatusUpdate{status: tm.statusLockedByTuner(item), publish: true}
+}
+
+func (tm *TunerManager) publishTunerStatusUpdate(typ string, update tunerStatusUpdate) {
+	if update.publish {
+		tm.publishStatus(typ, update.status)
 	}
 }
 
