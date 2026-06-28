@@ -32,14 +32,16 @@ func (t remoteTuner) matchesRoute(channelType, channel string) bool {
 }
 
 type remoteService struct {
-	ServiceID          uint16 `json:"serviceId"`
-	NetworkID          uint16 `json:"networkId"`
-	TransportStreamID  uint16 `json:"transportStreamId"`
-	Name               string `json:"name"`
-	Type               int    `json:"type"`
-	LogoID             *int64 `json:"logoId"`
-	HasLogoData        bool   `json:"hasLogoData"`
-	RemoteControlKeyID int    `json:"remoteControlKeyId"`
+	ServiceID           uint16 `json:"serviceId"`
+	NetworkID           uint16 `json:"networkId"`
+	TransportStreamID   uint16 `json:"transportStreamId"`
+	Name                string `json:"name"`
+	Type                int    `json:"type"`
+	EITScheduleFlag     *bool  `json:"eitScheduleFlag"`
+	EITPresentFollowing *bool  `json:"eitPresentFollowing"`
+	LogoID              *int64 `json:"logoId"`
+	HasLogoData         bool   `json:"hasLogoData"`
+	RemoteControlKeyID  int    `json:"remoteControlKeyId"`
 }
 
 func uint8Ptr(v uint8) *uint8 { return &v }

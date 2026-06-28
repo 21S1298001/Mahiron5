@@ -1,5 +1,6 @@
 -- name: ListServices :many
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -13,6 +14,7 @@ LEFT JOIN epg_service_status epg
 
 -- name: GetServiceByID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -27,6 +29,7 @@ WHERE s.id = ?;
 
 -- name: GetServiceByItemID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -41,6 +44,7 @@ WHERE s.network_id * 100000 + s.service_id = ?;
 
 -- name: GetServiceByNetworkServiceID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -55,6 +59,7 @@ WHERE s.network_id = ? AND s.service_id = ?;
 
 -- name: GetServicesByChannel :many
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -69,6 +74,7 @@ WHERE s.channel_type = ? AND s.channel_id = ?;
 
 -- name: GetServiceByChannelAndID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -84,6 +90,7 @@ WHERE s.channel_type = sqlc.arg(channel_type)
   AND s.id = sqlc.arg(id)
 UNION ALL
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -122,14 +129,16 @@ LEFT JOIN epg_service_status epg
 DELETE FROM services WHERE channel_type = ? AND channel_id = ?;
 
 -- name: UpsertService :exec
-INSERT INTO services (id, service_id, network_id, transport_stream_id, name, type, logo_id, logo_version, logo_download_data_id, remote_control_key_id, channel_type, channel_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO services (id, service_id, network_id, transport_stream_id, name, type, eit_schedule_flag, eit_present_following, logo_id, logo_version, logo_download_data_id, remote_control_key_id, channel_type, channel_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   service_id=excluded.service_id,
   network_id=excluded.network_id,
   transport_stream_id=excluded.transport_stream_id,
   name=excluded.name,
   type=excluded.type,
+  eit_schedule_flag=excluded.eit_schedule_flag,
+  eit_present_following=excluded.eit_present_following,
   logo_id=excluded.logo_id,
   logo_version=excluded.logo_version,
   logo_download_data_id=excluded.logo_download_data_id,

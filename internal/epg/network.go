@@ -52,6 +52,9 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 	}
 	serviceSeen := make(map[ServiceKey]bool)
 	for _, svc := range services {
+		if !svc.EITScheduleFlag {
+			continue
+		}
 		key := ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId}
 		if groups[svc.NetworkId] != nil && !serviceSeen[key] {
 			groups[svc.NetworkId].Services = append(groups[svc.NetworkId].Services, key)
@@ -88,6 +91,9 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 	var networkServices []ServiceKey
 	for _, svc := range storedServices {
 		if svc.NetworkId != networkID {
+			continue
+		}
+		if !svc.EITScheduleFlag {
 			continue
 		}
 		key := ServiceKey{NetworkID: svc.NetworkId, ServiceID: svc.ServiceId}
@@ -252,6 +258,9 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 			}
 			slog.Debug("observed EIT section", "source", "eits", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
 			snapshot.Observe(section, time.Now())
+			if snapshot.AllComplete(expected) {
+				cancel()
+			}
 		case <-collectCtx.Done():
 			finished = true
 		}
@@ -270,8 +279,11 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 
 	now := time.Now().UnixMilli()
 	var result error
+	observed := 0
+	var unobserved error
 	for _, key := range expected {
 		if snapshot.Observed(key) {
+			observed++
 			programs := snapshot.Programs(key)
 			if !snapshot.ServiceComplete(key) {
 				slog.Warn("flushing incomplete EITS collection",
@@ -308,8 +320,11 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error()); attemptErr != nil {
 				observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
 			}
-			result = errors.Join(result, err)
+			unobserved = errors.Join(unobserved, err)
 		}
+	}
+	if observed == 0 {
+		result = errors.Join(result, unobserved)
 	}
 	return result
 }

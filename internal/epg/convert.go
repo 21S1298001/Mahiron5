@@ -16,6 +16,7 @@ func EITSectionFromTS(eit *ts.EIT) *EITSection {
 		TransportStreamID:        eit.TransportStreamID,
 		ServiceID:                eit.ServiceID,
 		TableID:                  eit.TableID,
+		LastTableID:              eit.LastTableID,
 		SectionNumber:            eit.SectionNumber,
 		LastSectionNumber:        eit.LastSectionNumber,
 		SegmentLastSectionNumber: eit.SegmentLastSectionNumber,

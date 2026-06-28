@@ -157,18 +157,27 @@ func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel st
 			logoDownloadDataID = remoteLogoDownloadDataID(svc)
 		}
 		scanned[i] = ts.ServiceInfo{
-			Nid:                svc.NetworkID,
-			Tsid:               svc.TransportStreamID,
-			Sid:                svc.ServiceID,
-			Name:               svc.Name,
-			Type:               uint8(svc.Type),
-			LogoId:             logoID,
-			LogoVersion:        logoVersion,
-			LogoDownloadDataId: logoDownloadDataID,
-			RemoteControlKeyId: uint8Ptr(uint8(svc.RemoteControlKeyID)),
+			Nid:                 svc.NetworkID,
+			Tsid:                svc.TransportStreamID,
+			Sid:                 svc.ServiceID,
+			Name:                svc.Name,
+			Type:                uint8(svc.Type),
+			EITScheduleFlag:     remoteBoolDefault(svc.EITScheduleFlag, true),
+			EITPresentFollowing: remoteBoolDefault(svc.EITPresentFollowing, true),
+			LogoId:              logoID,
+			LogoVersion:         logoVersion,
+			LogoDownloadDataId:  logoDownloadDataID,
+			RemoteControlKeyId:  uint8Ptr(uint8(svc.RemoteControlKeyID)),
 		}
 	}
 	return scanned, nil
+}
+
+func remoteBoolDefault(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }
 
 func (c *RemoteClient) ListChannelServices(ctx context.Context, channelType, channel string) ([]remoteService, error) {

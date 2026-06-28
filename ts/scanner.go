@@ -6,15 +6,17 @@ import (
 
 // ServiceInfo represents a scanned service in the scanner JSON output.
 type ServiceInfo struct {
-	Nid                uint16  `json:"nid"`
-	Tsid               uint16  `json:"tsid"`
-	Sid                uint16  `json:"sid"`
-	Name               string  `json:"name"`
-	Type               uint8   `json:"type"`
-	LogoId             int64   `json:"logoId"`
-	LogoVersion        *uint16 `json:"logoVersion,omitempty"`
-	LogoDownloadDataId *uint16 `json:"logoDownloadDataId,omitempty"`
-	RemoteControlKeyId *uint8  `json:"remoteControlKeyId,omitempty"`
+	Nid                 uint16  `json:"nid"`
+	Tsid                uint16  `json:"tsid"`
+	Sid                 uint16  `json:"sid"`
+	Name                string  `json:"name"`
+	Type                uint8   `json:"type"`
+	EITScheduleFlag     bool    `json:"eitScheduleFlag"`
+	EITPresentFollowing bool    `json:"eitPresentFollowing"`
+	LogoId              int64   `json:"logoId"`
+	LogoVersion         *uint16 `json:"logoVersion,omitempty"`
+	LogoDownloadDataId  *uint16 `json:"logoDownloadDataId,omitempty"`
+	RemoteControlKeyId  *uint8  `json:"remoteControlKeyId,omitempty"`
 }
 
 // ServiceScan incrementally builds the service list from PAT, SDT and NIT
@@ -169,12 +171,14 @@ func (s *serviceScanState) handleSDT() {
 				continue
 			}
 			info := ServiceInfo{
-				Nid:    sdt.OriginalNetworkID,
-				Tsid:   sdt.TransportStreamID,
-				Sid:    svc.ServiceID,
-				Name:   desc.ServiceName,
-				Type:   desc.ServiceType,
-				LogoId: -1,
+				Nid:                 sdt.OriginalNetworkID,
+				Tsid:                sdt.TransportStreamID,
+				Sid:                 svc.ServiceID,
+				Name:                desc.ServiceName,
+				Type:                desc.ServiceType,
+				EITScheduleFlag:     svc.EITScheduleFlag,
+				EITPresentFollowing: svc.EITPresentFollowing,
+				LogoId:              -1,
 			}
 			if logo := LogoDescriptorFromDescriptors(svc.Descriptors); logo != nil {
 				info.LogoId = int64(logo.LogoID)

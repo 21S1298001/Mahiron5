@@ -3,20 +3,22 @@ package service
 import "github.com/21S1298001/mahiron/internal/config"
 
 type Service struct {
-	Id                 string
-	ServiceId          uint16
-	NetworkId          uint16
-	TransportStreamId  uint16
-	Name               string
-	Type               uint8
-	LogoId             *int64
-	LogoVersion        *int64
-	LogoDownloadDataId *int64
-	HasLogoData        bool
-	RemoteControlKeyId uint8
-	ChannelType        string
-	ChannelId          string
-	EPG                EPGStatus
+	Id                  string
+	ServiceId           uint16
+	NetworkId           uint16
+	TransportStreamId   uint16
+	Name                string
+	Type                uint8
+	EITScheduleFlag     bool
+	EITPresentFollowing bool
+	LogoId              *int64
+	LogoVersion         *int64
+	LogoDownloadDataId  *int64
+	HasLogoData         bool
+	RemoteControlKeyId  uint8
+	ChannelType         string
+	ChannelId           string
+	EPG                 EPGStatus
 }
 
 type EPGStatus struct {
@@ -42,14 +44,16 @@ func (s *Service) ItemId() int64 {
 
 func (s *Service) EventData(channel *config.ChannelConfig) map[string]any {
 	data := map[string]any{
-		"id":                 s.ItemId(),
-		"serviceId":          s.ServiceId,
-		"networkId":          s.NetworkId,
-		"transportStreamId":  s.TransportStreamId,
-		"name":               s.Name,
-		"type":               int(s.Type),
-		"hasLogoData":        s.HasLogoData,
-		"remoteControlKeyId": int(s.RemoteControlKeyId),
+		"id":                  s.ItemId(),
+		"serviceId":           s.ServiceId,
+		"networkId":           s.NetworkId,
+		"transportStreamId":   s.TransportStreamId,
+		"name":                s.Name,
+		"type":                int(s.Type),
+		"eitScheduleFlag":     s.EITScheduleFlag,
+		"eitPresentFollowing": s.EITPresentFollowing,
+		"hasLogoData":         s.HasLogoData,
+		"remoteControlKeyId":  int(s.RemoteControlKeyId),
 	}
 	if s.LogoId != nil {
 		data["logoId"] = *s.LogoId

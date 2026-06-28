@@ -7,6 +7,7 @@ type EITSection struct {
 	TransportStreamID        uint16
 	ServiceID                uint16
 	TableID                  uint8
+	LastTableID              uint8
 	SectionNumber            uint8
 	LastSectionNumber        uint8
 	SegmentLastSectionNumber uint8

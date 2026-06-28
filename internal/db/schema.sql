@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS services (
     transport_stream_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     type INTEGER NOT NULL,
+    eit_schedule_flag INTEGER NOT NULL DEFAULT 1,
+    eit_present_following INTEGER NOT NULL DEFAULT 1,
     logo_id INTEGER,
     logo_version INTEGER,
     logo_download_data_id INTEGER,

@@ -288,18 +288,20 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 
 	for _, svc := range services {
 		if err := q.UpsertService(ctx, gen.UpsertServiceParams{
-			ID:                 svc.Id,
-			ServiceID:          int64(svc.ServiceId),
-			NetworkID:          int64(svc.NetworkId),
-			TransportStreamID:  int64(svc.TransportStreamId),
-			Name:               svc.Name,
-			Type:               int64(svc.Type),
-			LogoID:             svc.LogoId,
-			LogoVersion:        svc.LogoVersion,
-			LogoDownloadDataID: svc.LogoDownloadDataId,
-			RemoteControlKeyID: int64(svc.RemoteControlKeyId),
-			ChannelType:        channelType,
-			ChannelID:          channelId,
+			ID:                  svc.Id,
+			ServiceID:           int64(svc.ServiceId),
+			NetworkID:           int64(svc.NetworkId),
+			TransportStreamID:   int64(svc.TransportStreamId),
+			Name:                svc.Name,
+			Type:                int64(svc.Type),
+			EitScheduleFlag:     boolToInt64(svc.EITScheduleFlag),
+			EitPresentFollowing: boolToInt64(svc.EITPresentFollowing),
+			LogoID:              svc.LogoId,
+			LogoVersion:         svc.LogoVersion,
+			LogoDownloadDataID:  svc.LogoDownloadDataId,
+			RemoteControlKeyID:  int64(svc.RemoteControlKeyId),
+			ChannelType:         channelType,
+			ChannelID:           channelId,
 		}); err != nil {
 			return fmt.Errorf("upsert service %s: %w", svc.Id, err)
 		}
@@ -360,39 +362,43 @@ func (s *sqliteStore) PruneChannels(ctx context.Context, active []ChannelKey) er
 }
 
 type serviceRow struct {
-	id                 string
-	serviceID          int64
-	networkID          int64
-	transportStreamID  int64
-	name               string
-	typ                int64
-	logoID             *int64
-	logoVersion        *int64
-	logoDownloadDataID *int64
-	hasLogoData        bool
-	remoteControlKeyID int64
-	channelType        string
-	channelID          string
-	lastAttemptAt      *int64
-	lastSuccessAt      *int64
-	lastError          *string
+	id                  string
+	serviceID           int64
+	networkID           int64
+	transportStreamID   int64
+	name                string
+	typ                 int64
+	eitScheduleFlag     int64
+	eitPresentFollowing int64
+	logoID              *int64
+	logoVersion         *int64
+	logoDownloadDataID  *int64
+	hasLogoData         bool
+	remoteControlKeyID  int64
+	channelType         string
+	channelID           string
+	lastAttemptAt       *int64
+	lastSuccessAt       *int64
+	lastError           *string
 }
 
 func fromServiceRow(s serviceRow) *Service {
 	result := &Service{
-		Id:                 s.id,
-		ServiceId:          uint16(s.serviceID),
-		NetworkId:          uint16(s.networkID),
-		TransportStreamId:  uint16(s.transportStreamID),
-		Name:               s.name,
-		Type:               uint8(s.typ),
-		LogoId:             s.logoID,
-		LogoVersion:        s.logoVersion,
-		LogoDownloadDataId: s.logoDownloadDataID,
-		HasLogoData:        s.hasLogoData,
-		RemoteControlKeyId: uint8(s.remoteControlKeyID),
-		ChannelType:        s.channelType,
-		ChannelId:          s.channelID,
+		Id:                  s.id,
+		ServiceId:           uint16(s.serviceID),
+		NetworkId:           uint16(s.networkID),
+		TransportStreamId:   uint16(s.transportStreamID),
+		Name:                s.name,
+		Type:                uint8(s.typ),
+		EITScheduleFlag:     s.eitScheduleFlag != 0,
+		EITPresentFollowing: s.eitPresentFollowing != 0,
+		LogoId:              s.logoID,
+		LogoVersion:         s.logoVersion,
+		LogoDownloadDataId:  s.logoDownloadDataID,
+		HasLogoData:         s.hasLogoData,
+		RemoteControlKeyId:  uint8(s.remoteControlKeyID),
+		ChannelType:         s.channelType,
+		ChannelId:           s.channelID,
 		EPG: EPGStatus{
 			LastAttemptAt: s.lastAttemptAt,
 			LastSuccessAt: s.lastSuccessAt,
@@ -405,25 +411,32 @@ func fromServiceRow(s serviceRow) *Service {
 }
 
 func listServiceRow(s gen.ListServicesRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServiceByIDRow(s gen.GetServiceByIDRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServiceByItemIDRow(s gen.GetServiceByItemIDRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServiceByNetworkServiceIDRow(s gen.GetServiceByNetworkServiceIDRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServicesByChannelRow(s gen.GetServicesByChannelRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 
 func getServiceByChannelAndIDRow(s gen.GetServiceByChannelAndIDRow) serviceRow {
-	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+}
+
+func boolToInt64(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
 }

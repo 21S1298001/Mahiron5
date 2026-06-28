@@ -54,6 +54,23 @@ func TestEITSnapshotServiceCompleteFalseOnMissingSegment(t *testing.T) {
 	}
 }
 
+func TestEITSnapshotServiceCompleteUsesLastTableID(t *testing.T) {
+	snap := NewEITSnapshot()
+	now := time.Unix(0, 0)
+	section := makeSection(1, 100, 2, 0x50, 0, 0, 1, ev(1, 1000, 1000))
+	section.LastTableID = 0x51
+	snap.Observe(section, now)
+
+	key := ServiceKey{1, 100}
+	if snap.ServiceComplete(key) {
+		t.Fatal("ServiceComplete should require tables through last_table_id")
+	}
+	report := snap.CompletionReport(key)
+	if len(report.MissingTableIDs) != 1 || report.MissingTableIDs[0] != 0x51 {
+		t.Fatalf("MissingTableIDs = %v, want [81]", report.MissingTableIDs)
+	}
+}
+
 func TestEITSnapshotServiceCompleteAllowsElapsedLeadingSegments(t *testing.T) {
 	snap := NewEITSnapshot()
 	now := time.Unix(0, 0)

@@ -1,0 +1,3 @@
+ALTER TABLE services ADD COLUMN eit_schedule_flag INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE services ADD COLUMN eit_present_following INTEGER NOT NULL DEFAULT 1;

@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
+	servicepkg "github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -100,6 +102,62 @@ func TestGatherNetworkMergesAfterCollectionTimeout(t *testing.T) {
 	}
 }
 
+func TestBuildNetworkInputsFiltersServicesWithoutEITSchedule(t *testing.T) {
+	store := &staticEPGServiceStore{services: []*servicepkg.Service{
+		{NetworkId: 4, ServiceId: 101, EITScheduleFlag: true, ChannelType: "GR", ChannelId: "27"},
+		{NetworkId: 4, ServiceId: 102, EITScheduleFlag: false, ChannelType: "GR", ChannelId: "27"},
+		{NetworkId: 5, ServiceId: 201, EITScheduleFlag: true, ChannelType: "GR", ChannelId: "27"},
+	}}
+	channels := []config.ChannelConfig{{Type: "GR", Channel: "27"}}
+
+	_, services, err := buildNetworkInputs(context.Background(), store, channels, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ServiceKey{{NetworkID: 4, ServiceID: 101}}
+	if len(services) != len(want) || services[0] != want[0] {
+		t.Fatalf("network services = %v, want %v", services, want)
+	}
+}
+
+func TestCollectServiceSnapshotsDoesNotFailWhenSomeServicesUnobserved(t *testing.T) {
+	observed := ServiceKey{NetworkID: 4, ServiceID: 101}
+	missing := ServiceKey{NetworkID: 4, ServiceID: 102}
+	store := &collectProgramStore{}
+	status := newRemoteSyncServiceStore()
+	session := &collectEITSession{sections: []*ts.EIT{
+		testEIT(ts.TableIDEITSStart, observed, 10),
+	}}
+
+	err := CollectServiceSnapshots(context.Background(), store, status, session, []ServiceKey{observed, missing}, 20*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.successes[observed] == 0 {
+		t.Fatal("observed service did not record success")
+	}
+	if status.successes[missing] != 0 {
+		t.Fatal("unobserved service recorded success")
+	}
+	if got, want := status.errors[missing], "service 102 EITS incomplete"; got != want {
+		t.Fatalf("unobserved service error = %q, want %q", got, want)
+	}
+}
+
+func TestCollectServiceSnapshotsFailsWhenNoServicesObserved(t *testing.T) {
+	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	status := newRemoteSyncServiceStore()
+	session := &collectEITSession{}
+
+	err := CollectServiceSnapshots(context.Background(), &collectProgramStore{}, status, session, []ServiceKey{key}, 20*time.Millisecond)
+	if err == nil {
+		t.Fatal("CollectServiceSnapshots error = nil, want incomplete service error")
+	}
+	if got, want := status.errors[key], "service 101 EITS incomplete"; got != want {
+		t.Fatalf("service error = %q, want %q", got, want)
+	}
+}
+
 func TestServiceCleanupUsesCleanupMetricSource(t *testing.T) {
 	store := &collectProgramStore{}
 	service := NewService(store, newRemoteSyncServiceStore(), nil, nil, 1, time.Second)
@@ -162,6 +220,22 @@ type collectProgramStore struct {
 	failErr      error
 	sources      []string
 	deleteSource string
+}
+
+type staticEPGServiceStore struct {
+	services []*servicepkg.Service
+}
+
+func (s *staticEPGServiceStore) GetServices(context.Context) ([]*servicepkg.Service, error) {
+	return s.services, nil
+}
+
+func (s *staticEPGServiceStore) SetEPGAttempt(context.Context, uint16, uint16, int64, string) error {
+	return nil
+}
+
+func (s *staticEPGServiceStore) SetEPGSuccess(context.Context, uint16, uint16, int64) error {
+	return nil
 }
 
 func (s *collectProgramStore) UpsertPrograms(ctx context.Context, programs []*program.Program) error {

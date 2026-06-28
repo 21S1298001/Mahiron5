@@ -80,8 +80,8 @@ func TestServiceScanDoesNotFilterServiceTypes(t *testing.T) {
 	}))
 	got := scan.Services()
 	want := []ServiceInfo{
-		{Nid: 0x5678, Tsid: 0x1234, Sid: 100, Name: "４Ｋ", Type: 0xAD, LogoId: -1},
-		{Nid: 0x5678, Tsid: 0x1234, Sid: 101, Name: "ＤＡＴＡ", Type: 0xC0, LogoId: -1},
+		{Nid: 0x5678, Tsid: 0x1234, Sid: 100, Name: "４Ｋ", Type: 0xAD, EITScheduleFlag: true, EITPresentFollowing: true, LogoId: -1},
+		{Nid: 0x5678, Tsid: 0x1234, Sid: 101, Name: "ＤＡＴＡ", Type: 0xC0, EITScheduleFlag: true, EITPresentFollowing: true, LogoId: -1},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Services returned %#v, want %#v", got, want)

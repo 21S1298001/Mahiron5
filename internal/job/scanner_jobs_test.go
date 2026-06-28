@@ -66,17 +66,17 @@ func TestEPGGathererDispatchesPerNetwork(t *testing.T) {
 	serviceStore := service.NewSQLiteStore(database)
 	sm := service.NewServiceManager(serviceStore, channels)
 	if err := serviceStore.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
-		{Id: "327360001", NetworkId: 32736, ServiceId: 1, ChannelType: "GR", ChannelId: "27"},
+		{Id: "327360001", NetworkId: 32736, ServiceId: 1, EITScheduleFlag: true, ChannelType: "GR", ChannelId: "27"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := serviceStore.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{
-		{Id: "0000400101", NetworkId: 4, ServiceId: 101, ChannelType: "BS", ChannelId: "BS01"},
+		{Id: "0000400101", NetworkId: 4, ServiceId: 101, EITScheduleFlag: true, ChannelType: "BS", ChannelId: "BS01"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := serviceStore.ReplaceChannelServices(ctx, "BS", "BS03", []*service.Service{
-		{Id: "0000400103", NetworkId: 4, ServiceId: 103, ChannelType: "BS", ChannelId: "BS03"},
+		{Id: "0000400103", NetworkId: 4, ServiceId: 103, EITScheduleFlag: true, ChannelType: "BS", ChannelId: "BS03"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -225,8 +225,8 @@ func TestServiceUpdaterTriggersEPGGatherForNewNetworks(t *testing.T) {
 	mgr := newTestManager(t)
 	pm := program.NewProgramManager(program.NewSQLiteStore(database))
 	scanService := servicescan.NewService(sm, fakeScanScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 101, Name: "test", Type: 1},
-		{Nid: 4, Tsid: 1, Sid: 102, Name: "test", Type: 1},
+		{Nid: 4, Tsid: 1, Sid: 101, Name: "test", Type: 1, EITScheduleFlag: true},
+		{Nid: 4, Tsid: 1, Sid: 102, Name: "test", Type: 1, EITScheduleFlag: true},
 	}}, channels, 30*time.Second)
 	stm := stream.NewStreamManager(stream.StreamManagerConfig{Channels: channels, TunerManager: noTunerManager{}})
 	epgService := epg.NewService(pm, sm, stream.NewEPGCollectorAdapter(stm), channels, 0, 10*time.Minute)

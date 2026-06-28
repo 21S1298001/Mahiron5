@@ -168,6 +168,7 @@ func (q *Queries) GetLogoByServiceItemID(ctx context.Context, networkID int64) (
 
 const getServiceByChannelAndID = `-- name: GetServiceByChannelAndID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -183,6 +184,7 @@ WHERE s.channel_type = ?1
   AND s.id = ?3
 UNION ALL
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -208,22 +210,24 @@ type GetServiceByChannelAndIDParams struct {
 }
 
 type GetServiceByChannelAndIDRow struct {
-	ID                 string  `json:"id"`
-	ServiceID          int64   `json:"service_id"`
-	NetworkID          int64   `json:"network_id"`
-	TransportStreamID  int64   `json:"transport_stream_id"`
-	Name               string  `json:"name"`
-	Type               int64   `json:"type"`
-	LogoID             *int64  `json:"logo_id"`
-	LogoVersion        *int64  `json:"logo_version"`
-	LogoDownloadDataID *int64  `json:"logo_download_data_id"`
-	HasLogoData        bool    `json:"has_logo_data"`
-	RemoteControlKeyID int64   `json:"remote_control_key_id"`
-	ChannelType        string  `json:"channel_type"`
-	ChannelID          string  `json:"channel_id"`
-	LastAttemptAt      *int64  `json:"last_attempt_at"`
-	LastSuccessAt      *int64  `json:"last_success_at"`
-	LastError          *string `json:"last_error"`
+	ID                  string  `json:"id"`
+	ServiceID           int64   `json:"service_id"`
+	NetworkID           int64   `json:"network_id"`
+	TransportStreamID   int64   `json:"transport_stream_id"`
+	Name                string  `json:"name"`
+	Type                int64   `json:"type"`
+	EitScheduleFlag     int64   `json:"eit_schedule_flag"`
+	EitPresentFollowing int64   `json:"eit_present_following"`
+	LogoID              *int64  `json:"logo_id"`
+	LogoVersion         *int64  `json:"logo_version"`
+	LogoDownloadDataID  *int64  `json:"logo_download_data_id"`
+	HasLogoData         bool    `json:"has_logo_data"`
+	RemoteControlKeyID  int64   `json:"remote_control_key_id"`
+	ChannelType         string  `json:"channel_type"`
+	ChannelID           string  `json:"channel_id"`
+	LastAttemptAt       *int64  `json:"last_attempt_at"`
+	LastSuccessAt       *int64  `json:"last_success_at"`
+	LastError           *string `json:"last_error"`
 }
 
 func (q *Queries) GetServiceByChannelAndID(ctx context.Context, arg GetServiceByChannelAndIDParams) (GetServiceByChannelAndIDRow, error) {
@@ -241,6 +245,8 @@ func (q *Queries) GetServiceByChannelAndID(ctx context.Context, arg GetServiceBy
 		&i.TransportStreamID,
 		&i.Name,
 		&i.Type,
+		&i.EitScheduleFlag,
+		&i.EitPresentFollowing,
 		&i.LogoID,
 		&i.LogoVersion,
 		&i.LogoDownloadDataID,
@@ -257,6 +263,7 @@ func (q *Queries) GetServiceByChannelAndID(ctx context.Context, arg GetServiceBy
 
 const getServiceByID = `-- name: GetServiceByID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -271,22 +278,24 @@ WHERE s.id = ?
 `
 
 type GetServiceByIDRow struct {
-	ID                 string  `json:"id"`
-	ServiceID          int64   `json:"service_id"`
-	NetworkID          int64   `json:"network_id"`
-	TransportStreamID  int64   `json:"transport_stream_id"`
-	Name               string  `json:"name"`
-	Type               int64   `json:"type"`
-	LogoID             *int64  `json:"logo_id"`
-	LogoVersion        *int64  `json:"logo_version"`
-	LogoDownloadDataID *int64  `json:"logo_download_data_id"`
-	HasLogoData        bool    `json:"has_logo_data"`
-	RemoteControlKeyID int64   `json:"remote_control_key_id"`
-	ChannelType        string  `json:"channel_type"`
-	ChannelID          string  `json:"channel_id"`
-	LastAttemptAt      *int64  `json:"last_attempt_at"`
-	LastSuccessAt      *int64  `json:"last_success_at"`
-	LastError          *string `json:"last_error"`
+	ID                  string  `json:"id"`
+	ServiceID           int64   `json:"service_id"`
+	NetworkID           int64   `json:"network_id"`
+	TransportStreamID   int64   `json:"transport_stream_id"`
+	Name                string  `json:"name"`
+	Type                int64   `json:"type"`
+	EitScheduleFlag     int64   `json:"eit_schedule_flag"`
+	EitPresentFollowing int64   `json:"eit_present_following"`
+	LogoID              *int64  `json:"logo_id"`
+	LogoVersion         *int64  `json:"logo_version"`
+	LogoDownloadDataID  *int64  `json:"logo_download_data_id"`
+	HasLogoData         bool    `json:"has_logo_data"`
+	RemoteControlKeyID  int64   `json:"remote_control_key_id"`
+	ChannelType         string  `json:"channel_type"`
+	ChannelID           string  `json:"channel_id"`
+	LastAttemptAt       *int64  `json:"last_attempt_at"`
+	LastSuccessAt       *int64  `json:"last_success_at"`
+	LastError           *string `json:"last_error"`
 }
 
 func (q *Queries) GetServiceByID(ctx context.Context, id string) (GetServiceByIDRow, error) {
@@ -299,6 +308,8 @@ func (q *Queries) GetServiceByID(ctx context.Context, id string) (GetServiceByID
 		&i.TransportStreamID,
 		&i.Name,
 		&i.Type,
+		&i.EitScheduleFlag,
+		&i.EitPresentFollowing,
 		&i.LogoID,
 		&i.LogoVersion,
 		&i.LogoDownloadDataID,
@@ -315,6 +326,7 @@ func (q *Queries) GetServiceByID(ctx context.Context, id string) (GetServiceByID
 
 const getServiceByItemID = `-- name: GetServiceByItemID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -329,22 +341,24 @@ WHERE s.network_id * 100000 + s.service_id = ?
 `
 
 type GetServiceByItemIDRow struct {
-	ID                 string  `json:"id"`
-	ServiceID          int64   `json:"service_id"`
-	NetworkID          int64   `json:"network_id"`
-	TransportStreamID  int64   `json:"transport_stream_id"`
-	Name               string  `json:"name"`
-	Type               int64   `json:"type"`
-	LogoID             *int64  `json:"logo_id"`
-	LogoVersion        *int64  `json:"logo_version"`
-	LogoDownloadDataID *int64  `json:"logo_download_data_id"`
-	HasLogoData        bool    `json:"has_logo_data"`
-	RemoteControlKeyID int64   `json:"remote_control_key_id"`
-	ChannelType        string  `json:"channel_type"`
-	ChannelID          string  `json:"channel_id"`
-	LastAttemptAt      *int64  `json:"last_attempt_at"`
-	LastSuccessAt      *int64  `json:"last_success_at"`
-	LastError          *string `json:"last_error"`
+	ID                  string  `json:"id"`
+	ServiceID           int64   `json:"service_id"`
+	NetworkID           int64   `json:"network_id"`
+	TransportStreamID   int64   `json:"transport_stream_id"`
+	Name                string  `json:"name"`
+	Type                int64   `json:"type"`
+	EitScheduleFlag     int64   `json:"eit_schedule_flag"`
+	EitPresentFollowing int64   `json:"eit_present_following"`
+	LogoID              *int64  `json:"logo_id"`
+	LogoVersion         *int64  `json:"logo_version"`
+	LogoDownloadDataID  *int64  `json:"logo_download_data_id"`
+	HasLogoData         bool    `json:"has_logo_data"`
+	RemoteControlKeyID  int64   `json:"remote_control_key_id"`
+	ChannelType         string  `json:"channel_type"`
+	ChannelID           string  `json:"channel_id"`
+	LastAttemptAt       *int64  `json:"last_attempt_at"`
+	LastSuccessAt       *int64  `json:"last_success_at"`
+	LastError           *string `json:"last_error"`
 }
 
 func (q *Queries) GetServiceByItemID(ctx context.Context, networkID int64) (GetServiceByItemIDRow, error) {
@@ -357,6 +371,8 @@ func (q *Queries) GetServiceByItemID(ctx context.Context, networkID int64) (GetS
 		&i.TransportStreamID,
 		&i.Name,
 		&i.Type,
+		&i.EitScheduleFlag,
+		&i.EitPresentFollowing,
 		&i.LogoID,
 		&i.LogoVersion,
 		&i.LogoDownloadDataID,
@@ -373,6 +389,7 @@ func (q *Queries) GetServiceByItemID(ctx context.Context, networkID int64) (GetS
 
 const getServiceByNetworkServiceID = `-- name: GetServiceByNetworkServiceID :one
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -392,22 +409,24 @@ type GetServiceByNetworkServiceIDParams struct {
 }
 
 type GetServiceByNetworkServiceIDRow struct {
-	ID                 string  `json:"id"`
-	ServiceID          int64   `json:"service_id"`
-	NetworkID          int64   `json:"network_id"`
-	TransportStreamID  int64   `json:"transport_stream_id"`
-	Name               string  `json:"name"`
-	Type               int64   `json:"type"`
-	LogoID             *int64  `json:"logo_id"`
-	LogoVersion        *int64  `json:"logo_version"`
-	LogoDownloadDataID *int64  `json:"logo_download_data_id"`
-	HasLogoData        bool    `json:"has_logo_data"`
-	RemoteControlKeyID int64   `json:"remote_control_key_id"`
-	ChannelType        string  `json:"channel_type"`
-	ChannelID          string  `json:"channel_id"`
-	LastAttemptAt      *int64  `json:"last_attempt_at"`
-	LastSuccessAt      *int64  `json:"last_success_at"`
-	LastError          *string `json:"last_error"`
+	ID                  string  `json:"id"`
+	ServiceID           int64   `json:"service_id"`
+	NetworkID           int64   `json:"network_id"`
+	TransportStreamID   int64   `json:"transport_stream_id"`
+	Name                string  `json:"name"`
+	Type                int64   `json:"type"`
+	EitScheduleFlag     int64   `json:"eit_schedule_flag"`
+	EitPresentFollowing int64   `json:"eit_present_following"`
+	LogoID              *int64  `json:"logo_id"`
+	LogoVersion         *int64  `json:"logo_version"`
+	LogoDownloadDataID  *int64  `json:"logo_download_data_id"`
+	HasLogoData         bool    `json:"has_logo_data"`
+	RemoteControlKeyID  int64   `json:"remote_control_key_id"`
+	ChannelType         string  `json:"channel_type"`
+	ChannelID           string  `json:"channel_id"`
+	LastAttemptAt       *int64  `json:"last_attempt_at"`
+	LastSuccessAt       *int64  `json:"last_success_at"`
+	LastError           *string `json:"last_error"`
 }
 
 func (q *Queries) GetServiceByNetworkServiceID(ctx context.Context, arg GetServiceByNetworkServiceIDParams) (GetServiceByNetworkServiceIDRow, error) {
@@ -420,6 +439,8 @@ func (q *Queries) GetServiceByNetworkServiceID(ctx context.Context, arg GetServi
 		&i.TransportStreamID,
 		&i.Name,
 		&i.Type,
+		&i.EitScheduleFlag,
+		&i.EitPresentFollowing,
 		&i.LogoID,
 		&i.LogoVersion,
 		&i.LogoDownloadDataID,
@@ -436,6 +457,7 @@ func (q *Queries) GetServiceByNetworkServiceID(ctx context.Context, arg GetServi
 
 const getServicesByChannel = `-- name: GetServicesByChannel :many
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -455,22 +477,24 @@ type GetServicesByChannelParams struct {
 }
 
 type GetServicesByChannelRow struct {
-	ID                 string  `json:"id"`
-	ServiceID          int64   `json:"service_id"`
-	NetworkID          int64   `json:"network_id"`
-	TransportStreamID  int64   `json:"transport_stream_id"`
-	Name               string  `json:"name"`
-	Type               int64   `json:"type"`
-	LogoID             *int64  `json:"logo_id"`
-	LogoVersion        *int64  `json:"logo_version"`
-	LogoDownloadDataID *int64  `json:"logo_download_data_id"`
-	HasLogoData        bool    `json:"has_logo_data"`
-	RemoteControlKeyID int64   `json:"remote_control_key_id"`
-	ChannelType        string  `json:"channel_type"`
-	ChannelID          string  `json:"channel_id"`
-	LastAttemptAt      *int64  `json:"last_attempt_at"`
-	LastSuccessAt      *int64  `json:"last_success_at"`
-	LastError          *string `json:"last_error"`
+	ID                  string  `json:"id"`
+	ServiceID           int64   `json:"service_id"`
+	NetworkID           int64   `json:"network_id"`
+	TransportStreamID   int64   `json:"transport_stream_id"`
+	Name                string  `json:"name"`
+	Type                int64   `json:"type"`
+	EitScheduleFlag     int64   `json:"eit_schedule_flag"`
+	EitPresentFollowing int64   `json:"eit_present_following"`
+	LogoID              *int64  `json:"logo_id"`
+	LogoVersion         *int64  `json:"logo_version"`
+	LogoDownloadDataID  *int64  `json:"logo_download_data_id"`
+	HasLogoData         bool    `json:"has_logo_data"`
+	RemoteControlKeyID  int64   `json:"remote_control_key_id"`
+	ChannelType         string  `json:"channel_type"`
+	ChannelID           string  `json:"channel_id"`
+	LastAttemptAt       *int64  `json:"last_attempt_at"`
+	LastSuccessAt       *int64  `json:"last_success_at"`
+	LastError           *string `json:"last_error"`
 }
 
 func (q *Queries) GetServicesByChannel(ctx context.Context, arg GetServicesByChannelParams) ([]GetServicesByChannelRow, error) {
@@ -489,6 +513,8 @@ func (q *Queries) GetServicesByChannel(ctx context.Context, arg GetServicesByCha
 			&i.TransportStreamID,
 			&i.Name,
 			&i.Type,
+			&i.EitScheduleFlag,
+			&i.EitPresentFollowing,
 			&i.LogoID,
 			&i.LogoVersion,
 			&i.LogoDownloadDataID,
@@ -567,6 +593,7 @@ func (q *Queries) KnownLogoTargets(ctx context.Context) ([]KnownLogoTargetsRow, 
 
 const listServices = `-- name: ListServices :many
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
          WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
@@ -580,22 +607,24 @@ LEFT JOIN epg_service_status epg
 `
 
 type ListServicesRow struct {
-	ID                 string  `json:"id"`
-	ServiceID          int64   `json:"service_id"`
-	NetworkID          int64   `json:"network_id"`
-	TransportStreamID  int64   `json:"transport_stream_id"`
-	Name               string  `json:"name"`
-	Type               int64   `json:"type"`
-	LogoID             *int64  `json:"logo_id"`
-	LogoVersion        *int64  `json:"logo_version"`
-	LogoDownloadDataID *int64  `json:"logo_download_data_id"`
-	HasLogoData        bool    `json:"has_logo_data"`
-	RemoteControlKeyID int64   `json:"remote_control_key_id"`
-	ChannelType        string  `json:"channel_type"`
-	ChannelID          string  `json:"channel_id"`
-	LastAttemptAt      *int64  `json:"last_attempt_at"`
-	LastSuccessAt      *int64  `json:"last_success_at"`
-	LastError          *string `json:"last_error"`
+	ID                  string  `json:"id"`
+	ServiceID           int64   `json:"service_id"`
+	NetworkID           int64   `json:"network_id"`
+	TransportStreamID   int64   `json:"transport_stream_id"`
+	Name                string  `json:"name"`
+	Type                int64   `json:"type"`
+	EitScheduleFlag     int64   `json:"eit_schedule_flag"`
+	EitPresentFollowing int64   `json:"eit_present_following"`
+	LogoID              *int64  `json:"logo_id"`
+	LogoVersion         *int64  `json:"logo_version"`
+	LogoDownloadDataID  *int64  `json:"logo_download_data_id"`
+	HasLogoData         bool    `json:"has_logo_data"`
+	RemoteControlKeyID  int64   `json:"remote_control_key_id"`
+	ChannelType         string  `json:"channel_type"`
+	ChannelID           string  `json:"channel_id"`
+	LastAttemptAt       *int64  `json:"last_attempt_at"`
+	LastSuccessAt       *int64  `json:"last_success_at"`
+	LastError           *string `json:"last_error"`
 }
 
 func (q *Queries) ListServices(ctx context.Context) ([]ListServicesRow, error) {
@@ -614,6 +643,8 @@ func (q *Queries) ListServices(ctx context.Context) ([]ListServicesRow, error) {
 			&i.TransportStreamID,
 			&i.Name,
 			&i.Type,
+			&i.EitScheduleFlag,
+			&i.EitPresentFollowing,
 			&i.LogoID,
 			&i.LogoVersion,
 			&i.LogoDownloadDataID,
@@ -748,14 +779,16 @@ func (q *Queries) SetEPGSuccess(ctx context.Context, arg SetEPGSuccessParams) er
 }
 
 const upsertService = `-- name: UpsertService :exec
-INSERT INTO services (id, service_id, network_id, transport_stream_id, name, type, logo_id, logo_version, logo_download_data_id, remote_control_key_id, channel_type, channel_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO services (id, service_id, network_id, transport_stream_id, name, type, eit_schedule_flag, eit_present_following, logo_id, logo_version, logo_download_data_id, remote_control_key_id, channel_type, channel_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   service_id=excluded.service_id,
   network_id=excluded.network_id,
   transport_stream_id=excluded.transport_stream_id,
   name=excluded.name,
   type=excluded.type,
+  eit_schedule_flag=excluded.eit_schedule_flag,
+  eit_present_following=excluded.eit_present_following,
   logo_id=excluded.logo_id,
   logo_version=excluded.logo_version,
   logo_download_data_id=excluded.logo_download_data_id,
@@ -765,18 +798,20 @@ ON CONFLICT(id) DO UPDATE SET
 `
 
 type UpsertServiceParams struct {
-	ID                 string `json:"id"`
-	ServiceID          int64  `json:"service_id"`
-	NetworkID          int64  `json:"network_id"`
-	TransportStreamID  int64  `json:"transport_stream_id"`
-	Name               string `json:"name"`
-	Type               int64  `json:"type"`
-	LogoID             *int64 `json:"logo_id"`
-	LogoVersion        *int64 `json:"logo_version"`
-	LogoDownloadDataID *int64 `json:"logo_download_data_id"`
-	RemoteControlKeyID int64  `json:"remote_control_key_id"`
-	ChannelType        string `json:"channel_type"`
-	ChannelID          string `json:"channel_id"`
+	ID                  string `json:"id"`
+	ServiceID           int64  `json:"service_id"`
+	NetworkID           int64  `json:"network_id"`
+	TransportStreamID   int64  `json:"transport_stream_id"`
+	Name                string `json:"name"`
+	Type                int64  `json:"type"`
+	EitScheduleFlag     int64  `json:"eit_schedule_flag"`
+	EitPresentFollowing int64  `json:"eit_present_following"`
+	LogoID              *int64 `json:"logo_id"`
+	LogoVersion         *int64 `json:"logo_version"`
+	LogoDownloadDataID  *int64 `json:"logo_download_data_id"`
+	RemoteControlKeyID  int64  `json:"remote_control_key_id"`
+	ChannelType         string `json:"channel_type"`
+	ChannelID           string `json:"channel_id"`
 }
 
 func (q *Queries) UpsertService(ctx context.Context, arg UpsertServiceParams) error {
@@ -787,6 +822,8 @@ func (q *Queries) UpsertService(ctx context.Context, arg UpsertServiceParams) er
 		arg.TransportStreamID,
 		arg.Name,
 		arg.Type,
+		arg.EitScheduleFlag,
+		arg.EitPresentFollowing,
 		arg.LogoID,
 		arg.LogoVersion,
 		arg.LogoDownloadDataID,

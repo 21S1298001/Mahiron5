@@ -23,9 +23,9 @@ func TestServiceScanChannelStoresScannedServicesAndReturnsNewNetworks(t *testing
 	store := service.NewSQLiteStore(database)
 	manager := service.NewServiceManager(store, nil)
 	scanner := &staticScanner{services: []ts.ServiceInfo{
-		{Nid: 4, Tsid: 1, Sid: 101, Name: "BS 101", Type: 1, RemoteControlKeyId: uint8Ptr(1)},
-		{Nid: 4, Tsid: 1, Sid: 102, Name: "BS 102", Type: 1, RemoteControlKeyId: uint8Ptr(2)},
-		{Nid: 5, Tsid: 2, Sid: 201, Name: "BS 201", Type: 2, RemoteControlKeyId: uint8Ptr(3)},
+		{Nid: 4, Tsid: 1, Sid: 101, Name: "BS 101", Type: 1, EITScheduleFlag: true, EITPresentFollowing: true, RemoteControlKeyId: uint8Ptr(1)},
+		{Nid: 4, Tsid: 1, Sid: 102, Name: "BS 102", Type: 1, EITScheduleFlag: false, EITPresentFollowing: true, RemoteControlKeyId: uint8Ptr(2)},
+		{Nid: 5, Tsid: 2, Sid: 201, Name: "BS 201", Type: 2, EITScheduleFlag: true, EITPresentFollowing: false, RemoteControlKeyId: uint8Ptr(3)},
 	}}
 
 	got, err := NewService(manager, scanner, nil, time.Second).ScanChannel(ctx, "BS", "BS01", true)
@@ -46,6 +46,12 @@ func TestServiceScanChannelStoresScannedServicesAndReturnsNewNetworks(t *testing
 	}
 	if got, want := services[0].RemoteControlKeyId, uint8(1); got != want {
 		t.Fatalf("remoteControlKeyId = %d, want %d", got, want)
+	}
+	if !services[0].EITScheduleFlag || !services[0].EITPresentFollowing {
+		t.Fatalf("service 101 EIT flags = %v/%v, want true/true", services[0].EITScheduleFlag, services[0].EITPresentFollowing)
+	}
+	if services[1].EITScheduleFlag || !services[1].EITPresentFollowing {
+		t.Fatalf("service 102 EIT flags = %v/%v, want false/true", services[1].EITScheduleFlag, services[1].EITPresentFollowing)
 	}
 	if !scanner.wait {
 		t.Fatal("scanner wait = false, want true")

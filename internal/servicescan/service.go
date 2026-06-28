@@ -121,18 +121,20 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 			logoDownloadDataID = &v
 		}
 		scanned[i] = &service.Service{
-			Id:                 fmt.Sprintf("%05d%05d", svc.Nid, svc.Sid),
-			ServiceId:          svc.Sid,
-			NetworkId:          svc.Nid,
-			TransportStreamId:  svc.Tsid,
-			Name:               svc.Name,
-			Type:               svc.Type,
-			LogoId:             logoID,
-			LogoVersion:        logoVersion,
-			LogoDownloadDataId: logoDownloadDataID,
-			RemoteControlKeyId: remoteControlKeyID,
-			ChannelType:        channelType,
-			ChannelId:          channelID,
+			Id:                  fmt.Sprintf("%05d%05d", svc.Nid, svc.Sid),
+			ServiceId:           svc.Sid,
+			NetworkId:           svc.Nid,
+			TransportStreamId:   svc.Tsid,
+			Name:                svc.Name,
+			Type:                svc.Type,
+			EITScheduleFlag:     svc.EITScheduleFlag,
+			EITPresentFollowing: svc.EITPresentFollowing,
+			LogoId:              logoID,
+			LogoVersion:         logoVersion,
+			LogoDownloadDataId:  logoDownloadDataID,
+			RemoteControlKeyId:  remoteControlKeyID,
+			ChannelType:         channelType,
+			ChannelId:           channelID,
 		}
 	}
 

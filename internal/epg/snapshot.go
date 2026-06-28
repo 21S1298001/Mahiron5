@@ -21,8 +21,9 @@ type Snapshot struct {
 type EITSnapshot = Snapshot
 
 type snapshotService struct {
-	tables   map[uint8]*snapshotTable
-	programs map[int64]*program.Program
+	tables      map[uint8]*snapshotTable
+	programs    map[int64]*program.Program
+	lastTableID map[uint8]uint8
 }
 
 type snapshotTable struct {
@@ -74,8 +75,9 @@ func (s *Snapshot) Observe(section *EITSection, now time.Time) bool {
 	service := s.services[key]
 	if service == nil {
 		service = &snapshotService{
-			tables:   make(map[uint8]*snapshotTable),
-			programs: make(map[int64]*program.Program),
+			tables:      make(map[uint8]*snapshotTable),
+			programs:    make(map[int64]*program.Program),
+			lastTableID: make(map[uint8]uint8),
 		}
 		s.services[key] = service
 	}
@@ -101,6 +103,7 @@ func (s *Snapshot) Observe(section *EITSection, now time.Time) bool {
 	table.hasVersion = true
 	table.lastSection = section.LastSectionNumber
 	table.segmentLast[section.SectionNumber/8] = section.SegmentLastSectionNumber
+	service.lastTableID[section.TableID&0xf8] = section.LastTableID
 
 	if changed {
 		s.lastProgress = now
@@ -139,12 +142,7 @@ func (s *Snapshot) ServiceComplete(key ServiceKey) bool {
 		return false
 	}
 	for base, tables := range groups {
-		maxTable := base
-		for tableID := range tables {
-			if tableID > maxTable {
-				maxTable = tableID
-			}
-		}
+		maxTable := service.maxExpectedTableID(base, maxObservedSnapshotTableID(base, tables))
 		for tableID := base; tableID <= maxTable; tableID++ {
 			table := tables[tableID]
 			if table == nil || !snapshotTableComplete(table, tableID == base) {
@@ -219,12 +217,7 @@ func (s *Snapshot) CompletionReport(key ServiceKey) SnapshotReport {
 	}
 
 	for base, tables := range groups {
-		maxTable := base
-		for tableID := range tables {
-			if tableID > maxTable {
-				maxTable = tableID
-			}
-		}
+		maxTable := service.maxExpectedTableID(base, maxObservedTableID(base, tables))
 		for tableID := base; tableID <= maxTable; tableID++ {
 			if _, ok := tables[tableID]; !ok {
 				report.MissingTableIDs = append(report.MissingTableIDs, int(tableID))
@@ -233,6 +226,33 @@ func (s *Snapshot) CompletionReport(key ServiceKey) SnapshotReport {
 	}
 	sort.Ints(report.MissingTableIDs)
 	return report
+}
+
+func (s *snapshotService) maxExpectedTableID(base uint8, observedMax uint8) uint8 {
+	if last, ok := s.lastTableID[base]; ok && last >= base && last <= base+7 {
+		return last
+	}
+	return observedMax
+}
+
+func maxObservedSnapshotTableID(base uint8, tables map[uint8]*snapshotTable) uint8 {
+	maxTable := base
+	for tableID := range tables {
+		if tableID > maxTable {
+			maxTable = tableID
+		}
+	}
+	return maxTable
+}
+
+func maxObservedTableID(base uint8, tables map[uint8]struct{}) uint8 {
+	maxTable := base
+	for tableID := range tables {
+		if tableID > maxTable {
+			maxTable = tableID
+		}
+	}
+	return maxTable
 }
 
 func snapshotTableComplete(table *snapshotTable, allowLeadingMissing bool) bool {
