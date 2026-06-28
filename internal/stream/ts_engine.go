@@ -94,6 +94,7 @@ func (e *packetEngine) observeSections(ctx context.Context, accept func(ts.Secti
 	case <-ctx.Done():
 		e.finishSection(id, ctx.Err())
 		<-sub.done
+		<-sub.writerDone
 		return ctx.Err()
 	case <-sub.done:
 		if sub.err == nil {
@@ -103,9 +104,7 @@ func (e *packetEngine) observeSections(ctx context.Context, accept func(ts.Secti
 	case <-e.done:
 		e.finishSection(id, e.Err())
 		<-sub.done
-		if sub.err == nil {
-			<-sub.writerDone
-		}
+		<-sub.writerDone
 		return sub.err
 	}
 }

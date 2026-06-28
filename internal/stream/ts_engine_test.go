@@ -146,6 +146,41 @@ func TestPacketEngineDisconnectsOverflowingSubscriberOnly(t *testing.T) {
 	}
 }
 
+func TestPacketEngineObserveSectionsWaitsForObserverOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	engine := newPacketEngine(func(context.Context, io.Writer) error {
+		return nil
+	}, nil)
+	attached := make(chan struct{})
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	returned := make(chan error, 1)
+
+	go func() {
+		returned <- engine.observeSectionsPassive(ctx, nil, func(ts.Section) error {
+			close(entered)
+			<-release
+			return ctx.Err()
+		}, attached)
+	}()
+	<-attached
+
+	engine.dispatch(nil, []ts.Section{{ts.TableIDEITSStart, 0, 0}})
+	<-entered
+	cancel()
+
+	select {
+	case err := <-returned:
+		t.Fatalf("ObserveSections returned before observer finished: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(release)
+	if err := <-returned; !errors.Is(err, context.Canceled) {
+		t.Fatalf("ObserveSections error = %v, want context canceled", err)
+	}
+}
+
 func TestSharedSessionUsesOneDescramblerForDecodedSubscribers(t *testing.T) {
 	packet := engineTestPacket(0x0100, 1)
 	start := make(chan struct{})
