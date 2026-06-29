@@ -35,13 +35,10 @@ func NewServer(addresses []ListenAddress, handler http.Handler) *Server {
 	}
 }
 
-func (s *Server) ListenAndServe() {
+func (s *Server) ListenAndServe(ctx context.Context) {
 	for i, addr := range s.addresses {
 		if addr.Http != "" {
-			srv := &http.Server{
-				Addr:    addr.Http,
-				Handler: s.handler,
-			}
+			srv := newHTTPServer(ctx, addr.Http, s.handler)
 			s.servers[i] = srv
 			slog.Info("starting HTTP server", "address", addr.Http)
 			go func(srv *http.Server) {
@@ -54,9 +51,7 @@ func (s *Server) ListenAndServe() {
 		}
 
 		if addr.Unix != "" {
-			srv := &http.Server{
-				Handler: s.handler,
-			}
+			srv := newHTTPServer(ctx, "", s.handler)
 			s.servers[i] = srv
 			slog.Info("starting Unix socket server", "address", addr.Unix)
 			go func(addr string) {
@@ -74,6 +69,16 @@ func (s *Server) ListenAndServe() {
 				}
 			}(addr.Unix)
 		}
+	}
+}
+
+func newHTTPServer(ctx context.Context, addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:    addr,
+		Handler: handler,
+		BaseContext: func(net.Listener) context.Context {
+			return ctx
+		},
 	}
 }
 

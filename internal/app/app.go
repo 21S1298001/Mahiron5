@@ -111,7 +111,7 @@ func Run(ctx context.Context, args []string) int {
 	runtime.tuners.SeedEventLog()
 
 	slog.Info("starting servers")
-	runtime.server.ListenAndServe()
+	runtime.server.ListenAndServe(signalCtx)
 
 	<-signalCtx.Done()
 	runtime.shutdown()
