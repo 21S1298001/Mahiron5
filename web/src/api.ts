@@ -73,6 +73,13 @@ export type Program = {
     langs?: string[];
   }>;
   extended?: Record<string, string>;
+  relatedItems?: Array<{
+    type?: "shared" | "relay" | "movement" | string;
+    networkId?: number;
+    transportStreamId?: number;
+    serviceId?: number;
+    eventId?: number;
+  }>;
   series?: {
     id?: number;
     repeat?: number;

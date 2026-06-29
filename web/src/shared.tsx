@@ -431,8 +431,11 @@ export function floorHour(value: number) {
   return date.getTime();
 }
 
+const sharedProgramResolverCache = new WeakMap<Map<string, Program[]>, (program: Program) => string | undefined>();
+
 export function makeEpgColumns(services: Service[], programsByService: Map<string, Program[]>): EpgColumn[] {
   const groups = new Map<string, Service[]>();
+  const resolveSharedProgramKey = sharedProgramKeyResolverFor(programsByService);
   for (const service of services) {
     const key = epgServiceGroupKey(service);
     groups.set(key, [...(groups.get(key) ?? []), service]);
@@ -451,7 +454,7 @@ export function makeEpgColumns(services: Service[], programsByService: Map<strin
 
     for (const [index, service] of groupServices.entries()) {
       const programs = programsByService.get(`${service.networkId}:${service.serviceId}`) ?? [];
-      const contentKeys = programs.map(programContentKey);
+      const contentKeys = programs.map((program) => programContentKey(program, resolveSharedProgramKey));
       const canSplit = isStableEpgService(service) && hasReadyBaseline && contentKeys.length > 0;
       const hasDistinctContent = canSplit && contentKeys.some((key) => !seenContent.has(key));
 
@@ -487,10 +490,11 @@ export function makeEpgProgramBlocks(
   programsByService: Map<string, Program[]>,
 ): EpgProgramBlock[] {
   const uniquePrograms = new Map<string, { program: Program; service: Service }>();
+  const resolveSharedProgramKey = sharedProgramKeyResolverFor(programsByService);
   for (const service of column.services) {
     const programs = programsByService.get(`${service.networkId}:${service.serviceId}`) ?? [];
     for (const program of programs) {
-      const key = programContentKey(program);
+      const key = programContentKey(program, resolveSharedProgramKey);
       if (!uniquePrograms.has(key)) {
         uniquePrograms.set(key, { program, service });
       }
@@ -506,13 +510,90 @@ export function makeEpgProgramBlocks(
     }));
 }
 
-export function programContentKey(program: Program) {
+export function programContentKey(program: Program, resolveSharedProgramKey?: (program: Program) => string | undefined) {
+  const sharedKey = resolveSharedProgramKey?.(program);
+  if (sharedKey) {
+    return sharedKey;
+  }
   return [
     program.startAt,
     program.duration,
     normalizeProgramText(program.name),
     normalizeProgramText(program.description),
   ].join(":");
+}
+
+export function makeSharedProgramKeyResolver(programs: Program[]) {
+  const parent = new Map<string, string>();
+  const canonical = new Map<string, string>();
+
+  const find = (key: string): string => {
+    const current = parent.get(key);
+    if (current == null) {
+      parent.set(key, key);
+      return key;
+    }
+    if (current === key) {
+      return key;
+    }
+    const root = find(current);
+    parent.set(key, root);
+    return root;
+  };
+
+  const union = (a: string, b: string) => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA === rootB) {
+      return;
+    }
+    parent.set(rootB, rootA);
+  };
+
+  for (const program of programs) {
+    const source = programEndpointKey(program.networkId, program.serviceId, program.eventId);
+    for (const item of program.relatedItems ?? []) {
+      if (item.type !== "shared" || item.serviceId == null || item.eventId == null) {
+        continue;
+      }
+      union(source, programEndpointKey(item.networkId ?? program.networkId, item.serviceId, item.eventId));
+    }
+  }
+
+  for (const key of parent.keys()) {
+    const root = find(key);
+    const current = canonical.get(root);
+    if (current == null || key < current) {
+      canonical.set(root, key);
+    }
+  }
+
+  return (program: Program) => {
+    const source = programEndpointKey(program.networkId, program.serviceId, program.eventId);
+    const root = parent.get(source) == null ? undefined : find(source);
+    if (root == null) {
+      return undefined;
+    }
+    return `shared:${canonical.get(root) ?? root}`;
+  };
+}
+
+function sharedProgramKeyResolverFor(programsByService: Map<string, Program[]>) {
+  const cached = sharedProgramResolverCache.get(programsByService);
+  if (cached) {
+    return cached;
+  }
+  const resolver = makeSharedProgramKeyResolver(flattenProgramGroups(programsByService));
+  sharedProgramResolverCache.set(programsByService, resolver);
+  return resolver;
+}
+
+function flattenProgramGroups(programsByService: Map<string, Program[]>) {
+  return [...programsByService.values()].flat();
+}
+
+function programEndpointKey(networkId: number, serviceId: number, eventId: number) {
+  return `${networkId}:${serviceId}:${eventId}`;
 }
 
 export function normalizeProgramText(value?: string) {
