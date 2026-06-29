@@ -434,33 +434,49 @@ export function floorHour(value: number) {
 export function makeEpgColumns(services: Service[], programsByService: Map<string, Program[]>): EpgColumn[] {
   const groups = new Map<string, Service[]>();
   for (const service of services) {
-    const key = service.channel ? channelKey(service.channel) : serviceKey(service);
+    const key = epgServiceGroupKey(service);
     groups.set(key, [...(groups.get(key) ?? []), service]);
   }
 
   const columns: EpgColumn[] = [];
   for (const [groupKey, groupServices] of groups) {
-    const foldedServices = [...groupServices];
+    const primaryColumn: EpgColumn = {
+      key: groupKey,
+      primaryService: groupServices[0],
+      services: [],
+      foldedServices: [...groupServices],
+    };
     const seenContent = new Set<string>();
+    let hasReadyBaseline = false;
 
-    groupServices.forEach((service, index) => {
+    for (const [index, service] of groupServices.entries()) {
       const programs = programsByService.get(`${service.networkId}:${service.serviceId}`) ?? [];
       const contentKeys = programs.map(programContentKey);
-      const hasDistinctContent = contentKeys.some((key) => !seenContent.has(key));
+      const canSplit = isStableEpgService(service) && hasReadyBaseline && contentKeys.length > 0;
+      const hasDistinctContent = canSplit && contentKeys.some((key) => !seenContent.has(key));
 
       if (index === 0 || hasDistinctContent) {
-        columns.push({
+        const column = index === 0 ? primaryColumn : {
           key: index === 0 ? groupKey : `${groupKey}:service:${service.id}`,
           primaryService: service,
           services: [service],
-          foldedServices: index === 0 ? foldedServices : [service],
-        });
+          foldedServices: [service],
+        };
+        if (index === 0) {
+          primaryColumn.services.push(service);
+        }
+        columns.push(column);
+      } else {
+        primaryColumn.services.push(service);
       }
 
-      for (const key of contentKeys) {
-        seenContent.add(key);
+      if (isStableEpgService(service)) {
+        hasReadyBaseline = true;
+        for (const key of contentKeys) {
+          seenContent.add(key);
+        }
       }
-    });
+    }
   }
 
   return columns;
@@ -501,6 +517,28 @@ export function programContentKey(program: Program) {
 
 export function normalizeProgramText(value?: string) {
   return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+export function isStableEpgService(service: Service) {
+  return service.eitScheduleFlag !== false && service.epgReady === true;
+}
+
+export function epgServiceGroupKey(service: Service) {
+  if (isTerrestrialService(service) && service.transportStreamId != null && service.remoteControlKeyId != null) {
+    return [
+      "terrestrial",
+      service.channel?.type ?? "",
+      service.channel?.channel ?? "",
+      service.networkId,
+      service.transportStreamId,
+      service.remoteControlKeyId,
+    ].join(":");
+  }
+  return service.channel ? channelKey(service.channel) : serviceKey(service);
+}
+
+export function isTerrestrialService(service: Service) {
+  return service.channel?.type.toUpperCase() === "GR";
 }
 
 export function channelLabel(type?: string, channel?: string) {

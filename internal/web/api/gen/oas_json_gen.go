@@ -5866,6 +5866,18 @@ func (s *Service) encodeFields(e *jx.Encoder) {
 		e.Int(s.Type)
 	}
 	{
+		if s.EitScheduleFlag.Set {
+			e.FieldStart("eitScheduleFlag")
+			s.EitScheduleFlag.Encode(e)
+		}
+	}
+	{
+		if s.EitPresentFollowing.Set {
+			e.FieldStart("eitPresentFollowing")
+			s.EitPresentFollowing.Encode(e)
+		}
+	}
+	{
 		if s.LogoId.Set {
 			e.FieldStart("logoId")
 			s.LogoId.Encode(e)
@@ -5921,22 +5933,24 @@ func (s *Service) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfService = [15]string{
+var jsonFieldsNameOfService = [17]string{
 	0:  "id",
 	1:  "serviceId",
 	2:  "networkId",
 	3:  "transportStreamId",
 	4:  "name",
 	5:  "type",
-	6:  "logoId",
-	7:  "hasLogoData",
-	8:  "remoteControlKeyId",
-	9:  "epgReady",
-	10: "epgUpdatedAt",
-	11: "epgLastAttemptAt",
-	12: "epgLastError",
-	13: "channel",
-	14: "logoData",
+	6:  "eitScheduleFlag",
+	7:  "eitPresentFollowing",
+	8:  "logoId",
+	9:  "hasLogoData",
+	10: "remoteControlKeyId",
+	11: "epgReady",
+	12: "epgUpdatedAt",
+	13: "epgLastAttemptAt",
+	14: "epgLastError",
+	15: "channel",
+	16: "logoData",
 }
 
 // Decode decodes Service from json.
@@ -5944,7 +5958,7 @@ func (s *Service) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode Service to nil")
 	}
-	var requiredBitSet [2]uint8
+	var requiredBitSet [3]uint8
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
@@ -6011,6 +6025,26 @@ func (s *Service) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"type\"")
+			}
+		case "eitScheduleFlag":
+			if err := func() error {
+				s.EitScheduleFlag.Reset()
+				if err := s.EitScheduleFlag.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"eitScheduleFlag\"")
+			}
+		case "eitPresentFollowing":
+			if err := func() error {
+				s.EitPresentFollowing.Reset()
+				if err := s.EitPresentFollowing.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"eitPresentFollowing\"")
 			}
 		case "logoId":
 			if err := func() error {
@@ -6111,8 +6145,9 @@ func (s *Service) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [2]uint8{
+	for i, mask := range [3]uint8{
 		0b00110111,
+		0b00000000,
 		0b00000000,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {

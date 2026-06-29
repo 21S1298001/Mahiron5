@@ -1348,6 +1348,10 @@ components:
           type: string
         type:
           type: integer
+        eitScheduleFlag:
+          type: boolean
+        eitPresentFollowing:
+          type: boolean
         logoId:
           type: integer
         hasLogoData:

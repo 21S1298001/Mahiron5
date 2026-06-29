@@ -27,15 +27,17 @@ func testListHandler(t *testing.T) *Handler {
 	serviceStore := service.NewSQLiteStore(database)
 	services := []*service.Service{
 		{
-			Id:                 "0000100101",
-			ServiceId:          101,
-			NetworkId:          1,
-			TransportStreamId:  10,
-			Name:               "NHK Service",
-			Type:               1,
-			RemoteControlKeyId: 3,
-			ChannelType:        "GR",
-			ChannelId:          "27",
+			Id:                  "0000100101",
+			ServiceId:           101,
+			NetworkId:           1,
+			TransportStreamId:   10,
+			Name:                "NHK Service",
+			Type:                1,
+			EITScheduleFlag:     true,
+			EITPresentFollowing: true,
+			RemoteControlKeyId:  3,
+			ChannelType:         "GR",
+			ChannelId:           "27",
 		},
 		{
 			Id:                 "0000200102",
@@ -90,6 +92,12 @@ func TestGetChannelsReturnsEnabledChannelsWithServices(t *testing.T) {
 	}
 	if got, want := (*channels)[0].Routes[0].Type, "GR"; got != want {
 		t.Fatalf("first channel route type = %q, want %q", got, want)
+	}
+	if got, ok := (*channels)[0].Services[0].EitScheduleFlag.Get(); !ok || !got {
+		t.Fatalf("first channel service EitScheduleFlag = %v, %v, want true, true", got, ok)
+	}
+	if got, ok := (*channels)[0].Services[0].EitPresentFollowing.Get(); !ok || !got {
+		t.Fatalf("first channel service EitPresentFollowing = %v, %v, want true, true", got, ok)
 	}
 }
 

@@ -37,6 +37,8 @@ export type Service = {
   transportStreamId?: number;
   name: string;
   type: number;
+  eitScheduleFlag?: boolean;
+  eitPresentFollowing?: boolean;
   remoteControlKeyId?: number;
   epgReady?: boolean;
   epgUpdatedAt?: number;

@@ -217,12 +217,14 @@ func apiServices(h *Handler, services []*service.Service, includeChannel bool) [
 
 func apiService(h *Handler, service *service.Service, includeChannel bool) *apigen.Service {
 	result := &apigen.Service{
-		ID:                apigen.ServiceItemId(service.ItemId()),
-		ServiceId:         apigen.ServiceId(service.ServiceId),
-		NetworkId:         apigen.NetworkId(service.NetworkId),
-		TransportStreamId: apigen.NewOptTransportStreamId(apigen.TransportStreamId(service.TransportStreamId)),
-		Name:              service.Name,
-		Type:              int(service.Type),
+		ID:                  apigen.ServiceItemId(service.ItemId()),
+		ServiceId:           apigen.ServiceId(service.ServiceId),
+		NetworkId:           apigen.NetworkId(service.NetworkId),
+		TransportStreamId:   apigen.NewOptTransportStreamId(apigen.TransportStreamId(service.TransportStreamId)),
+		Name:                service.Name,
+		Type:                int(service.Type),
+		EitScheduleFlag:     apigen.NewOptBool(service.EITScheduleFlag),
+		EitPresentFollowing: apigen.NewOptBool(service.EITPresentFollowing),
 		RemoteControlKeyId: apigen.NewOptInt(
 			int(service.RemoteControlKeyId),
 		),

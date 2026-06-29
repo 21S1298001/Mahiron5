@@ -4248,21 +4248,23 @@ func (*RunJobScheduleAccepted) runJobScheduleRes() {}
 
 // Ref: #/components/schemas/Service
 type Service struct {
-	ID                 ServiceItemId        `json:"id"`
-	ServiceId          ServiceId            `json:"serviceId"`
-	NetworkId          NetworkId            `json:"networkId"`
-	TransportStreamId  OptTransportStreamId `json:"transportStreamId"`
-	Name               string               `json:"name"`
-	Type               int                  `json:"type"`
-	LogoId             OptInt               `json:"logoId"`
-	HasLogoData        OptBool              `json:"hasLogoData"`
-	RemoteControlKeyId OptInt               `json:"remoteControlKeyId"`
-	EpgReady           OptBool              `json:"epgReady"`
-	EpgUpdatedAt       OptUnixtimeMS        `json:"epgUpdatedAt"`
-	EpgLastAttemptAt   OptUnixtimeMS        `json:"epgLastAttemptAt"`
-	EpgLastError       OptString            `json:"epgLastError"`
-	Channel            OptChannel           `json:"channel"`
-	LogoData           OptString            `json:"logoData"`
+	ID                  ServiceItemId        `json:"id"`
+	ServiceId           ServiceId            `json:"serviceId"`
+	NetworkId           NetworkId            `json:"networkId"`
+	TransportStreamId   OptTransportStreamId `json:"transportStreamId"`
+	Name                string               `json:"name"`
+	Type                int                  `json:"type"`
+	EitScheduleFlag     OptBool              `json:"eitScheduleFlag"`
+	EitPresentFollowing OptBool              `json:"eitPresentFollowing"`
+	LogoId              OptInt               `json:"logoId"`
+	HasLogoData         OptBool              `json:"hasLogoData"`
+	RemoteControlKeyId  OptInt               `json:"remoteControlKeyId"`
+	EpgReady            OptBool              `json:"epgReady"`
+	EpgUpdatedAt        OptUnixtimeMS        `json:"epgUpdatedAt"`
+	EpgLastAttemptAt    OptUnixtimeMS        `json:"epgLastAttemptAt"`
+	EpgLastError        OptString            `json:"epgLastError"`
+	Channel             OptChannel           `json:"channel"`
+	LogoData            OptString            `json:"logoData"`
 }
 
 // GetID returns the value of ID.
@@ -4293,6 +4295,16 @@ func (s *Service) GetName() string {
 // GetType returns the value of Type.
 func (s *Service) GetType() int {
 	return s.Type
+}
+
+// GetEitScheduleFlag returns the value of EitScheduleFlag.
+func (s *Service) GetEitScheduleFlag() OptBool {
+	return s.EitScheduleFlag
+}
+
+// GetEitPresentFollowing returns the value of EitPresentFollowing.
+func (s *Service) GetEitPresentFollowing() OptBool {
+	return s.EitPresentFollowing
 }
 
 // GetLogoId returns the value of LogoId.
@@ -4368,6 +4380,16 @@ func (s *Service) SetName(val string) {
 // SetType sets the value of Type.
 func (s *Service) SetType(val int) {
 	s.Type = val
+}
+
+// SetEitScheduleFlag sets the value of EitScheduleFlag.
+func (s *Service) SetEitScheduleFlag(val OptBool) {
+	s.EitScheduleFlag = val
+}
+
+// SetEitPresentFollowing sets the value of EitPresentFollowing.
+func (s *Service) SetEitPresentFollowing(val OptBool) {
+	s.EitPresentFollowing = val
 }
 
 // SetLogoId sets the value of LogoId.
