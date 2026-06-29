@@ -98,6 +98,12 @@ func (s *ChannelSession) ScanServices(ctx context.Context) ([]ts.ServiceInfo, er
 }
 
 func (s *ChannelSession) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
+	return s.CollectEITWithClock(ctx, func(eit *ts.EIT, _ time.Time) error {
+		return observe(eit)
+	})
+}
+
+func (s *ChannelSession) CollectEITWithClock(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
 	return s.broadcast.WithUser(ctx, func(ctx context.Context) error { return s.observeEIT(ctx, observe) })
 }
 
@@ -257,15 +263,22 @@ func runProgramGate(src io.Reader, dst io.Writer, gate *programEventGate) error 
 	return result
 }
 
-func (s *ChannelSession) observeEIT(ctx context.Context, observe func(*ts.EIT) error) error {
+func (s *ChannelSession) observeEIT(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
+	var latestClock time.Time
 	return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
-		return ts.IsEITS(section.TableID()) || ts.IsEITPF(section.TableID())
+		return ts.IsEITS(section.TableID()) || ts.IsEITPF(section.TableID()) || section.TableID() == ts.TableIDTOT
 	}, func(section ts.Section) error {
+		if section.TableID() == ts.TableIDTOT {
+			if tot, err := ts.ParseTOT(section); err == nil {
+				latestClock = tot.JSTTime
+			}
+			return nil
+		}
 		eit, err := ts.ParseEIT(section)
 		if err != nil {
 			return nil
 		}
-		return observe(eit)
+		return observe(eit, latestClock)
 	})
 }
 

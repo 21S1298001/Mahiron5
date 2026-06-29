@@ -829,6 +829,36 @@ func TestDetachRawDoesNotLogExpectedClosedFileStopError(t *testing.T) {
 	}
 }
 
+func TestChannelSessionCollectEITWithClockUsesLatestTOT(t *testing.T) {
+	clock := time.Date(2026, 6, 29, 12, 34, 56, 0, time.FixedZone("JST", 9*60*60))
+	key := epgClockTestKey{networkID: 4, serviceID: 101}
+	input := append(streamSectionPackets(ts.PIDTOT, streamBuildTOT(clock), 0), streamSectionPackets(ts.PIDEIT, streamBuildEIT(ts.TableIDEITSStart, key, 10), 1)...)
+	session := NewChannelSession(ChannelSessionConfig{
+		Broadcast: NewBroadcast(&finitePacketSource{data: input, start: closedStart(), done: make(chan struct{})}, nil),
+		Channel:   "27",
+		Type:      "GR",
+	})
+
+	var gotClock time.Time
+	var gotEventID uint16
+	err := session.CollectEITWithClock(t.Context(), func(eit *ts.EIT, observedClock time.Time) error {
+		gotClock = observedClock
+		if len(eit.Events) > 0 {
+			gotEventID = eit.Events[0].EventID
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gotClock.Equal(clock) {
+		t.Fatalf("clock = %s, want %s", gotClock, clock)
+	}
+	if gotEventID != 10 {
+		t.Fatalf("event id = %d, want 10", gotEventID)
+	}
+}
+
 type fakeTunerDeviceRecorder struct {
 	mu      sync.Mutex
 	devices []*fakeTunerDevice
@@ -863,6 +893,113 @@ func eventually(timeout time.Duration, ok func() bool) bool {
 		time.Sleep(time.Millisecond)
 	}
 	return ok()
+}
+
+func closedStart() <-chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
+type epgClockTestKey struct {
+	networkID uint16
+	serviceID uint16
+}
+
+func streamBuildTOT(jstTime time.Time) ts.Section {
+	encodedTime := streamEncodeMJDTime(jstTime)
+	length := 5 + 2 + 4
+	s := make([]byte, 3+length)
+	s[0] = ts.TableIDTOT
+	s[1] = 0x70 | byte(length>>8)
+	s[2] = byte(length)
+	copy(s[3:8], encodedTime)
+	s[8] = 0xf0
+	s[9] = 0
+	streamWriteCRC(s)
+	return ts.Section(s)
+}
+
+func streamBuildEIT(tableID byte, key epgClockTestKey, eventID uint16) ts.Section {
+	length := 11 + 12 + 4
+	s := make([]byte, 3+length)
+	s[0] = tableID
+	s[1] = 0xb0 | byte(length>>8)
+	s[2] = byte(length)
+	s[3] = byte(key.serviceID >> 8)
+	s[4] = byte(key.serviceID)
+	s[5] = 0xc1
+	s[8] = 0
+	s[9] = 1
+	s[10] = byte(key.networkID >> 8)
+	s[11] = byte(key.networkID)
+	s[12] = 0
+	s[13] = tableID
+	off := 14
+	s[off] = byte(eventID >> 8)
+	s[off+1] = byte(eventID)
+	copy(s[off+2:off+7], streamEncodeMJDTime(time.Date(2026, 6, 29, 13, 0, 0, 0, time.FixedZone("JST", 9*60*60))))
+	copy(s[off+7:off+10], []byte{0x00, 0x30, 0x00})
+	s[off+10] = 0x80
+	s[off+11] = 0
+	streamWriteCRC(s)
+	return ts.Section(s)
+}
+
+func streamSectionPackets(pid uint16, section ts.Section, counter byte) []byte {
+	packet := bytes.Repeat([]byte{0xff}, ts.PacketSize)
+	packet[0] = ts.SyncByte
+	packet[1] = 0x40 | byte(pid>>8)
+	packet[2] = byte(pid)
+	packet[3] = 0x10 | counter&0x0f
+	packet[4] = 0
+	copy(packet[5:], section)
+	return packet
+}
+
+func streamEncodeMJDTime(t time.Time) []byte {
+	jst := time.FixedZone("JST", 9*60*60)
+	t = t.In(jst)
+	mjd := streamMJDFromDate(t)
+	return []byte{byte(mjd >> 8), byte(mjd), streamEncodeBCD(t.Hour()), streamEncodeBCD(t.Minute()), streamEncodeBCD(t.Second())}
+}
+
+func streamMJDFromDate(t time.Time) int {
+	y := t.Year() - 1900
+	m := int(t.Month())
+	d := t.Day()
+	l := 0
+	if m == 1 || m == 2 {
+		l = 1
+	}
+	return 14956 + d + int(float64(y-l)*365.25) + int(float64(m+1+l*12)*30.6001)
+}
+
+func streamEncodeBCD(v int) byte {
+	return byte((v/10)<<4 | (v % 10))
+}
+
+func streamWriteCRC(s []byte) {
+	crc := streamCRC32MPEG2(s[:len(s)-4])
+	s[len(s)-4] = byte(crc >> 24)
+	s[len(s)-3] = byte(crc >> 16)
+	s[len(s)-2] = byte(crc >> 8)
+	s[len(s)-1] = byte(crc)
+}
+
+func streamCRC32MPEG2(data []byte) uint32 {
+	var crc uint32 = 0xffffffff
+	for _, b := range data {
+		crc ^= uint32(b) << 24
+		for range 8 {
+			if crc&0x80000000 != 0 {
+				crc = (crc << 1) ^ 0x04c11db7
+			} else {
+				crc <<= 1
+			}
+		}
+	}
+	return crc
 }
 
 type fakeTunerDevice struct {

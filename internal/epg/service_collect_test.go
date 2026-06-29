@@ -184,6 +184,27 @@ func TestCollectServiceSnapshotsStoresLowQualityWarningWithoutFailing(t *testing
 	}
 }
 
+func TestCollectServiceSnapshotsUsesBroadcastClockForSuccessTimestamp(t *testing.T) {
+	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	clock := time.Date(2026, 6, 29, 12, 34, 56, 0, time.FixedZone("JST", 9*60*60))
+	store := &collectProgramStore{}
+	status := newRemoteSyncServiceStore()
+	session := &collectEITClockSession{sections: []clockedEIT{{
+		eit:   testEIT(ts.TableIDEITSStart, key, 10),
+		clock: clock,
+	}}}
+
+	if err := CollectServiceSnapshots(context.Background(), store, status, session, []ServiceKey{key}, 20*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := status.successes[key], clock.UnixMilli(); got != want {
+		t.Fatalf("success timestamp = %d, want TOT clock %d", got, want)
+	}
+	if session.collectCalls != 1 {
+		t.Fatalf("CollectEITWithClock calls = %d, want 1", session.collectCalls)
+	}
+}
+
 func TestServiceCleanupUsesCleanupMetricSource(t *testing.T) {
 	store := &collectProgramStore{}
 	service := NewService(store, newRemoteSyncServiceStore(), nil, nil, 1, time.Second)
@@ -233,6 +254,37 @@ func (s *collectEITSession) CollectEIT(ctx context.Context, observe func(*ts.EIT
 	s.collectCalls++
 	for _, section := range s.sections {
 		if err := observe(section); err != nil {
+			return err
+		}
+	}
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+type clockedEIT struct {
+	eit   *ts.EIT
+	clock time.Time
+}
+
+type collectEITClockSession struct {
+	sections     []clockedEIT
+	collectCalls int
+}
+
+func (s *collectEITClockSession) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
+	for _, section := range s.sections {
+		if err := observe(section.eit); err != nil {
+			return err
+		}
+	}
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (s *collectEITClockSession) CollectEITWithClock(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
+	s.collectCalls++
+	for _, section := range s.sections {
+		if err := observe(section.eit, section.clock); err != nil {
 			return err
 		}
 	}

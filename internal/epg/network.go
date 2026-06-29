@@ -24,6 +24,10 @@ type Network struct {
 	Services   []ServiceKey
 }
 
+type eitClockCollector interface {
+	CollectEITWithClock(context.Context, func(*ts.EIT, time.Time) error) error
+}
+
 func groupServicesByNetwork(services []*service.Service, channels config.ChannelsConfig) map[uint16]*Network {
 	byChannel := make(map[string][]uint16)
 	for _, item := range services {
@@ -192,7 +196,18 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 		return ok
 	}
 
-	startedAt := time.Now().UnixMilli()
+	var latestClock time.Time
+	now := func() time.Time {
+		if !latestClock.IsZero() {
+			return latestClock
+		}
+		return time.Now()
+	}
+	nowMillis := func() int64 {
+		return now().UnixMilli()
+	}
+
+	startedAt := nowMillis()
 	source := "eits"
 	lister, hasStoredPrograms := session.(StoredProgramLister)
 	if hasStoredPrograms {
@@ -219,7 +234,10 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	go func() {
 		defer close(sectionCh)
 		var pfErr error
-		collectErr := session.CollectEIT(collectCtx, func(eit *ts.EIT) error {
+		observeEIT := func(eit *ts.EIT, clock time.Time) error {
+			if !clock.IsZero() {
+				latestClock = clock
+			}
 			section := EITSectionFromTS(eit)
 			if section == nil || !matchesExpected(section) {
 				return nil
@@ -241,7 +259,15 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 				return collectCtx.Err()
 			}
 			return nil
-		})
+		}
+		var collectErr error
+		if collector, ok := session.(eitClockCollector); ok {
+			collectErr = collector.CollectEITWithClock(collectCtx, observeEIT)
+		} else {
+			collectErr = session.CollectEIT(collectCtx, func(eit *ts.EIT) error {
+				return observeEIT(eit, time.Time{})
+			})
+		}
 		collectDone <- collectionResult{collectErr: collectErr, pfErr: pfErr}
 	}()
 
@@ -258,7 +284,7 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 				continue
 			}
 			slog.Debug("observed EIT section", "source", "eits", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
-			snapshot.Observe(section, time.Now())
+			snapshot.Observe(section, now())
 			if shouldStopEITSCollection(snapshot, expected) {
 				cancel()
 			}
@@ -278,7 +304,7 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	case <-time.After(2 * time.Second):
 	}
 
-	now := time.Now().UnixMilli()
+	updatedAt := nowMillis()
 	var result error
 	observed := 0
 	var unobserved error
@@ -313,19 +339,19 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 			err := programStore.UpsertPrograms(mergeCtx, programs)
 			observability.EndSpan(mergeSpan, err)
 			if err != nil {
-				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error()); attemptErr != nil {
+				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, err.Error()); attemptErr != nil {
 					observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
 				}
 				result = errors.Join(result, fmt.Errorf("service %d: merge: %w", key.ServiceID, err))
 				continue
 			}
-			if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, now); err != nil {
+			if err := serviceStore.SetEPGSuccess(ctx, key.NetworkID, key.ServiceID, updatedAt); err != nil {
 				observability.RecordEPGServiceUpdateError(ctx, "eits", "success")
 				result = errors.Join(result, err)
 			}
 			if warning := lowQualityProgramWarning(programs); warning != "" {
 				slog.Warn("EITS collection quality is low", "networkId", key.NetworkID, "serviceId", key.ServiceID, "warning", warning)
-				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, warning); attemptErr != nil {
+				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, warning); attemptErr != nil {
 					observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
 				}
 			}
@@ -335,7 +361,7 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 				"serviceId", key.ServiceID,
 				"report", snapshot.CompletionReport(key))
 			err := fmt.Errorf("service %d EITS incomplete", key.ServiceID)
-			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, err.Error()); attemptErr != nil {
+			if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, updatedAt, err.Error()); attemptErr != nil {
 				observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
 			}
 			unobserved = errors.Join(unobserved, err)
