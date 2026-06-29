@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, streamEvents, type EventItem, type Job, type Program, type Service, type Status, type Tuner } from "./api";
+import { api, parseProgramEventData, streamEvents, type EventItem, type Job, type Program, type ProgramEventData, type Service, type Status, type Tuner } from "./api";
 import { useAutoResource } from "./hooks";
 
 export type StreamConnectionState = "connected" | "reconnecting" | "disconnected";
@@ -36,6 +36,10 @@ export type DashboardState = {
 const pollIntervalMs = 30_000;
 const refreshDebounceMs = 250;
 const maxReconnectDelayMs = 30_000;
+
+function isFullProgramEventData(data: ProgramEventData): data is Program {
+  return "eventId" in data;
+}
 
 export function useDashboard(): DashboardState {
   const status = useAutoResource(api.status, { intervalMs: pollIntervalMs });
@@ -79,14 +83,32 @@ export function useDashboard(): DashboardState {
       case "job_schedule":
         refresh(["jobs", "status"]);
         break;
-      case "program":
+      case "program": {
+        const data = parseProgramEventData(event);
+        if (data) {
+          programs.setData((current) => {
+            const list = current ?? [];
+            if (event.type === "remove") {
+              return list.filter((program) => program.id !== data.id);
+            }
+            if (!isFullProgramEventData(data)) {
+              return current;
+            }
+            const index = list.findIndex((program) => program.id === data.id);
+            if (index < 0) {
+              return [...list, data];
+            }
+            return list.map((program, currentIndex) => currentIndex === index ? data : program);
+          });
+        }
         refresh(["programs"]);
         break;
+      }
       default:
         refresh(["status"]);
         break;
     }
-  }, [refresh]);
+  }, [programs.setData, refresh]);
 
   useEffect(() => {
     let cancelled = false;

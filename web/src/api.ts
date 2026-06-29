@@ -144,12 +144,27 @@ export type JobSchedule = {
   };
 };
 
+export type ProgramEventType = "create" | "update" | "remove";
+export type ProgramRemoveEventData = { id: number };
+export type ProgramEventData = Program | ProgramRemoveEventData;
+
 export type EventItem = {
   resource: string;
-  type: string;
+  type: string | ProgramEventType;
   data: unknown;
   time: number;
 };
+
+export function parseProgramEventData(event: EventItem): ProgramEventData | null {
+  if (event.resource !== "program") return null;
+  if (event.type === "remove") {
+    return isProgramRemoveEventData(event.data) ? event.data : null;
+  }
+  if (event.type === "create" || event.type === "update") {
+    return isProgram(event.data) ? event.data : null;
+  }
+  return null;
+}
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -242,4 +257,23 @@ function parseEventStreamLine(line: string): EventItem | null {
     return null;
   }
   return JSON.parse(json) as EventItem;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isProgramRemoveEventData(value: unknown): value is ProgramRemoveEventData {
+  return isRecord(value) && typeof value.id === "number";
+}
+
+function isProgram(value: unknown): value is Program {
+  return isRecord(value) &&
+    typeof value.id === "number" &&
+    typeof value.eventId === "number" &&
+    typeof value.serviceId === "number" &&
+    typeof value.networkId === "number" &&
+    typeof value.startAt === "number" &&
+    typeof value.duration === "number" &&
+    typeof value.isFree === "boolean";
 }
