@@ -450,13 +450,19 @@ export function makeEpgColumns(services: Service[], programsByService: Map<strin
       foldedServices: [...groupServices],
     };
     const seenContent = new Set<string>();
+    const foldedServiceKeys = new Set<string>();
     let hasReadyBaseline = false;
 
     for (const [index, service] of groupServices.entries()) {
       const programs = programsByService.get(`${service.networkId}:${service.serviceId}`) ?? [];
-      const contentKeys = programs.map((program) => programContentKey(program, resolveSharedProgramKey));
-      const canSplit = isStableEpgService(service) && hasReadyBaseline && contentKeys.length > 0;
-      const hasDistinctContent = canSplit && contentKeys.some((key) => !seenContent.has(key));
+      const contentEntries = programs.map((program) => ({
+        key: programContentKey(program, resolveSharedProgramKey),
+        sharedWithFoldedService: isSharedWithServiceSet(program, foldedServiceKeys),
+      }));
+      const canSplit = isStableEpgService(service) && hasReadyBaseline && contentEntries.length > 0;
+      const hasDistinctContent = canSplit && contentEntries.some(({ key, sharedWithFoldedService }) => (
+        !sharedWithFoldedService && !seenContent.has(key)
+      ));
 
       if (index === 0 || hasDistinctContent) {
         const column = index === 0 ? primaryColumn : {
@@ -467,15 +473,17 @@ export function makeEpgColumns(services: Service[], programsByService: Map<strin
         };
         if (index === 0) {
           primaryColumn.services.push(service);
+          foldedServiceKeys.add(serviceKey(service));
         }
         columns.push(column);
       } else {
         primaryColumn.services.push(service);
+        foldedServiceKeys.add(serviceKey(service));
       }
 
       if (isStableEpgService(service)) {
         hasReadyBaseline = true;
-        for (const key of contentKeys) {
+        for (const { key } of contentEntries) {
           seenContent.add(key);
         }
       }
@@ -594,6 +602,17 @@ function flattenProgramGroups(programsByService: Map<string, Program[]>) {
 
 function programEndpointKey(networkId: number, serviceId: number, eventId: number) {
   return `${networkId}:${serviceId}:${eventId}`;
+}
+
+function isSharedWithServiceSet(program: Program, serviceKeys: Set<string>) {
+  return (program.relatedItems ?? []).some((item) => (
+    item.type === "shared" &&
+    item.serviceId != null &&
+    serviceKeys.has(serviceKey({
+      networkId: item.networkId ?? program.networkId,
+      serviceId: item.serviceId,
+    }))
+  ));
 }
 
 export function normalizeProgramText(value?: string) {
