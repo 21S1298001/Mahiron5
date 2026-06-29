@@ -52,7 +52,7 @@ func LoadAndParseSystemConfig(filePath string) (*SystemConfig, error) {
 	}
 
 	config := SystemConfig{
-		DatabasePath:       "./db",
+		DatabasePath:       "./db/mahiron.db",
 		MaxConcurrentJobs:  1,
 		EpgRetentionDays:   3,
 		EpgRetrievalTime:   600000,

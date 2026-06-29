@@ -3,7 +3,7 @@ addresses:
   - unix: /tmp/mahiron.sock
 
 logLevel: info
-databasePath: ./db
+databasePath: ./db/mahiron.db
 maxConcurrentJobs: 1
 epgRetentionDays: 3
 epgRetrievalTime: 600000
