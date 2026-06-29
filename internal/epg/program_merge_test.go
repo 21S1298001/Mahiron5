@@ -23,12 +23,15 @@ func TestFillProgramsFromSharedPeersCopiesMissingDetails(t *testing.T) {
 		Series:      &program.Series{ID: 7, Name: "series"},
 	}
 	child := &program.Program{
-		ID:        program.ProgramID(1, 102, 9),
+		ID:        program.ProgramID(1, 102, 10),
 		NetworkID: 1,
 		ServiceID: 102,
-		EventID:   9,
+		EventID:   10,
 		StartAt:   1000,
 		Duration:  2000,
+		RelatedItems: []program.RelatedItem{
+			{Type: program.RelatedItemTypeShared, ServiceID: 101, EventID: 9},
+		},
 	}
 
 	fillProgramsFromSharedPeers([]*program.Program{child, parent})
@@ -52,19 +55,47 @@ func TestFillProgramsFromSharedPeersKeepsExistingDetails(t *testing.T) {
 		Name:      "parent title",
 	}
 	child := &program.Program{
-		ID:        program.ProgramID(1, 102, 9),
+		ID:        program.ProgramID(1, 102, 10),
 		NetworkID: 1,
 		ServiceID: 102,
-		EventID:   9,
+		EventID:   10,
 		StartAt:   1000,
 		Duration:  2000,
 		Name:      "child title",
+		RelatedItems: []program.RelatedItem{
+			{Type: program.RelatedItemTypeShared, ServiceID: 101, EventID: 9},
+		},
 	}
 
 	fillProgramsFromSharedPeers([]*program.Program{child, parent})
 
 	if child.Name != "child title" {
 		t.Fatalf("child name = %q, want existing value", child.Name)
+	}
+}
+
+func TestFillProgramsFromSharedPeersUsesOneWaySharedGraph(t *testing.T) {
+	source := &program.Program{
+		ID:        program.ProgramID(1, 102, 10),
+		NetworkID: 1,
+		ServiceID: 102,
+		EventID:   10,
+		RelatedItems: []program.RelatedItem{
+			{Type: program.RelatedItemTypeShared, ServiceID: 101, EventID: 9},
+		},
+	}
+	destination := &program.Program{
+		ID:        program.ProgramID(1, 101, 9),
+		NetworkID: 1,
+		ServiceID: 101,
+		EventID:   9,
+		Name:      "destination title",
+	}
+
+	fillProgramsFromSharedPeers([]*program.Program{destination, source})
+
+	if source.Name != "destination title" {
+		t.Fatalf("source name = %q, want destination title", source.Name)
 	}
 }
 

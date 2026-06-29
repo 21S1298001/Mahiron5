@@ -109,6 +109,16 @@ func TestApplyDescriptorHandlesExtendedAndSeriesAndEventGroup(t *testing.T) {
 	if len(prog3.RelatedItems) != 1 || prog3.RelatedItems[0].Type != program.RelatedItemTypeShared {
 		t.Fatalf("RelatedItems = %#v", prog3.RelatedItems)
 	}
+	movement := 0x03
+	prog4 := &program.Program{}
+	applyDescriptor(prog4, EITDescriptor{
+		Type:      "EventGroup",
+		GroupType: &movement,
+		Events:    []RelatedEvent{{ServiceID: 1, EventID: 2}},
+	})
+	if len(prog4.RelatedItems) != 1 || prog4.RelatedItems[0].Type != program.RelatedItemTypeMovement {
+		t.Fatalf("Movement RelatedItems = %#v", prog4.RelatedItems)
+	}
 }
 
 func ptrInt(v int) *int { return &v }

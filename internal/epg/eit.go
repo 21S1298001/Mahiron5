@@ -136,7 +136,7 @@ func applyDescriptor(item *program.Program, descriptor EITDescriptor) {
 				groupType = program.RelatedItemTypeShared
 			case 0x02:
 				groupType = program.RelatedItemTypeRelay
-			case 0x04:
+			case 0x03:
 				groupType = program.RelatedItemTypeMovement
 			}
 		}
