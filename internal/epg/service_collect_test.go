@@ -158,6 +158,32 @@ func TestCollectServiceSnapshotsFailsWhenNoServicesObserved(t *testing.T) {
 	}
 }
 
+func TestCollectServiceSnapshotsStoresLowQualityWarningWithoutFailing(t *testing.T) {
+	key := ServiceKey{NetworkID: 4, ServiceID: 101}
+	store := &collectProgramStore{}
+	status := newRemoteSyncServiceStore()
+	session := &collectEITSession{sections: []*ts.EIT{
+		testSparseEIT(ts.TableIDEITSStart, key, 10),
+	}}
+
+	err := CollectServiceSnapshots(context.Background(), store, status, session, []ServiceKey{key}, 20*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.successes[key] == 0 {
+		t.Fatal("service did not record success")
+	}
+	if got := status.errors[key]; got != "low quality EITS: 10/10 programs missing titles" {
+		t.Fatalf("service warning = %q", got)
+	}
+	if got := len(store.calls); got != 1 {
+		t.Fatalf("upsert calls = %d, want 1", got)
+	}
+	if got := len(store.calls[0]); got != 10 {
+		t.Fatalf("upserted programs = %d, want 10", got)
+	}
+}
+
 func TestServiceCleanupUsesCleanupMetricSource(t *testing.T) {
 	store := &collectProgramStore{}
 	service := NewService(store, newRemoteSyncServiceStore(), nil, nil, 1, time.Second)
@@ -297,6 +323,25 @@ func testEIT(tableID byte, key ServiceKey, eventID uint16) *ts.EIT {
 			Duration:  time.Minute,
 		}},
 	}
+}
+
+func testSparseEIT(tableID byte, key ServiceKey, count int) *ts.EIT {
+	eit := &ts.EIT{
+		OriginalNetworkID:        key.NetworkID,
+		ServiceID:                key.ServiceID,
+		TableID:                  tableID,
+		SectionNumber:            0,
+		LastSectionNumber:        0,
+		SegmentLastSectionNumber: 0,
+	}
+	for i := 0; i < count; i++ {
+		eit.Events = append(eit.Events, ts.EITEvent{
+			EventID:   uint16(100 + i),
+			StartTime: time.Unix(int64(100+i), 0),
+			Duration:  time.Minute,
+		})
+	}
+	return eit
 }
 
 func equalEventIDs(a, b []uint16) bool {

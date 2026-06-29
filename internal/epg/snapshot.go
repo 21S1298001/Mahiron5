@@ -24,6 +24,7 @@ type snapshotService struct {
 	tables      map[uint8]*snapshotTable
 	programs    map[int64]*program.Program
 	lastTableID map[uint8]uint8
+	readyGroups map[uint8]*snapshotReadyGroup
 }
 
 type snapshotTable struct {
@@ -34,6 +35,19 @@ type snapshotTable struct {
 	sections        map[uint8]struct{}
 	sectionPrograms map[uint8][]*program.Program
 	sectionVersions map[uint8]uint8
+}
+
+type snapshotReadyGroup struct {
+	base        uint8
+	lastFlagsID int
+	flags       [8]snapshotReadyFlag
+}
+
+type snapshotReadyFlag struct {
+	observed bool
+	version  uint8
+	flag     [32]byte
+	ignore   [32]byte
 }
 
 type SnapshotReport struct {
@@ -78,6 +92,7 @@ func (s *Snapshot) Observe(section *EITSection, now time.Time) bool {
 			tables:      make(map[uint8]*snapshotTable),
 			programs:    make(map[int64]*program.Program),
 			lastTableID: make(map[uint8]uint8),
+			readyGroups: make(map[uint8]*snapshotReadyGroup),
 		}
 		s.services[key] = service
 	}
@@ -104,11 +119,102 @@ func (s *Snapshot) Observe(section *EITSection, now time.Time) bool {
 	table.lastSection = section.LastSectionNumber
 	table.segmentLast[section.SectionNumber/8] = section.SegmentLastSectionNumber
 	service.lastTableID[section.TableID&0xf8] = section.LastTableID
+	readyChanged := service.observeReady(section, now)
 
-	if changed {
+	if changed || readyChanged {
 		s.lastProgress = now
 	}
+	return changed || readyChanged
+}
+
+func (s *snapshotService) observeReady(section *EITSection, now time.Time) bool {
+	base := section.TableID & 0xf8
+	group := s.readyGroups[base]
+	if group == nil {
+		group = &snapshotReadyGroup{base: base, lastFlagsID: -1}
+		for i := range group.flags {
+			for j := range group.flags[i].ignore {
+				group.flags[i].ignore[j] = 0xff
+			}
+		}
+		s.readyGroups[base] = group
+	}
+
+	flagsID := int(section.TableID & 0x07)
+	lastFlagsID := int(section.LastTableID & 0x07)
+	target := &group.flags[flagsID]
+	changed := false
+	if group.lastFlagsID != lastFlagsID || (target.observed && target.version != section.VersionNumber) {
+		group.reset(lastFlagsID)
+		changed = true
+	}
+	group.lastFlagsID = lastFlagsID
+
+	if !target.observed || target.version != section.VersionNumber {
+		target.observed = true
+		target.version = section.VersionNumber
+		changed = true
+	}
+
+	if flagsID == 0 && isCurrentScheduleBase(base) {
+		currentSegment := currentJSTSegment(now)
+		for i := 0; i < currentSegment; i++ {
+			if target.ignore[i] != 0xff {
+				target.ignore[i] = 0xff
+				changed = true
+			}
+		}
+	}
+
+	lastSegment := int(section.LastSectionNumber >> 3)
+	for i := lastSegment + 1; i < len(target.ignore); i++ {
+		if target.ignore[i] != 0xff {
+			target.ignore[i] = 0xff
+			changed = true
+		}
+	}
+
+	segmentNumber := int(section.SectionNumber >> 3)
+	sectionNumber := uint(section.SectionNumber & 0x07)
+	segmentLastSection := int(section.SegmentLastSectionNumber & 0x07)
+	for i := segmentLastSection + 1; i < 8; i++ {
+		mask := byte(1 << uint(i))
+		if target.ignore[segmentNumber]&mask == 0 {
+			target.ignore[segmentNumber] |= mask
+			changed = true
+		}
+	}
+	mask := byte(1 << sectionNumber)
+	if target.flag[segmentNumber]&mask == 0 {
+		target.flag[segmentNumber] |= mask
+		changed = true
+	}
 	return changed
+}
+
+func (g *snapshotReadyGroup) reset(lastFlagsID int) {
+	for i := range g.flags {
+		g.flags[i].observed = false
+		g.flags[i].version = 0
+		for j := range g.flags[i].flag {
+			g.flags[i].flag[j] = 0x00
+			if i <= lastFlagsID {
+				g.flags[i].ignore[j] = 0x00
+			} else {
+				g.flags[i].ignore[j] = 0xff
+			}
+		}
+	}
+}
+
+func isCurrentScheduleBase(base uint8) bool {
+	return base == 0x50 || base == 0x60
+}
+
+func currentJSTSegment(now time.Time) int {
+	const segmentDurationMillis = int64(3 * time.Hour / time.Millisecond)
+	const jstOffsetMillis = int64(9 * time.Hour / time.Millisecond)
+	return int(((now.UnixMilli() + jstOffsetMillis) / segmentDurationMillis) & 0x07)
 }
 
 func rebuildServicePrograms(service *snapshotService) {
@@ -123,29 +229,29 @@ func rebuildServicePrograms(service *snapshotService) {
 }
 
 func (s *Snapshot) ServiceComplete(key ServiceKey) bool {
+	return s.ServiceReady(key)
+}
+
+func (s *Snapshot) ServiceReady(key ServiceKey) bool {
 	service := s.services[key]
-	if service == nil || len(service.tables) == 0 {
+	if service == nil || len(service.readyGroups) == 0 {
 		return false
 	}
-	groups := make(map[uint8]map[uint8]*snapshotTable)
-	for tableID, table := range service.tables {
-		if tableID < 0x50 || tableID > 0x6f {
+	for _, group := range service.readyGroups {
+		if !group.ready() {
 			return false
 		}
-		base := tableID & 0xf8
-		if groups[base] == nil {
-			groups[base] = make(map[uint8]*snapshotTable)
-		}
-		groups[base][tableID] = table
 	}
-	if len(groups) == 0 {
+	return true
+}
+
+func (g *snapshotReadyGroup) ready() bool {
+	if g == nil {
 		return false
 	}
-	for base, tables := range groups {
-		maxTable := service.maxExpectedTableID(base, maxObservedSnapshotTableID(base, tables))
-		for tableID := base; tableID <= maxTable; tableID++ {
-			table := tables[tableID]
-			if table == nil || !snapshotTableComplete(table, tableID == base) {
+	for i := range g.flags {
+		for j := range g.flags[i].flag {
+			if g.flags[i].flag[j]|g.flags[i].ignore[j] != 0xff {
 				return false
 			}
 		}
@@ -166,66 +272,68 @@ func (s *Snapshot) CompletionReport(key ServiceKey) SnapshotReport {
 	sort.Ints(tableIDs)
 
 	report := SnapshotReport{ObservedTables: len(tableIDs)}
-	groups := make(map[uint8]map[uint8]struct{})
+	readyGroups := make(map[uint8]struct{})
 	for _, id := range tableIDs {
 		tableID := uint8(id)
 		table := service.tables[tableID]
 		base := tableID & 0xf8
-		if groups[base] == nil {
-			groups[base] = make(map[uint8]struct{})
-		}
-		groups[base][tableID] = struct{}{}
+		readyGroups[base] = struct{}{}
 
 		tableReport := SnapshotTableReport{
 			TableID:          id,
 			Version:          int(table.version),
 			LastSection:      int(table.lastSection),
 			ObservedSections: len(table.sections),
-			Complete:         snapshotTableComplete(table, tableID == base),
+			Complete:         readyTableComplete(service.readyGroups[base], tableID),
 		}
-		firstObservedSegment := uint8(0)
-		if tableID == base {
-			firstObservedSegment = firstSegmentWithInfo(table)
-		}
-		lastSegment := table.lastSection / 8
-		for segment := uint8(0); segment <= lastSegment; segment++ {
-			segmentLast, ok := table.segmentLast[segment]
-			if !ok {
-				if tableID != base || segment >= firstObservedSegment {
-					tableReport.MissingSegmentInfo = append(tableReport.MissingSegmentInfo, int(segment))
-				}
-			} else {
-				first := segment * 8
-				last := segmentLast
-				if last > table.lastSection {
-					last = table.lastSection
-				}
-				for section := first; section <= last && last >= first; section++ {
-					if _, ok := table.sections[section]; !ok {
-						tableReport.MissingSections = append(tableReport.MissingSections, int(section))
-					}
-					if section == 255 {
-						break
-					}
-				}
-			}
-			if segment == 31 {
-				break
-			}
-		}
+		tableReport.MissingSections = readyMissingSections(service.readyGroups[base], tableID)
 		report.Tables = append(report.Tables, tableReport)
 	}
 
-	for base, tables := range groups {
-		maxTable := service.maxExpectedTableID(base, maxObservedTableID(base, tables))
-		for tableID := base; tableID <= maxTable; tableID++ {
-			if _, ok := tables[tableID]; !ok {
+	for base := range readyGroups {
+		group := service.readyGroups[base]
+		if group == nil {
+			continue
+		}
+		for i := 0; i <= group.lastFlagsID; i++ {
+			tableID := base + uint8(i)
+			if _, ok := service.tables[tableID]; !ok {
 				report.MissingTableIDs = append(report.MissingTableIDs, int(tableID))
 			}
 		}
 	}
 	sort.Ints(report.MissingTableIDs)
 	return report
+}
+
+func readyTableComplete(group *snapshotReadyGroup, tableID uint8) bool {
+	if group == nil {
+		return false
+	}
+	flag := group.flags[tableID&0x07]
+	for i := range flag.flag {
+		if flag.flag[i]|flag.ignore[i] != 0xff {
+			return false
+		}
+	}
+	return true
+}
+
+func readyMissingSections(group *snapshotReadyGroup, tableID uint8) []int {
+	if group == nil {
+		return nil
+	}
+	flag := group.flags[tableID&0x07]
+	var missing []int
+	for segment := 0; segment < len(flag.flag); segment++ {
+		needed := ^(flag.flag[segment] | flag.ignore[segment])
+		for section := 0; section < 8; section++ {
+			if needed&(1<<uint(section)) != 0 {
+				missing = append(missing, segment*8+section)
+			}
+		}
+	}
+	return missing
 }
 
 func (s *snapshotService) maxExpectedTableID(base uint8, observedMax uint8) uint8 {
@@ -306,11 +414,15 @@ func firstSegmentWithInfo(table *snapshotTable) uint8 {
 }
 
 func (s *Snapshot) AllComplete(expected []ServiceKey) bool {
+	return s.AllReady(expected)
+}
+
+func (s *Snapshot) AllReady(expected []ServiceKey) bool {
 	if len(expected) == 0 {
 		return false
 	}
 	for _, key := range expected {
-		if !s.ServiceComplete(key) {
+		if !s.ServiceReady(key) {
 			return false
 		}
 	}

@@ -284,14 +284,14 @@ ON CONFLICT(id) DO UPDATE SET
   start_at=excluded.start_at,
   duration=excluded.duration,
   is_free=excluded.is_free,
-  name=excluded.name,
-  description=excluded.description,
-  genres=excluded.genres,
-  video=excluded.video,
-  audios=excluded.audios,
-  extended=excluded.extended,
-  related_items=excluded.related_items,
-  series=excluded.series
+  name=COALESCE(excluded.name, programs.name),
+  description=COALESCE(excluded.description, programs.description),
+  genres=COALESCE(excluded.genres, programs.genres),
+  video=COALESCE(excluded.video, programs.video),
+  audios=COALESCE(excluded.audios, programs.audios),
+  extended=COALESCE(excluded.extended, programs.extended),
+  related_items=COALESCE(excluded.related_items, programs.related_items),
+  series=COALESCE(excluded.series, programs.series)
 `
 
 type UpsertProgramParams struct {

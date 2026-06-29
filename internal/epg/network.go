@@ -9,6 +9,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -258,7 +259,7 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 			}
 			slog.Debug("observed EIT section", "source", "eits", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
 			snapshot.Observe(section, time.Now())
-			if snapshot.AllComplete(expected) {
+			if shouldStopEITSCollection(snapshot, expected) {
 				cancel()
 			}
 		case <-collectCtx.Done():
@@ -281,10 +282,21 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	var result error
 	observed := 0
 	var unobserved error
+	observedPrograms := make(map[ServiceKey][]*program.Program)
+	var allObservedPrograms []*program.Program
+	for _, key := range expected {
+		if !snapshot.Observed(key) {
+			continue
+		}
+		programs := snapshot.Programs(key)
+		observedPrograms[key] = programs
+		allObservedPrograms = append(allObservedPrograms, programs...)
+	}
+	fillProgramsFromSharedPeers(allObservedPrograms)
 	for _, key := range expected {
 		if snapshot.Observed(key) {
 			observed++
-			programs := snapshot.Programs(key)
+			programs := observedPrograms[key]
 			if !snapshot.ServiceComplete(key) {
 				slog.Warn("flushing incomplete EITS collection",
 					"networkId", key.NetworkID,
@@ -311,6 +323,12 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 				observability.RecordEPGServiceUpdateError(ctx, "eits", "success")
 				result = errors.Join(result, err)
 			}
+			if warning := lowQualityProgramWarning(programs); warning != "" {
+				slog.Warn("EITS collection quality is low", "networkId", key.NetworkID, "serviceId", key.ServiceID, "warning", warning)
+				if attemptErr := serviceStore.SetEPGAttempt(ctx, key.NetworkID, key.ServiceID, now, warning); attemptErr != nil {
+					observability.RecordEPGServiceUpdateError(ctx, "eits", "attempt")
+				}
+			}
 		} else {
 			slog.Warn("EITS snapshot incomplete",
 				"networkId", key.NetworkID,
@@ -327,6 +345,18 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 		result = errors.Join(result, unobserved)
 	}
 	return result
+}
+
+func shouldStopEITSCollection(snapshot *Snapshot, expected []ServiceKey) bool {
+	if snapshot == nil || !snapshot.AllReady(expected) {
+		return false
+	}
+	var programs []*program.Program
+	for _, key := range expected {
+		programs = append(programs, snapshot.Programs(key)...)
+	}
+	fillProgramsFromSharedPeers(programs)
+	return lowQualityProgramWarning(programs) == ""
 }
 
 func syncStoredServicePrograms(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, lister StoredProgramLister, expected []ServiceKey, retrievalTime time.Duration) (err error) {

@@ -65,8 +65,13 @@ func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program
 		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
 		return err
 	}
+	afterPrograms, err := m.store.ListByIDs(ctx, ids)
+	if err != nil {
+		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
+		return err
+	}
 	changed := 0
-	for _, p := range programs {
+	for _, p := range afterPrograms {
 		if p == nil {
 			continue
 		}

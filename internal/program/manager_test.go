@@ -184,3 +184,99 @@ func TestSQLiteStoreRoundTripsExtendedAndRelatedAndSeries(t *testing.T) {
 		t.Fatalf("Series = %#v", got.Series)
 	}
 }
+
+func TestUpsertProgramsKeepsExistingDetailsWhenIncomingIsSparse(t *testing.T) {
+	ctx := context.Background()
+	manager := newTestManager(t)
+	id := ProgramID(1, 2, 1)
+	existing := &Program{
+		ID:          id,
+		NetworkID:   1,
+		ServiceID:   2,
+		EventID:     1,
+		StartAt:     1000,
+		Duration:    1000,
+		IsFree:      true,
+		Name:        "existing title",
+		Description: "existing description",
+		Genres:      []Genre{{Lv1: 0, Lv2: 1, Un1: 15, Un2: 15}},
+		Video:       &Video{StreamContent: 1, ComponentType: 179},
+		Audios:      []Audio{{ComponentType: 1}},
+		Extended:    map[string]string{"出演者": "existing cast"},
+		Series:      &Series{ID: 7, Name: "existing series"},
+	}
+	if err := manager.UpsertPrograms(ctx, []*Program{existing}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := manager.UpsertPrograms(ctx, []*Program{{
+		ID:        id,
+		NetworkID: 1,
+		ServiceID: 2,
+		EventID:   1,
+		StartAt:   2000,
+		Duration:  2000,
+		IsFree:    false,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok, err := manager.Get(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("program not stored")
+	}
+	if got.StartAt != 2000 || got.Duration != 2000 || got.IsFree {
+		t.Fatalf("event fields = start:%d duration:%d isFree:%v", got.StartAt, got.Duration, got.IsFree)
+	}
+	if got.Name != existing.Name || got.Description != existing.Description {
+		t.Fatalf("text fields = %q/%q", got.Name, got.Description)
+	}
+	if len(got.Genres) != 1 || got.Video == nil || len(got.Audios) != 1 || got.Extended["出演者"] != "existing cast" || got.Series == nil {
+		t.Fatalf("details were not preserved: %#v", got)
+	}
+}
+
+func TestUpsertProgramsFillsSparseProgramWithLaterDetails(t *testing.T) {
+	ctx := context.Background()
+	manager := newTestManager(t)
+	id := ProgramID(1, 2, 1)
+	if err := manager.UpsertPrograms(ctx, []*Program{{
+		ID:        id,
+		NetworkID: 1,
+		ServiceID: 2,
+		EventID:   1,
+		StartAt:   1000,
+		Duration:  1000,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := manager.UpsertPrograms(ctx, []*Program{{
+		ID:          id,
+		NetworkID:   1,
+		ServiceID:   2,
+		EventID:     1,
+		StartAt:     1000,
+		Duration:    1000,
+		Name:        "later title",
+		Description: "later description",
+		Genres:      []Genre{{Lv1: 2, Lv2: 3, Un1: 15, Un2: 15}},
+		Audios:      []Audio{{ComponentType: 3}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok, err := manager.Get(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("program not stored")
+	}
+	if got.Name != "later title" || got.Description != "later description" || len(got.Genres) != 1 || len(got.Audios) != 1 {
+		t.Fatalf("program was not filled by later details: %#v", got)
+	}
+}
