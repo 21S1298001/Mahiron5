@@ -48,7 +48,7 @@ function setFavicon(href: string) {
 }
 
 function brandState(dashboard: DashboardState): BrandState {
-  if (dashboard.streamState !== "connected" || dashboard.status.error || dashboard.tuners.error) return "gray";
+  if (dashboard.streamState === "disconnected" || dashboard.status.error || dashboard.tuners.error) return "gray";
   return dashboard.tuners.data?.some((tuner) => tuner.isUsing) ? "active" : "normal";
 }
 
