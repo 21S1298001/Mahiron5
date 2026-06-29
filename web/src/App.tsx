@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { useDashboard, type DashboardState, type StreamConnectionState } from "./dashboard";
+import { useDashboard, type DashboardState } from "./dashboard";
 import activeIconUrl from "./assets/brand/icon-active.svg?url";
 import grayIconUrl from "./assets/brand/icon-gray.svg?url";
 import iconUrl from "./assets/brand/icon.svg?url";
@@ -47,12 +47,6 @@ function setFavicon(href: string) {
   link.href = href;
 }
 
-function connectionLabel(state: StreamConnectionState) {
-  if (state === "connected") return "events 接続中";
-  if (state === "reconnecting") return "events 再接続中";
-  return "events 切断";
-}
-
 function brandState(dashboard: DashboardState): BrandState {
   if (dashboard.streamState !== "connected" || dashboard.status.error || dashboard.tuners.error) return "gray";
   return dashboard.tuners.data?.some((tuner) => tuner.isUsing) ? "active" : "normal";
@@ -82,7 +76,6 @@ export default function App() {
           <div>
             <strong>Mahiron</strong>
             <span>{dashboard.status.data?.version ? `v${dashboard.status.data.version}` : "v-"}</span>
-            <small className={`brand-stream ${dashboard.streamState}`}>{connectionLabel(dashboard.streamState)}</small>
           </div>
         </div>
         <nav>
