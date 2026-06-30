@@ -18,7 +18,10 @@ const (
 	TableIDEITSOtherStart = 0x60 // schedule, other TS
 	TableIDEITSOtherEnd   = 0x6F // schedule, other TS
 	TableIDTOT            = 0x73 // time offset table
+	TableIDSDTT           = 0xC3 // software download trigger table
 	TableIDCDT            = 0xC8 // common data table
+	TableIDDSMCCDII       = 0x3B // DSM-CC DownloadInfoIndication
+	TableIDDSMCCDDB       = 0x3C // DSM-CC DownloadDataBlock
 	TableIDNIT0           = 0x40 // actual network
 	TableIDNIT1           = 0x41 // other network
 )

@@ -23,6 +23,7 @@ func (q *Queries) CountServices(ctx context.Context) (int64, error) {
 const deleteServiceLogo = `-- name: DeleteServiceLogo :exec
 DELETE FROM service_logos
 WHERE network_id = ?
+  AND transport_stream_id = ?
   AND service_id = ?
   AND logo_id = ?
   AND logo_type = ?
@@ -31,17 +32,19 @@ WHERE network_id = ?
 `
 
 type DeleteServiceLogoParams struct {
-	NetworkID      int64 `json:"network_id"`
-	ServiceID      int64 `json:"service_id"`
-	LogoID         int64 `json:"logo_id"`
-	LogoType       int64 `json:"logo_type"`
-	LogoVersion    int64 `json:"logo_version"`
-	DownloadDataID int64 `json:"download_data_id"`
+	NetworkID         int64 `json:"network_id"`
+	TransportStreamID int64 `json:"transport_stream_id"`
+	ServiceID         int64 `json:"service_id"`
+	LogoID            int64 `json:"logo_id"`
+	LogoType          int64 `json:"logo_type"`
+	LogoVersion       int64 `json:"logo_version"`
+	DownloadDataID    int64 `json:"download_data_id"`
 }
 
 func (q *Queries) DeleteServiceLogo(ctx context.Context, arg DeleteServiceLogoParams) error {
 	_, err := q.db.ExecContext(ctx, deleteServiceLogo,
 		arg.NetworkID,
+		arg.TransportStreamID,
 		arg.ServiceID,
 		arg.LogoID,
 		arg.LogoType,
@@ -53,16 +56,17 @@ func (q *Queries) DeleteServiceLogo(ctx context.Context, arg DeleteServiceLogoPa
 
 const deleteServiceLogosForService = `-- name: DeleteServiceLogosForService :exec
 DELETE FROM service_logos
-WHERE network_id = ? AND service_id = ?
+WHERE network_id = ? AND transport_stream_id = ? AND service_id = ?
 `
 
 type DeleteServiceLogosForServiceParams struct {
-	NetworkID int64 `json:"network_id"`
-	ServiceID int64 `json:"service_id"`
+	NetworkID         int64 `json:"network_id"`
+	TransportStreamID int64 `json:"transport_stream_id"`
+	ServiceID         int64 `json:"service_id"`
 }
 
 func (q *Queries) DeleteServiceLogosForService(ctx context.Context, arg DeleteServiceLogosForServiceParams) error {
-	_, err := q.db.ExecContext(ctx, deleteServiceLogosForService, arg.NetworkID, arg.ServiceID)
+	_, err := q.db.ExecContext(ctx, deleteServiceLogosForService, arg.NetworkID, arg.TransportStreamID, arg.ServiceID)
 	return err
 }
 
@@ -83,21 +87,24 @@ func (q *Queries) DeleteServicesByChannel(ctx context.Context, arg DeleteService
 const deleteStaleServiceLogosForService = `-- name: DeleteStaleServiceLogosForService :exec
 DELETE FROM service_logos
 WHERE network_id = ?
+  AND transport_stream_id = ?
   AND service_id = ?
   AND (logo_id != ? OR logo_version != ? OR download_data_id != ?)
 `
 
 type DeleteStaleServiceLogosForServiceParams struct {
-	NetworkID      int64 `json:"network_id"`
-	ServiceID      int64 `json:"service_id"`
-	LogoID         int64 `json:"logo_id"`
-	LogoVersion    int64 `json:"logo_version"`
-	DownloadDataID int64 `json:"download_data_id"`
+	NetworkID         int64 `json:"network_id"`
+	TransportStreamID int64 `json:"transport_stream_id"`
+	ServiceID         int64 `json:"service_id"`
+	LogoID            int64 `json:"logo_id"`
+	LogoVersion       int64 `json:"logo_version"`
+	DownloadDataID    int64 `json:"download_data_id"`
 }
 
 func (q *Queries) DeleteStaleServiceLogosForService(ctx context.Context, arg DeleteStaleServiceLogosForServiceParams) error {
 	_, err := q.db.ExecContext(ctx, deleteStaleServiceLogosForService,
 		arg.NetworkID,
+		arg.TransportStreamID,
 		arg.ServiceID,
 		arg.LogoID,
 		arg.LogoVersion,
@@ -144,7 +151,7 @@ const getLogoByServiceItemID = `-- name: GetLogoByServiceItemID :one
 SELECT l.data
 FROM services s
 JOIN service_logos l
-  ON l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+  ON l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
   AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
 WHERE s.network_id * 100000 + s.service_id = ?
 ORDER BY CASE l.logo_type
@@ -171,7 +178,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -187,7 +194,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -266,7 +273,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -329,7 +336,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -392,7 +399,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -460,7 +467,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -596,7 +603,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -677,7 +684,7 @@ WHERE s.logo_id IS NOT NULL AND s.logo_id >= 0
   AND s.logo_download_data_id IS NOT NULL
   AND NOT EXISTS (
     SELECT 1 FROM service_logos l
-    WHERE l.network_id = s.network_id AND l.service_id = s.service_id
+    WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id
       AND l.logo_id = s.logo_id AND l.logo_version = s.logo_version
       AND l.download_data_id = s.logo_download_data_id
   )
@@ -778,6 +785,36 @@ func (q *Queries) SetEPGSuccess(ctx context.Context, arg SetEPGSuccessParams) er
 	return err
 }
 
+const updateServiceLogoMetadata = `-- name: UpdateServiceLogoMetadata :execrows
+UPDATE services
+SET logo_id = ?, logo_version = ?, logo_download_data_id = ?
+WHERE network_id = ? AND transport_stream_id = ? AND service_id = ?
+`
+
+type UpdateServiceLogoMetadataParams struct {
+	LogoID             *int64 `json:"logo_id"`
+	LogoVersion        *int64 `json:"logo_version"`
+	LogoDownloadDataID *int64 `json:"logo_download_data_id"`
+	NetworkID          int64  `json:"network_id"`
+	TransportStreamID  int64  `json:"transport_stream_id"`
+	ServiceID          int64  `json:"service_id"`
+}
+
+func (q *Queries) UpdateServiceLogoMetadata(ctx context.Context, arg UpdateServiceLogoMetadataParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateServiceLogoMetadata,
+		arg.LogoID,
+		arg.LogoVersion,
+		arg.LogoDownloadDataID,
+		arg.NetworkID,
+		arg.TransportStreamID,
+		arg.ServiceID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const upsertService = `-- name: UpsertService :exec
 INSERT INTO services (id, service_id, network_id, transport_stream_id, name, type, eit_schedule_flag, eit_present_following, logo_id, logo_version, logo_download_data_id, remote_control_key_id, channel_type, channel_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -835,9 +872,9 @@ func (q *Queries) UpsertService(ctx context.Context, arg UpsertServiceParams) er
 }
 
 const upsertServiceLogo = `-- name: UpsertServiceLogo :exec
-INSERT INTO service_logos (network_id, service_id, logo_id, logo_type, logo_version, download_data_id, data, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(network_id, service_id, logo_id, logo_type) DO UPDATE SET
+INSERT INTO service_logos (network_id, transport_stream_id, service_id, logo_id, logo_type, logo_version, download_data_id, data, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(network_id, transport_stream_id, service_id, logo_id, logo_type) DO UPDATE SET
   logo_version=excluded.logo_version,
   download_data_id=excluded.download_data_id,
   data=excluded.data,
@@ -845,19 +882,21 @@ ON CONFLICT(network_id, service_id, logo_id, logo_type) DO UPDATE SET
 `
 
 type UpsertServiceLogoParams struct {
-	NetworkID      int64  `json:"network_id"`
-	ServiceID      int64  `json:"service_id"`
-	LogoID         int64  `json:"logo_id"`
-	LogoType       int64  `json:"logo_type"`
-	LogoVersion    int64  `json:"logo_version"`
-	DownloadDataID int64  `json:"download_data_id"`
-	Data           []byte `json:"data"`
-	UpdatedAt      int64  `json:"updated_at"`
+	NetworkID         int64  `json:"network_id"`
+	TransportStreamID int64  `json:"transport_stream_id"`
+	ServiceID         int64  `json:"service_id"`
+	LogoID            int64  `json:"logo_id"`
+	LogoType          int64  `json:"logo_type"`
+	LogoVersion       int64  `json:"logo_version"`
+	DownloadDataID    int64  `json:"download_data_id"`
+	Data              []byte `json:"data"`
+	UpdatedAt         int64  `json:"updated_at"`
 }
 
 func (q *Queries) UpsertServiceLogo(ctx context.Context, arg UpsertServiceLogoParams) error {
 	_, err := q.db.ExecContext(ctx, upsertServiceLogo,
 		arg.NetworkID,
+		arg.TransportStreamID,
 		arg.ServiceID,
 		arg.LogoID,
 		arg.LogoType,

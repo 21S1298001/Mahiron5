@@ -160,6 +160,12 @@ func (s *serviceScanState) handlePAT() {
 
 func (s *serviceScanState) handleSDT() {
 	services := map[uint16]ServiceInfo{}
+	type directLogo struct {
+		version        uint16
+		downloadDataID uint16
+	}
+	directLogos := map[uint16]directLogo{}
+	indirectServices := map[uint16]uint16{}
 	for _, section := range s.sdtSections.ordered() {
 		sdt, err := ParseSDT(section)
 		if err != nil {
@@ -185,10 +191,23 @@ func (s *serviceScanState) handleSDT() {
 				if logo.TransmissionType == LogoTransmissionTypeCDTDirect {
 					info.LogoVersion = uint16Ptr(logo.LogoVersion)
 					info.LogoDownloadDataId = uint16Ptr(logo.DownloadDataID)
+					directLogos[logo.LogoID] = directLogo{version: logo.LogoVersion, downloadDataID: logo.DownloadDataID}
+				} else if logo.TransmissionType == LogoTransmissionTypeCDTIndirect {
+					indirectServices[svc.ServiceID] = logo.LogoID
 				}
 			}
 			services[svc.ServiceID] = info
 		}
+	}
+	for serviceID, logoID := range indirectServices {
+		logo, ok := directLogos[logoID]
+		if !ok {
+			continue
+		}
+		info := services[serviceID]
+		info.LogoVersion = uint16Ptr(logo.version)
+		info.LogoDownloadDataId = uint16Ptr(logo.downloadDataID)
+		services[serviceID] = info
 	}
 	s.services = services
 	s.sdtReady = true

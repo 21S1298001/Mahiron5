@@ -53,12 +53,13 @@ type Service struct {
 }
 
 type ServiceLogo struct {
-	NetworkID      int64  `json:"network_id"`
-	ServiceID      int64  `json:"service_id"`
-	LogoID         int64  `json:"logo_id"`
-	LogoType       int64  `json:"logo_type"`
-	LogoVersion    int64  `json:"logo_version"`
-	DownloadDataID int64  `json:"download_data_id"`
-	Data           []byte `json:"data"`
-	UpdatedAt      int64  `json:"updated_at"`
+	NetworkID         int64  `json:"network_id"`
+	TransportStreamID int64  `json:"transport_stream_id"`
+	ServiceID         int64  `json:"service_id"`
+	LogoID            int64  `json:"logo_id"`
+	LogoType          int64  `json:"logo_type"`
+	LogoVersion       int64  `json:"logo_version"`
+	DownloadDataID    int64  `json:"download_data_id"`
+	Data              []byte `json:"data"`
+	UpdatedAt         int64  `json:"updated_at"`
 }

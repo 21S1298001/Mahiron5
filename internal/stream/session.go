@@ -25,6 +25,7 @@ type ChannelSession struct {
 	decodedEngine *packetEngine
 	eitUpdater    EITSectionUpdater
 	logoUpdater   LogoUpdater
+	logoCarousel  *ts.DSMCCLogoCarousel
 	sectionCancel context.CancelFunc
 	sectionQueue  chan ts.Section
 }
@@ -41,12 +42,13 @@ type ChannelSessionConfig struct {
 
 func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
 	session := &ChannelSession{
-		broadcast:   config.Broadcast,
-		channel:     config.Channel,
-		descrambler: config.Descrambler,
-		typ:         config.Type,
-		eitUpdater:  config.EITUpdater,
-		logoUpdater: config.LogoUpdater,
+		broadcast:    config.Broadcast,
+		channel:      config.Channel,
+		descrambler:  config.Descrambler,
+		typ:          config.Type,
+		eitUpdater:   config.EITUpdater,
+		logoUpdater:  config.LogoUpdater,
+		logoCarousel: ts.NewDSMCCLogoCarousel(),
 	}
 	sectionCtx, sectionCancel := context.WithCancel(context.Background())
 	session.sectionCancel = sectionCancel
@@ -317,6 +319,25 @@ func (s *ChannelSession) updateSection(ctx context.Context, section ts.Section) 
 			if image, err := ts.ParseCDTLogoImage(cdt); err == nil {
 				if err := s.logoUpdater.UpsertLogoImage(ctx, image); err != nil {
 					slog.Error("failed to update logo", "type", s.typ, "channel", s.channel, "err", err)
+				}
+			}
+		}
+	}
+	if section.TableID() == ts.TableIDDSMCCDII && s.logoUpdater != nil {
+		if dii, err := ts.ParseDSMCCDII(section); err == nil {
+			s.logoCarousel.ObserveDII(dii)
+		}
+	}
+	if section.TableID() == ts.TableIDDSMCCDDB && s.logoUpdater != nil {
+		if ddb, err := ts.ParseDSMCCDDB(section); err == nil {
+			images, err := s.logoCarousel.ObserveDDB(ddb)
+			if err != nil {
+				slog.Error("failed to parse common logo", "type", s.typ, "channel", s.channel, "err", err)
+				return
+			}
+			for _, image := range images {
+				if err := s.logoUpdater.UpsertCommonLogoImage(ctx, image); err != nil {
+					slog.Error("failed to update common logo", "type", s.typ, "channel", s.channel, "err", err)
 				}
 			}
 		}

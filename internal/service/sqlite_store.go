@@ -182,27 +182,44 @@ func (s *sqliteStore) SetEPGSuccess(ctx context.Context, networkID, serviceID ui
 	})
 }
 
-func (s *sqliteStore) DeleteLogo(ctx context.Context, networkID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error {
+func (s *sqliteStore) UpdateServiceLogoMetadata(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID, logoVersion, downloadDataID int64) (bool, error) {
+	rows, err := s.q.UpdateServiceLogoMetadata(ctx, gen.UpdateServiceLogoMetadataParams{
+		LogoID:             &logoID,
+		LogoVersion:        &logoVersion,
+		LogoDownloadDataID: &downloadDataID,
+		NetworkID:          int64(networkID),
+		TransportStreamID:  int64(transportStreamID),
+		ServiceID:          int64(serviceID),
+	})
+	if err != nil {
+		return false, err
+	}
+	return rows > 0, nil
+}
+
+func (s *sqliteStore) DeleteLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error {
 	return s.q.DeleteServiceLogo(ctx, gen.DeleteServiceLogoParams{
-		NetworkID:      int64(networkID),
-		ServiceID:      int64(serviceID),
-		LogoID:         logoID,
-		LogoType:       logoType,
-		LogoVersion:    logoVersion,
-		DownloadDataID: downloadDataID,
+		NetworkID:         int64(networkID),
+		TransportStreamID: int64(transportStreamID),
+		ServiceID:         int64(serviceID),
+		LogoID:            logoID,
+		LogoType:          logoType,
+		LogoVersion:       logoVersion,
+		DownloadDataID:    downloadDataID,
 	})
 }
 
-func (s *sqliteStore) UpsertLogo(ctx context.Context, networkID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
+func (s *sqliteStore) UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
 	return s.q.UpsertServiceLogo(ctx, gen.UpsertServiceLogoParams{
-		NetworkID:      int64(networkID),
-		ServiceID:      int64(serviceID),
-		LogoID:         logoID,
-		LogoType:       logoType,
-		LogoVersion:    logoVersion,
-		DownloadDataID: downloadDataID,
-		Data:           data,
-		UpdatedAt:      updatedAt,
+		NetworkID:         int64(networkID),
+		TransportStreamID: int64(transportStreamID),
+		ServiceID:         int64(serviceID),
+		LogoID:            logoID,
+		LogoType:          logoType,
+		LogoVersion:       logoVersion,
+		DownloadDataID:    downloadDataID,
+		Data:              data,
+		UpdatedAt:         updatedAt,
 	})
 }
 
@@ -307,18 +324,20 @@ func (s *sqliteStore) ReplaceChannelServices(ctx context.Context, channelType, c
 		}
 		if svc.LogoId != nil && svc.LogoVersion != nil && svc.LogoDownloadDataId != nil {
 			if err := q.DeleteStaleServiceLogosForService(ctx, gen.DeleteStaleServiceLogosForServiceParams{
-				NetworkID:      int64(svc.NetworkId),
-				ServiceID:      int64(svc.ServiceId),
-				LogoID:         *svc.LogoId,
-				LogoVersion:    *svc.LogoVersion,
-				DownloadDataID: *svc.LogoDownloadDataId,
+				NetworkID:         int64(svc.NetworkId),
+				TransportStreamID: int64(svc.TransportStreamId),
+				ServiceID:         int64(svc.ServiceId),
+				LogoID:            *svc.LogoId,
+				LogoVersion:       *svc.LogoVersion,
+				DownloadDataID:    *svc.LogoDownloadDataId,
 			}); err != nil {
 				return fmt.Errorf("delete stale service logos %s: %w", svc.Id, err)
 			}
 		} else {
 			if err := q.DeleteServiceLogosForService(ctx, gen.DeleteServiceLogosForServiceParams{
-				NetworkID: int64(svc.NetworkId),
-				ServiceID: int64(svc.ServiceId),
+				NetworkID:         int64(svc.NetworkId),
+				TransportStreamID: int64(svc.TransportStreamId),
+				ServiceID:         int64(svc.ServiceId),
 			}); err != nil {
 				return fmt.Errorf("delete service logos %s: %w", svc.Id, err)
 			}

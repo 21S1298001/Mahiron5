@@ -3,7 +3,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -17,7 +17,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -32,7 +32,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -47,7 +47,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -62,7 +62,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -77,7 +77,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -93,7 +93,7 @@ SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
        s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
          SELECT 1 FROM service_logos l
-         WHERE l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
            AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
        ) AS has_logo_data,
        s.remote_control_key_id, s.channel_type, s.channel_id,
@@ -146,10 +146,15 @@ ON CONFLICT(id) DO UPDATE SET
   channel_type=excluded.channel_type,
   channel_id=excluded.channel_id;
 
+-- name: UpdateServiceLogoMetadata :execrows
+UPDATE services
+SET logo_id = ?, logo_version = ?, logo_download_data_id = ?
+WHERE network_id = ? AND transport_stream_id = ? AND service_id = ?;
+
 -- name: UpsertServiceLogo :exec
-INSERT INTO service_logos (network_id, service_id, logo_id, logo_type, logo_version, download_data_id, data, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(network_id, service_id, logo_id, logo_type) DO UPDATE SET
+INSERT INTO service_logos (network_id, transport_stream_id, service_id, logo_id, logo_type, logo_version, download_data_id, data, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(network_id, transport_stream_id, service_id, logo_id, logo_type) DO UPDATE SET
   logo_version=excluded.logo_version,
   download_data_id=excluded.download_data_id,
   data=excluded.data,
@@ -158,6 +163,7 @@ ON CONFLICT(network_id, service_id, logo_id, logo_type) DO UPDATE SET
 -- name: DeleteServiceLogo :exec
 DELETE FROM service_logos
 WHERE network_id = ?
+  AND transport_stream_id = ?
   AND service_id = ?
   AND logo_id = ?
   AND logo_type = ?
@@ -167,18 +173,19 @@ WHERE network_id = ?
 -- name: DeleteStaleServiceLogosForService :exec
 DELETE FROM service_logos
 WHERE network_id = ?
+  AND transport_stream_id = ?
   AND service_id = ?
   AND (logo_id != ? OR logo_version != ? OR download_data_id != ?);
 
 -- name: DeleteServiceLogosForService :exec
 DELETE FROM service_logos
-WHERE network_id = ? AND service_id = ?;
+WHERE network_id = ? AND transport_stream_id = ? AND service_id = ?;
 
 -- name: GetLogoByServiceItemID :one
 SELECT l.data
 FROM services s
 JOIN service_logos l
-  ON l.network_id = s.network_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+  ON l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
   AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
 WHERE s.network_id * 100000 + s.service_id = ?
 ORDER BY CASE l.logo_type
@@ -208,7 +215,7 @@ WHERE s.logo_id IS NOT NULL AND s.logo_id >= 0
   AND s.logo_download_data_id IS NOT NULL
   AND NOT EXISTS (
     SELECT 1 FROM service_logos l
-    WHERE l.network_id = s.network_id AND l.service_id = s.service_id
+    WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id
       AND l.logo_id = s.logo_id AND l.logo_version = s.logo_version
       AND l.download_data_id = s.logo_download_data_id
   )

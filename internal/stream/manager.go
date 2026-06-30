@@ -457,4 +457,5 @@ type EITSectionUpdater interface {
 
 type LogoUpdater interface {
 	UpsertLogoImage(context.Context, *ts.LogoImage) error
+	UpsertCommonLogoImage(context.Context, ts.CommonLogoImage) error
 }

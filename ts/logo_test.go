@@ -45,6 +45,36 @@ func TestServiceScanUsesLogoTransmissionDescriptor(t *testing.T) {
 	}
 }
 
+func TestServiceScanResolvesIndirectLogoTransmissionDescriptor(t *testing.T) {
+	section := buildSDT(t, 0x1234, 0x5678, []sdtServiceSpec{
+		{
+			serviceID: 100,
+			descriptors: append(
+				serviceDescriptor(1, nil, []byte{0x0e, 'A'}),
+				DescriptorTagLogoTransmission, 7, 0x01, 0xff, 0x2a, 0xf0, 0x03, 0x12, 0x34,
+			),
+		},
+		{
+			serviceID: 101,
+			descriptors: append(
+				serviceDescriptor(1, nil, []byte{0x0e, 'B'}),
+				DescriptorTagLogoTransmission, 3, 0x02, 0xff, 0x2a,
+			),
+		},
+	})
+	scan := NewServiceScan()
+	scan.Observe(buildPAT(t, map[uint16]uint16{100: 0x0100, 101: 0x0101}))
+	scan.Observe(section)
+	got := scan.Services()
+	if len(got) != 2 {
+		t.Fatalf("services = %#v", got)
+	}
+	if got[1].LogoId != 0x12a || got[1].LogoVersion == nil || *got[1].LogoVersion != 3 ||
+		got[1].LogoDownloadDataId == nil || *got[1].LogoDownloadDataId != 0x1234 {
+		t.Fatalf("indirect logo service = %#v", got[1])
+	}
+}
+
 func TestParseCDTLogoImage(t *testing.T) {
 	png := append([]byte(nil), pngSignature...)
 	png = append(png, 0, 1, 2, 3)
@@ -96,6 +126,78 @@ func TestParseCDTLogoImageRejectsNonPNG(t *testing.T) {
 	}
 }
 
+func TestParseLogoDataModule(t *testing.T) {
+	png := append([]byte(nil), pngSignature...)
+	png = append(png, 1, 2, 3)
+	module := []byte{
+		0x05,
+		0x00, 0x02,
+		0xff, 0x2a,
+		0x02,
+		0x00, 0x04, 0x40, 0x10, 0x00, 0x65,
+		0x00, 0x04, 0x40, 0x10, 0x00, 0x66,
+		byte(len(png) >> 8), byte(len(png)),
+	}
+	module = append(module, png...)
+	module = append(module,
+		0xff, 0x2b,
+		0x01,
+		0x00, 0x04, 0xff, 0xff, 0xff, 0xff,
+		0x00, 0x00,
+	)
+
+	images, err := ParseLogoDataModule(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(images) != 2 {
+		t.Fatalf("images = %#v", images)
+	}
+	if images[0].LogoType != 5 || images[0].LogoID != 0x12a || len(images[0].Services) != 2 || !bytes.Equal(images[0].Data, png) {
+		t.Fatalf("service logo = %#v", images[0])
+	}
+	if images[0].Services[1].ServiceID != 0x66 {
+		t.Fatalf("services = %#v", images[0].Services)
+	}
+	if !images[1].IsNetwork || !images[1].IsDeleted {
+		t.Fatalf("network logo = %#v", images[1])
+	}
+}
+
+func TestDSMCCLogoCarouselReassemblesLogoModule(t *testing.T) {
+	png := append([]byte(nil), pngSignature...)
+	png = append(png, 9)
+	module := []byte{
+		0x05,
+		0x00, 0x01,
+		0xff, 0x2a,
+		0x01,
+		0x00, 0x04, 0x40, 0x10, 0x00, 0x65,
+		byte(len(png) >> 8), byte(len(png)),
+	}
+	module = append(module, png...)
+	dii := buildDSMCCDII(t, 0x12345678, 32, 0x2001, uint32(len(module)), 7, []byte{0x02, 0x07, 'L', 'O', 'G', 'O', '-', '0', '5'})
+	ddb := buildDSMCCDDB(t, 0x12345678, 0x2001, 7, 0, module)
+
+	parsedDII, err := ParseDSMCCDII(dii)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsedDDB, err := ParseDSMCCDDB(ddb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	carousel := NewDSMCCLogoCarousel()
+	carousel.ObserveDII(parsedDII)
+	images, err := carousel.ObserveDDB(parsedDDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(images) != 1 || images[0].LogoID != 0x12a || images[0].LogoType != 5 || images[0].LogoVersion != 7 || images[0].DownloadID != 0x5678 {
+		t.Fatalf("images = %#v", images)
+	}
+}
+
 func TestNormalizeARIBLogoPNGAddsPaletteAndTransparency(t *testing.T) {
 	png := buildPalettePNG(t, false)
 
@@ -123,6 +225,60 @@ func TestNormalizeARIBLogoPNGAddsPaletteAndTransparency(t *testing.T) {
 	if !pngChunkOrder(t, normalized, "IHDR", "PLTE", "tRNS", "IDAT", "IEND") {
 		t.Fatalf("unexpected PNG chunk order: %v", pngChunkTypes(t, normalized))
 	}
+}
+
+func buildDSMCCDII(t *testing.T, downloadID uint32, blockSize, moduleID uint16, moduleSize uint32, moduleVersion byte, moduleInfo []byte) Section {
+	t.Helper()
+	body := make([]byte, 0)
+	var scratch [4]byte
+	binary.BigEndian.PutUint32(scratch[:], downloadID)
+	body = append(body, scratch[:]...)
+	binary.BigEndian.PutUint16(scratch[:2], blockSize)
+	body = append(body, scratch[:2]...)
+	body = append(body, 0, 0)
+	body = append(body, 0, 0, 0, 0, 0, 0, 0, 0)
+	body = append(body, 0, 0)
+	body = append(body, 0, 1)
+	binary.BigEndian.PutUint16(scratch[:2], moduleID)
+	body = append(body, scratch[:2]...)
+	binary.BigEndian.PutUint32(scratch[:], moduleSize)
+	body = append(body, scratch[:]...)
+	body = append(body, moduleVersion, byte(len(moduleInfo)))
+	body = append(body, moduleInfo...)
+	body = append(body, 0, 0)
+	return buildDSMCCSection(t, TableIDDSMCCDII, 0x1002, body)
+}
+
+func buildDSMCCDDB(t *testing.T, downloadID uint32, moduleID uint16, moduleVersion byte, blockNumber uint16, data []byte) Section {
+	t.Helper()
+	body := make([]byte, 0)
+	var scratch [4]byte
+	binary.BigEndian.PutUint32(scratch[:], downloadID)
+	body = append(body, scratch[:]...)
+	binary.BigEndian.PutUint16(scratch[:2], moduleID)
+	body = append(body, scratch[:2]...)
+	body = append(body, moduleVersion, 0xff)
+	binary.BigEndian.PutUint16(scratch[:2], blockNumber)
+	body = append(body, scratch[:2]...)
+	body = append(body, data...)
+	return buildDSMCCSection(t, TableIDDSMCCDDB, 0x1003, body)
+}
+
+func buildDSMCCSection(t *testing.T, tableID byte, messageID uint16, body []byte) Section {
+	t.Helper()
+	message := []byte{0x11, 0x03, byte(messageID >> 8), byte(messageID), 0, 0, 0, 1, 0xff, 0}
+	message = append(message, byte(len(body)>>8), byte(len(body)))
+	message = append(message, body...)
+	sectionLength := 5 + len(message) + 4
+	s := make(Section, 3+sectionLength)
+	s[0] = tableID
+	s[1] = 0xb0 | byte(sectionLength>>8)
+	s[2] = byte(sectionLength)
+	s[3], s[4] = 0x00, 0x01
+	s[5], s[6], s[7] = 0xc1, 0, 0
+	copy(s[8:], message)
+	writeCRC(s)
+	return s
 }
 
 func TestARIBCommonFixedColorPaletteMatchesTRB14Appendix(t *testing.T) {

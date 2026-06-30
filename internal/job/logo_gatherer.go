@@ -51,6 +51,9 @@ func RegisterLogoGatherer(registry Registry, collector LogoCollector, store Logo
 						defer cancel()
 						remaining := make(map[logoTargetKey]struct{}, len(channelTargets))
 						for _, target := range channelTargets {
+							if target.IsCommonData {
+								continue
+							}
 							remaining[newLogoTargetKey(target)] = struct{}{}
 						}
 						count := 0

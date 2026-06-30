@@ -36,6 +36,7 @@ type LogoTarget struct {
 	LogoId             int64
 	LogoVersion        int64
 	LogoDownloadDataId int64
+	IsCommonData       bool
 }
 
 func (s *Service) ItemId() int64 {

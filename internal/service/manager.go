@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strconv"
 	"time"
@@ -219,19 +220,66 @@ func (s *ServiceManager) LogoGatherTargets(ctx context.Context) ([]LogoTarget, e
 		targets = append(targets, target)
 		seen[target] = struct{}{}
 	}
+	return s.appendCommonLogoTargets(ctx, targets)
+}
+
+func (s *ServiceManager) appendCommonLogoTargets(ctx context.Context, targets []LogoTarget) ([]LogoTarget, error) {
+	services, err := s.store.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	commonChannel := map[uint16]ChannelKey{}
+	for _, svc := range services {
+		if svc.NetworkId == ts.DefaultCommonLogoOriginalNetworkID &&
+			svc.TransportStreamId == ts.DefaultCommonLogoTransportStreamID &&
+			svc.ServiceId == ts.DefaultCommonLogoServiceID {
+			commonChannel[svc.NetworkId] = ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}
+		}
+	}
+	seen := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		seen[commonLogoTargetKey(target)] = struct{}{}
+	}
+	for _, svc := range services {
+		if !ts.IsSatelliteOriginalNetworkID(svc.NetworkId) || svc.HasLogoData {
+			continue
+		}
+		channel := ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}
+		if common, ok := commonChannel[ts.DefaultCommonLogoOriginalNetworkID]; ok {
+			channel = common
+		}
+		target := LogoTarget{
+			NetworkId:         svc.NetworkId,
+			ServiceId:         svc.ServiceId,
+			TransportStreamId: svc.TransportStreamId,
+			ChannelType:       channel.Type,
+			ChannelId:         channel.ID,
+			IsCommonData:      true,
+		}
+		key := commonLogoTargetKey(target)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		targets = append(targets, target)
+		seen[key] = struct{}{}
+	}
 	return targets, nil
 }
 
-func (s *ServiceManager) UpsertLogo(ctx context.Context, networkID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
-	if err := s.store.UpsertLogo(ctx, networkID, serviceID, logoID, logoType, logoVersion, downloadDataID, data, updatedAt); err != nil {
+func commonLogoTargetKey(target LogoTarget) string {
+	return fmt.Sprintf("%d/%d/%d/%t/%s/%s", target.NetworkId, target.TransportStreamId, target.ServiceId, target.IsCommonData, target.ChannelType, target.ChannelId)
+}
+
+func (s *ServiceManager) UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
+	if err := s.store.UpsertLogo(ctx, networkID, transportStreamID, serviceID, logoID, logoType, logoVersion, downloadDataID, data, updatedAt); err != nil {
 		return err
 	}
 	s.publishServiceByKey(ctx, eventTypeUpdate, networkID, serviceID)
 	return nil
 }
 
-func (s *ServiceManager) DeleteLogo(ctx context.Context, networkID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error {
-	if err := s.store.DeleteLogo(ctx, networkID, serviceID, logoID, logoType, logoVersion, downloadDataID); err != nil {
+func (s *ServiceManager) DeleteLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64) error {
+	if err := s.store.DeleteLogo(ctx, networkID, transportStreamID, serviceID, logoID, logoType, logoVersion, downloadDataID); err != nil {
 		return err
 	}
 	s.publishServiceByKey(ctx, eventTypeUpdate, networkID, serviceID)
@@ -253,7 +301,7 @@ func (s *ServiceManager) UpsertLogoImage(ctx context.Context, image *ts.LogoImag
 			continue
 		}
 		if image.IsDeleted {
-			if err := s.DeleteLogo(ctx, target.NetworkId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID)); err != nil {
+			if err := s.DeleteLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID)); err != nil {
 				return err
 			}
 		} else {
@@ -263,9 +311,50 @@ func (s *ServiceManager) UpsertLogoImage(ctx context.Context, image *ts.LogoImag
 					return err
 				}
 			}
-			if err := s.UpsertLogo(ctx, target.NetworkId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID), data, now); err != nil {
+			if err := s.UpsertLogo(ctx, target.NetworkId, target.TransportStreamId, target.ServiceId, target.LogoId, int64(image.LogoType), int64(image.LogoVersion), int64(image.DownloadDataID), data, now); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+func (s *ServiceManager) UpsertCommonLogoImage(ctx context.Context, image ts.CommonLogoImage) error {
+	if image.IsNetwork {
+		return nil
+	}
+	var data []byte
+	var err error
+	if !image.IsDeleted {
+		data, err = ts.NormalizeARIBLogoPNG(image.Data)
+		if err != nil {
+			return err
+		}
+	}
+	logoID := int64(image.LogoID)
+	logoType := int64(image.LogoType)
+	logoVersion := int64(image.LogoVersion)
+	downloadID := int64(image.DownloadID)
+	now := time.Now().UnixMilli()
+	for _, target := range image.Services {
+		if target.TransportStreamID == ts.NetworkLogoTransportStreamWildcard || target.ServiceID == ts.NetworkLogoServiceWildcard {
+			continue
+		}
+		updated, err := s.store.UpdateServiceLogoMetadata(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID, logoID, logoVersion, downloadID)
+		if err != nil {
+			return err
+		}
+		if !updated {
+			continue
+		}
+		if image.IsDeleted {
+			if err := s.DeleteLogo(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID, logoID, logoType, logoVersion, downloadID); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := s.UpsertLogo(ctx, target.OriginalNetworkID, target.TransportStreamID, target.ServiceID, logoID, logoType, logoVersion, downloadID, data, now); err != nil {
+			return err
 		}
 	}
 	return nil

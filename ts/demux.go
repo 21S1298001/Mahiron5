@@ -15,6 +15,7 @@ const (
 	PIDTOT  = 0x0014
 	PIDDIT  = 0x001e
 	PIDSIT  = 0x001f
+	PIDSDTT = 0x0023
 	PIDBIT  = 0x0024
 	PIDCDT  = 0x0029
 	PIDNull = 0x1fff
@@ -34,13 +35,15 @@ type Demuxer struct {
 	patGeneration uint64
 	patSections   tableSectionSet
 	pmtByPID      map[uint16]uint16
+	sectionPIDs   map[uint16]bool
 	programs      map[uint16]*demuxProgram
 	services      map[uint16]*demuxServiceOutput
 }
 
 type demuxProgram struct {
-	pmtPID uint16
-	pids   map[uint16]bool
+	pmtPID      uint16
+	pids        map[uint16]bool
+	sectionPIDs map[uint16]bool
 }
 
 type demuxServiceOutput struct {
@@ -61,11 +64,12 @@ type ServiceDemux struct {
 // NewDemuxer creates an empty transport-stream demuxer.
 func NewDemuxer() *Demuxer {
 	return &Demuxer{
-		assemblers: map[uint16]*SectionAssembler{},
-		catEMM:     map[uint16]bool{},
-		pmtByPID:   map[uint16]uint16{},
-		programs:   map[uint16]*demuxProgram{},
-		services:   map[uint16]*demuxServiceOutput{},
+		assemblers:  map[uint16]*SectionAssembler{},
+		catEMM:      map[uint16]bool{},
+		pmtByPID:    map[uint16]uint16{},
+		sectionPIDs: map[uint16]bool{},
+		programs:    map[uint16]*demuxProgram{},
+		services:    map[uint16]*demuxServiceOutput{},
 	}
 }
 
@@ -166,11 +170,14 @@ func (d *Demuxer) HasService(serviceID uint16) bool {
 func (d *Demuxer) PATReady() bool { return d.pat != nil }
 
 func (d *Demuxer) shouldAssemble(pid uint16) bool {
-	if pid == PIDPAT || pid == PIDCAT || pid == PIDNIT || pid == PIDSDT || pid == PIDEIT || pid == PIDTOT || pid == PIDCDT {
+	if pid == PIDPAT || pid == PIDCAT || pid == PIDNIT || pid == PIDSDT || pid == PIDEIT || pid == PIDTOT || pid == PIDSDTT || pid == PIDCDT {
 		return true
 	}
 	_, ok := d.pmtByPID[pid]
-	return ok
+	if ok {
+		return true
+	}
+	return d.sectionPIDs[pid]
 }
 
 func (d *Demuxer) observePAT(section Section) {
@@ -255,6 +262,7 @@ func (d *Demuxer) observePMT(serviceID uint16, section Section) {
 		return
 	}
 	pids := map[uint16]bool{}
+	sectionPIDs := map[uint16]bool{}
 	if pmt.PCRPID != PIDNull {
 		pids[pmt.PCRPID] = true
 	}
@@ -267,6 +275,9 @@ func (d *Demuxer) observePMT(serviceID uint16, section Section) {
 	}
 	for _, elem := range pmt.Elements {
 		pids[elem.ElementaryPID] = true
+		if elem.StreamType == StreamTypeDSMCCDataCarousel {
+			sectionPIDs[elem.ElementaryPID] = true
+		}
 		for _, desc := range elem.Descriptors {
 			if desc.Tag() == DescriptorTagCA {
 				if pid, ok := caPID(desc); ok {
@@ -276,6 +287,23 @@ func (d *Demuxer) observePMT(serviceID uint16, section Section) {
 		}
 	}
 	program.pids = pids
+	program.sectionPIDs = sectionPIDs
+	d.rebuildSectionPIDs()
+}
+
+func (d *Demuxer) rebuildSectionPIDs() {
+	sectionPIDs := map[uint16]bool{}
+	for _, program := range d.programs {
+		for pid := range program.sectionPIDs {
+			sectionPIDs[pid] = true
+		}
+	}
+	for pid := range d.sectionPIDs {
+		if !sectionPIDs[pid] {
+			delete(d.assemblers, pid)
+		}
+	}
+	d.sectionPIDs = sectionPIDs
 }
 
 func (d *Demuxer) serviceOutput(serviceID uint16) *demuxServiceOutput {
@@ -335,7 +363,7 @@ func samePAT(a, b *PAT) bool {
 
 func commonServicePID(pid uint16) bool {
 	switch pid {
-	case PIDCAT, PIDNIT, PIDSDT, PIDEIT, PIDRST, PIDTOT, PIDDIT, PIDSIT, PIDBIT, PIDCDT:
+	case PIDCAT, PIDNIT, PIDSDT, PIDEIT, PIDRST, PIDTOT, PIDDIT, PIDSIT, PIDSDTT, PIDBIT, PIDCDT:
 		return true
 	default:
 		return false

@@ -465,7 +465,7 @@ func TestSQLiteStoreDeletesStaleLogosWhenServiceLogoMetadataChanges(t *testing.T
 	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*Service{service}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertLogo(ctx, 1, 101, logoID, 5, oldVersion, downloadDataID, []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}, 1000); err != nil {
+	if err := store.UpsertLogo(ctx, 1, service.TransportStreamId, 101, logoID, 5, oldVersion, downloadDataID, []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}, 1000); err != nil {
 		t.Fatal(err)
 	}
 	service.LogoVersion = &newVersion
@@ -501,7 +501,7 @@ func TestMissingLogoTargetsTracksExactStoredVersion(t *testing.T) {
 	if err != nil || len(missing) != 1 {
 		t.Fatalf("missing before upsert = %#v, err=%v", missing, err)
 	}
-	if err := store.UpsertLogo(ctx, 1, 101, logoID, 5, version, downloadID, []byte("png"), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, 1, service.TransportStreamId, 101, logoID, 5, version, downloadID, []byte("png"), 1000); err != nil {
 		t.Fatal(err)
 	}
 	missing, err = store.MissingLogoTargets(ctx)
@@ -531,10 +531,10 @@ func TestLogoGatherTargetsRefreshesRemoteSyntheticTargets(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertLogo(ctx, 4, 101, remoteLogoID, 5, remoteVersion, remoteDownloadID, []byte("remote"), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, 4, 0, 101, remoteLogoID, 5, remoteVersion, remoteDownloadID, []byte("remote"), 1000); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertLogo(ctx, 4, 102, localLogoID, 5, localVersion, localDownloadID, []byte("local"), 1000); err != nil {
+	if err := store.UpsertLogo(ctx, 4, 0, 102, localLogoID, 5, localVersion, localDownloadID, []byte("local"), 1000); err != nil {
 		t.Fatal(err)
 	}
 
@@ -560,5 +560,76 @@ func TestLogoGatherTargetsRefreshesRemoteSyntheticTargets(t *testing.T) {
 	}
 	if targets[0].ChannelType != "GR" || targets[0].ChannelId != "27" || targets[0].LogoId != remoteLogoID {
 		t.Fatalf("logo gather target = %#v, want remote synthetic target", targets[0])
+	}
+}
+
+func TestLogoGatherTargetsUsesONIDForCommonDataInsteadOfChannelType(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	if err := store.ReplaceChannelServices(ctx, "anything", "sat-a", []*Service{{
+		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
+		ChannelType: "anything", ChannelId: "sat-a",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReplaceChannelServices(ctx, "BS", "not-satellite", []*Service{{
+		Id: "1234500101", NetworkId: 12345, TransportStreamId: 0x2222, ServiceId: 101,
+		ChannelType: "BS", ChannelId: "not-satellite",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+	targets, err := manager.LogoGatherTargets(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets = %#v, want one satellite common-data target", targets)
+	}
+	if !targets[0].IsCommonData || targets[0].ChannelType != "anything" || targets[0].NetworkId != 4 {
+		t.Fatalf("target = %#v, want ONID-based common-data target", targets[0])
+	}
+}
+
+func TestServiceManagerUpsertCommonLogoImageUpdatesServiceByTSID(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+	if err := store.ReplaceChannelServices(ctx, "sat", "a", []*Service{
+		{Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101, ChannelType: "sat", ChannelId: "a"},
+		{Id: "0000400102", NetworkId: 4, TransportStreamId: 0x4020, ServiceId: 102, ChannelType: "sat", ChannelId: "a"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	raw := buildServiceTestPalettePNG(false)
+	if err := manager.UpsertCommonLogoImage(ctx, ts.CommonLogoImage{
+		LogoID: 12, LogoType: 5, LogoVersion: 2, DownloadID: 0x1234, Data: raw,
+		Services: []ts.CommonLogoService{{OriginalNetworkID: 4, TransportStreamID: 0x4010, ServiceID: 101}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	matched, err := store.GetByItemID(ctx, 400101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matched.LogoId == nil || *matched.LogoId != 12 || !matched.HasLogoData {
+		t.Fatalf("matched service = %#v, want common logo metadata and data", matched)
+	}
+	unmatched, err := store.GetByItemID(ctx, 400102)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unmatched.HasLogoData || unmatched.LogoId != nil {
+		t.Fatalf("unmatched service = %#v, want no logo", unmatched)
 	}
 }
