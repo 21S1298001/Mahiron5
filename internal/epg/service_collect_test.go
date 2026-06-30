@@ -306,11 +306,11 @@ func TestBuildNetworkInputsFiltersServicesWithoutEITSchedule(t *testing.T) {
 
 func TestBuildNetworkInputsUsesAllConfiguredChannelsForNetworkType(t *testing.T) {
 	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{NetworkId: 4, ServiceId: 151, EITScheduleFlag: true, ChannelType: "BS", ChannelId: "BS01"},
+		{NetworkId: 4, ServiceId: 151, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "BS01"},
 	}}
 	channels := []config.ChannelConfig{
-		{Type: "BS", Channel: "BS01"},
-		{Type: "BS", Channel: "BS03"},
+		{Type: "USER_DEFINED", Channel: "BS01"},
+		{Type: "USER_DEFINED", Channel: "BS03"},
 		{Type: "GR", Channel: "27"},
 	}
 
@@ -318,7 +318,7 @@ func TestBuildNetworkInputsUsesAllConfiguredChannelsForNetworkType(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Candidate{{Type: "BS", Channel: "BS01"}, {Type: "BS", Channel: "BS03"}}
+	want := []Candidate{{Type: "USER_DEFINED", Channel: "BS01"}, {Type: "USER_DEFINED", Channel: "BS03"}}
 	if !equalCandidates(candidates, want) {
 		t.Fatalf("candidates = %v, want %v", candidates, want)
 	}
@@ -326,22 +326,41 @@ func TestBuildNetworkInputsUsesAllConfiguredChannelsForNetworkType(t *testing.T)
 
 func TestBuildNetworkInputsLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T) {
 	store := &staticEPGServiceStore{services: []*servicepkg.Service{
-		{NetworkId: 6, ServiceId: 296, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS2"},
-		{NetworkId: 7, ServiceId: 250, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS4"},
-		{NetworkId: 7, ServiceId: 294, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS6"},
+		{NetworkId: 6, ServiceId: 296, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS2"},
+		{NetworkId: 7, ServiceId: 250, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS4"},
+		{NetworkId: 7, ServiceId: 294, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS6"},
 	}}
 	channels := []config.ChannelConfig{
-		{Type: "CS", Channel: "CS2"},
-		{Type: "CS", Channel: "CS4"},
-		{Type: "CS", Channel: "CS6"},
-		{Type: "CS", Channel: "CS8"},
+		{Type: "USER_DEFINED", Channel: "CS2"},
+		{Type: "USER_DEFINED", Channel: "CS4"},
+		{Type: "USER_DEFINED", Channel: "CS6"},
+		{Type: "USER_DEFINED", Channel: "CS8"},
 	}
 
 	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Candidate{{Type: "CS", Channel: "CS4"}, {Type: "CS", Channel: "CS6"}}
+	want := []Candidate{{Type: "USER_DEFINED", Channel: "CS4"}, {Type: "USER_DEFINED", Channel: "CS6"}}
+	if !equalCandidates(candidates, want) {
+		t.Fatalf("candidates = %v, want %v", candidates, want)
+	}
+}
+
+func TestBuildNetworkInputsDoesNotUseBroadCandidatesForTerrestrialNetwork(t *testing.T) {
+	store := &staticEPGServiceStore{services: []*servicepkg.Service{
+		{NetworkId: 32736, ServiceId: 101, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "27"},
+	}}
+	channels := []config.ChannelConfig{
+		{Type: "USER_DEFINED", Channel: "27"},
+		{Type: "USER_DEFINED", Channel: "28"},
+	}
+
+	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 32736)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Candidate{{Type: "USER_DEFINED", Channel: "27"}}
 	if !equalCandidates(candidates, want) {
 		t.Fatalf("candidates = %v, want %v", candidates, want)
 	}
@@ -349,24 +368,47 @@ func TestBuildNetworkInputsLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T
 
 func TestGroupServicesByNetworkLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T) {
 	services := []*servicepkg.Service{
-		{NetworkId: 6, ServiceId: 296, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS2"},
-		{NetworkId: 7, ServiceId: 250, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS4"},
-		{NetworkId: 7, ServiceId: 294, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS6"},
+		{NetworkId: 6, ServiceId: 296, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS2"},
+		{NetworkId: 7, ServiceId: 250, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS4"},
+		{NetworkId: 7, ServiceId: 294, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "CS6"},
 	}
 	channels := []config.ChannelConfig{
-		{Type: "CS", Channel: "CS2"},
-		{Type: "CS", Channel: "CS4"},
-		{Type: "CS", Channel: "CS6"},
-		{Type: "CS", Channel: "CS8"},
+		{Type: "USER_DEFINED", Channel: "CS2"},
+		{Type: "USER_DEFINED", Channel: "CS4"},
+		{Type: "USER_DEFINED", Channel: "CS6"},
+		{Type: "USER_DEFINED", Channel: "CS8"},
 	}
 
 	groups := groupServicesByNetwork(services, channels)
-	if !equalCandidates(groups[6].Candidates, []Candidate{{Type: "CS", Channel: "CS2"}}) {
+	if !equalCandidates(groups[6].Candidates, []Candidate{{Type: "USER_DEFINED", Channel: "CS2"}}) {
 		t.Fatalf("NID 6 candidates = %v", groups[6].Candidates)
 	}
-	wantNID7 := []Candidate{{Type: "CS", Channel: "CS4"}, {Type: "CS", Channel: "CS6"}}
+	wantNID7 := []Candidate{{Type: "USER_DEFINED", Channel: "CS4"}, {Type: "USER_DEFINED", Channel: "CS6"}}
 	if !equalCandidates(groups[7].Candidates, wantNID7) {
 		t.Fatalf("NID 7 candidates = %v, want %v", groups[7].Candidates, wantNID7)
+	}
+}
+
+func TestGroupServicesByNetworkUsesBroadCandidatesOnlyForSatelliteNetwork(t *testing.T) {
+	services := []*servicepkg.Service{
+		{NetworkId: 4, ServiceId: 151, EITScheduleFlag: true, ChannelType: "USER_DEFINED", ChannelId: "BS01"},
+		{NetworkId: 32736, ServiceId: 101, EITScheduleFlag: true, ChannelType: "LOCAL", ChannelId: "27"},
+	}
+	channels := []config.ChannelConfig{
+		{Type: "USER_DEFINED", Channel: "BS01"},
+		{Type: "USER_DEFINED", Channel: "BS03"},
+		{Type: "LOCAL", Channel: "27"},
+		{Type: "LOCAL", Channel: "28"},
+	}
+
+	groups := groupServicesByNetwork(services, channels)
+	wantSatellite := []Candidate{{Type: "USER_DEFINED", Channel: "BS01"}, {Type: "USER_DEFINED", Channel: "BS03"}}
+	if !equalCandidates(groups[4].Candidates, wantSatellite) {
+		t.Fatalf("NID 4 candidates = %v, want %v", groups[4].Candidates, wantSatellite)
+	}
+	wantTerrestrial := []Candidate{{Type: "LOCAL", Channel: "27"}}
+	if !equalCandidates(groups[32736].Candidates, wantTerrestrial) {
+		t.Fatalf("NID 32736 candidates = %v, want %v", groups[32736].Candidates, wantTerrestrial)
 	}
 }
 

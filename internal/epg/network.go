@@ -63,11 +63,8 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 		}
 		key := epgChannelKey(configured.Type, configured.Channel)
 		candidateNetworks := byChannel[key]
-		if broadEPGCandidateType(configured.Type) && len(typeNetworks[configured.Type]) == 1 {
-			candidateNetworks = nil
-			for nid := range typeNetworks[configured.Type] {
-				candidateNetworks = append(candidateNetworks, nid)
-			}
+		if broadNetwork, ok := broadEPGCandidateNetwork(configured.Type, typeNetworks); ok {
+			candidateNetworks = []uint16{broadNetwork}
 		}
 		for _, nid := range candidateNetworks {
 			if groups[nid] == nil {
@@ -145,12 +142,18 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 	return candidates, networkServices, nil
 }
 
-func broadEPGCandidateType(channelType string) bool {
-	return channelType == "BS" || channelType == "CS"
+func broadEPGCandidateForNetwork(channelType string, typeNetworks map[string]map[uint16]bool, networkID uint16) bool {
+	return ts.IsSatelliteOriginalNetworkID(networkID) && len(typeNetworks[channelType]) == 1 && typeNetworks[channelType][networkID]
 }
 
-func broadEPGCandidateForNetwork(channelType string, typeNetworks map[string]map[uint16]bool, networkID uint16) bool {
-	return broadEPGCandidateType(channelType) && len(typeNetworks[channelType]) == 1 && typeNetworks[channelType][networkID]
+func broadEPGCandidateNetwork(channelType string, typeNetworks map[string]map[uint16]bool) (uint16, bool) {
+	if len(typeNetworks[channelType]) != 1 {
+		return 0, false
+	}
+	for networkID := range typeNetworks[channelType] {
+		return networkID, ts.IsSatelliteOriginalNetworkID(networkID)
+	}
+	return 0, false
 }
 
 func epgChannelKey(channelType, channelID string) string {
