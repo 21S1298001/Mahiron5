@@ -324,6 +324,52 @@ func TestBuildNetworkInputsUsesAllConfiguredChannelsForNetworkType(t *testing.T)
 	}
 }
 
+func TestBuildNetworkInputsLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T) {
+	store := &staticEPGServiceStore{services: []*servicepkg.Service{
+		{NetworkId: 6, ServiceId: 296, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS2"},
+		{NetworkId: 7, ServiceId: 250, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS4"},
+		{NetworkId: 7, ServiceId: 294, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS6"},
+	}}
+	channels := []config.ChannelConfig{
+		{Type: "CS", Channel: "CS2"},
+		{Type: "CS", Channel: "CS4"},
+		{Type: "CS", Channel: "CS6"},
+		{Type: "CS", Channel: "CS8"},
+	}
+
+	candidates, _, err := buildNetworkInputs(context.Background(), store, channels, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Candidate{{Type: "CS", Channel: "CS4"}, {Type: "CS", Channel: "CS6"}}
+	if !equalCandidates(candidates, want) {
+		t.Fatalf("candidates = %v, want %v", candidates, want)
+	}
+}
+
+func TestGroupServicesByNetworkLimitsBroadTypeWhenMultipleNetworksExist(t *testing.T) {
+	services := []*servicepkg.Service{
+		{NetworkId: 6, ServiceId: 296, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS2"},
+		{NetworkId: 7, ServiceId: 250, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS4"},
+		{NetworkId: 7, ServiceId: 294, EITScheduleFlag: true, ChannelType: "CS", ChannelId: "CS6"},
+	}
+	channels := []config.ChannelConfig{
+		{Type: "CS", Channel: "CS2"},
+		{Type: "CS", Channel: "CS4"},
+		{Type: "CS", Channel: "CS6"},
+		{Type: "CS", Channel: "CS8"},
+	}
+
+	groups := groupServicesByNetwork(services, channels)
+	if !equalCandidates(groups[6].Candidates, []Candidate{{Type: "CS", Channel: "CS2"}}) {
+		t.Fatalf("NID 6 candidates = %v", groups[6].Candidates)
+	}
+	wantNID7 := []Candidate{{Type: "CS", Channel: "CS4"}, {Type: "CS", Channel: "CS6"}}
+	if !equalCandidates(groups[7].Candidates, wantNID7) {
+		t.Fatalf("NID 7 candidates = %v, want %v", groups[7].Candidates, wantNID7)
+	}
+}
+
 func TestCollectServiceSnapshotsDoesNotFailWhenSomeServicesUnobserved(t *testing.T) {
 	observed := ServiceKey{NetworkID: 4, ServiceID: 101}
 	missing := ServiceKey{NetworkID: 4, ServiceID: 102}

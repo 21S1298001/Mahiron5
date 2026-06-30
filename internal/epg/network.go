@@ -42,13 +42,18 @@ var eitsStableStopDuration = 3 * time.Second
 func groupServicesByNetwork(services []*service.Service, channels config.ChannelsConfig) map[uint16]*Network {
 	byChannel := make(map[string][]uint16)
 	networkTypes := make(map[uint16]map[string]bool)
+	typeNetworks := make(map[string]map[uint16]bool)
 	for _, item := range services {
-		key := item.ChannelType + "\x00" + item.ChannelId
+		key := epgChannelKey(item.ChannelType, item.ChannelId)
 		byChannel[key] = append(byChannel[key], item.NetworkId)
 		if networkTypes[item.NetworkId] == nil {
 			networkTypes[item.NetworkId] = make(map[string]bool)
 		}
 		networkTypes[item.NetworkId][item.ChannelType] = true
+		if typeNetworks[item.ChannelType] == nil {
+			typeNetworks[item.ChannelType] = make(map[uint16]bool)
+		}
+		typeNetworks[item.ChannelType][item.NetworkId] = true
 	}
 	groups := make(map[uint16]*Network)
 	seen := make(map[uint16]map[string]bool)
@@ -56,14 +61,12 @@ func groupServicesByNetwork(services []*service.Service, channels config.Channel
 		if configured.IsDisabled != nil && *configured.IsDisabled {
 			continue
 		}
-		key := configured.Type + "\x00" + configured.Channel
+		key := epgChannelKey(configured.Type, configured.Channel)
 		candidateNetworks := byChannel[key]
-		if broadEPGCandidateType(configured.Type) {
+		if broadEPGCandidateType(configured.Type) && len(typeNetworks[configured.Type]) == 1 {
 			candidateNetworks = nil
-			for nid, types := range networkTypes {
-				if types[configured.Type] {
-					candidateNetworks = append(candidateNetworks, nid)
-				}
+			for nid := range typeNetworks[configured.Type] {
+				candidateNetworks = append(candidateNetworks, nid)
 			}
 		}
 		for _, nid := range candidateNetworks {
@@ -101,11 +104,16 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 	}
 	byChannel := make(map[string]bool)
 	networkTypes := make(map[string]bool)
+	typeNetworks := make(map[string]map[uint16]bool)
 	for _, item := range storedServices {
+		if typeNetworks[item.ChannelType] == nil {
+			typeNetworks[item.ChannelType] = make(map[uint16]bool)
+		}
+		typeNetworks[item.ChannelType][item.NetworkId] = true
 		if item.NetworkId != networkID {
 			continue
 		}
-		key := item.ChannelType + "\x00" + item.ChannelId
+		key := epgChannelKey(item.ChannelType, item.ChannelId)
 		byChannel[key] = true
 		networkTypes[item.ChannelType] = true
 	}
@@ -114,8 +122,8 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 		if configured.IsDisabled != nil && *configured.IsDisabled {
 			continue
 		}
-		key := configured.Type + "\x00" + configured.Channel
-		if byChannel[key] || broadEPGCandidateType(configured.Type) && networkTypes[configured.Type] {
+		key := epgChannelKey(configured.Type, configured.Channel)
+		if byChannel[key] || broadEPGCandidateForNetwork(configured.Type, typeNetworks, networkID) && networkTypes[configured.Type] {
 			candidates = append(candidates, Candidate{Type: configured.Type, Channel: configured.Channel})
 		}
 	}
@@ -139,6 +147,14 @@ func buildNetworkInputs(ctx context.Context, serviceStore ServiceStore, channels
 
 func broadEPGCandidateType(channelType string) bool {
 	return channelType == "BS" || channelType == "CS"
+}
+
+func broadEPGCandidateForNetwork(channelType string, typeNetworks map[string]map[uint16]bool, networkID uint16) bool {
+	return broadEPGCandidateType(channelType) && len(typeNetworks[channelType]) == 1 && typeNetworks[channelType][networkID]
+}
+
+func epgChannelKey(channelType, channelID string) string {
+	return channelType + "\x00" + channelID
 }
 
 func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore ServiceStore, streams StreamManager, networkID uint16, candidates []Candidate, serviceKeys []ServiceKey, retrievalTime time.Duration) (err error) {
