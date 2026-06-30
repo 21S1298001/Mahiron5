@@ -77,6 +77,26 @@ func TestManagerSharesSessionsByTypeAndChannel(t *testing.T) {
 	}
 }
 
+func TestSessionSectionUpdaterIgnoresScheduleEIT(t *testing.T) {
+	session := &ChannelSession{
+		channel:      "BS01_0",
+		typ:          "BS",
+		sectionQueue: make(chan ts.Section, sectionSubscriberBuffer),
+	}
+
+	for range sectionSubscriberBuffer + 1 {
+		session.observeSection(ts.Section{ts.TableIDEITSStart})
+	}
+	if got := len(session.sectionQueue); got != 0 {
+		t.Fatalf("section updater queue length = %d, want 0 for schedule EIT", got)
+	}
+
+	session.observeSection(ts.Section{ts.TableIDEITPF0})
+	if got := len(session.sectionQueue); got != 1 {
+		t.Fatalf("section updater queue length = %d, want EIT p/f to be queued", got)
+	}
+}
+
 func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 	no := false
 	priorityDirect := 10

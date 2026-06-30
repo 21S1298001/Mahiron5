@@ -283,6 +283,9 @@ func (s *ChannelSession) observeEIT(ctx context.Context, observe func(*ts.EIT, t
 }
 
 func (s *ChannelSession) observeSection(section ts.Section) {
+	if !ts.IsEITPF(section.TableID()) && section.TableID() != ts.TableIDCDT {
+		return
+	}
 	select {
 	case s.sectionQueue <- section:
 	default:

@@ -23,7 +23,7 @@ func TestCollectServiceSnapshotsSyncsStoredRemotePrograms(t *testing.T) {
 		},
 	}
 
-	if err := CollectServiceSnapshots(ctx, store, status, session, []ServiceKey{key}, time.Second); err != nil {
+	if _, err := CollectServiceSnapshots(ctx, store, status, session, []ServiceKey{key}, time.Second); err != nil {
 		t.Fatal(err)
 	}
 	if session.collectEITCalled {
@@ -60,7 +60,7 @@ func TestCollectServiceSnapshotsSyncsStoredRemoteProgramsPartialFailure(t *testi
 		errs: map[ServiceKey]error{failKey: wantErr},
 	}
 
-	err := CollectServiceSnapshots(ctx, store, status, session, []ServiceKey{okKey, failKey}, time.Second)
+	_, err := CollectServiceSnapshots(ctx, store, status, session, []ServiceKey{okKey, failKey}, time.Second)
 	if err == nil {
 		t.Fatal("CollectServiceSnapshots error = nil, want partial failure")
 	}

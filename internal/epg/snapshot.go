@@ -9,8 +9,9 @@ import (
 )
 
 type ServiceKey struct {
-	NetworkID uint16
-	ServiceID uint16
+	NetworkID         uint16
+	ServiceID         uint16
+	TransportStreamID uint16
 }
 
 type Snapshot struct {
@@ -85,7 +86,7 @@ func (s *Snapshot) Observe(section *EITSection, now time.Time) bool {
 			"tableId", section.TableID)
 		return false
 	}
-	key := ServiceKey{NetworkID: section.OriginalNetworkID, ServiceID: section.ServiceID}
+	key := ServiceKey{NetworkID: section.OriginalNetworkID, ServiceID: section.ServiceID, TransportStreamID: section.TransportStreamID}
 	service := s.services[key]
 	if service == nil {
 		service = &snapshotService{
