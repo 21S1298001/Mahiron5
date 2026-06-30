@@ -198,6 +198,38 @@ func TestDSMCCLogoCarouselReassemblesLogoModule(t *testing.T) {
 	}
 }
 
+func TestParseSDTTCommonDataAnnouncements(t *testing.T) {
+	section := buildSDTT(t, 0xfffe, 0x4031, 0x0004, 929, true, 0x0007, 0x12345678, true)
+
+	got, err := ParseSDTTCommonDataAnnouncements(section)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("announcements = %#v", got)
+	}
+	if got[0].OriginalNetworkID != 0x0004 || got[0].TransportStreamID != 0x4031 || got[0].ServiceID != 929 ||
+		got[0].VersionID != 7 || got[0].DownloadID != 0x12345678 {
+		t.Fatalf("announcement = %#v", got[0])
+	}
+}
+
+func TestParseSDTTCommonDataAnnouncementsIgnoresNonCommonAndNotCurrent(t *testing.T) {
+	for _, section := range []Section{
+		buildSDTT(t, 0x0101, 0x4031, 0x0004, 929, true, 0x0007, 0x12345678, true),
+		buildSDTT(t, 0xfffe, 0x4031, 0x0004, 929, false, 0x0007, 0x12345678, true),
+		buildSDTT(t, 0xfffe, 0x4031, 0x0004, 929, true, 0x0007, 0x12345678, false),
+	} {
+		got, err := ParseSDTTCommonDataAnnouncements(section)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 0 {
+			t.Fatalf("announcements = %#v, want none", got)
+		}
+	}
+}
+
 func TestNormalizeARIBLogoPNGAddsPaletteAndTransparency(t *testing.T) {
 	png := buildPalettePNG(t, false)
 
@@ -279,6 +311,60 @@ func buildDSMCCSection(t *testing.T, tableID byte, messageID uint16, body []byte
 	copy(s[8:], message)
 	writeCRC(s)
 	return s
+}
+
+func buildSDTT(t *testing.T, tableIDExt, tsid, onid, sid uint16, current bool, versionID uint16, downloadID uint32, includeDownloadDescriptor bool) Section {
+	t.Helper()
+	var descriptors []byte
+	if includeDownloadDescriptor {
+		data := make([]byte, 19)
+		data[0] = 0x00
+		binary.BigEndian.PutUint32(data[1:5], 0x00001000)
+		binary.BigEndian.PutUint32(data[5:9], downloadID)
+		binary.BigEndian.PutUint32(data[9:13], 0x00000bb8)
+		data[13], data[14], data[15] = 0, 0, 0
+		data[16] = 0x00
+		data[17] = 0x42
+		data[18] = 0
+		descriptors = append(descriptors, DescriptorTagDownloadContent, byte(len(data)))
+		descriptors = append(descriptors, data...)
+	} else {
+		descriptors = append(descriptors, 0x40, 0x06, 0x00, 0x04, 0x40, 0x31, 0x03, 0xa1)
+	}
+	contentDescriptionLength := len(descriptors)
+	content := make([]byte, 8, 8+len(descriptors))
+	content[0] = 0x00
+	content[1] = 0x00
+	content[2] = byte(versionID >> 4)
+	content[3] = byte(versionID<<4) | 0x03
+	content[4] = byte(contentDescriptionLength >> 4)
+	content[5] = byte(contentDescriptionLength<<4) | 0x08
+	content[6] = 0x00
+	content[7] = 0x0f
+	content = append(content, descriptors...)
+
+	sectionLength := 12 + len(content) + 4
+	s := make(Section, 3+sectionLength)
+	s[0] = TableIDSDTT
+	s[1] = 0xb0 | byte(sectionLength>>8)
+	s[2] = byte(sectionLength)
+	s[3], s[4] = byte(tableIDExt>>8), byte(tableIDExt)
+	s[5] = 0xc0 | byte(boolToBit(current))
+	s[6], s[7] = 0, 0
+	s[8], s[9] = byte(tsid>>8), byte(tsid)
+	s[10], s[11] = byte(onid>>8), byte(onid)
+	s[12], s[13] = byte(sid>>8), byte(sid)
+	s[14] = 1
+	copy(s[15:], content)
+	writeCRC(s)
+	return s
+}
+
+func boolToBit(value bool) byte {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func TestARIBCommonFixedColorPaletteMatchesTRB14Appendix(t *testing.T) {

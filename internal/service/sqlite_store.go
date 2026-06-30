@@ -110,6 +110,21 @@ func (s *sqliteStore) GetByChannelAndID(ctx context.Context, channelType, channe
 	return fromServiceRow(getServiceByChannelAndIDRow(svc)), nil
 }
 
+func (s *sqliteStore) GetByTriplet(ctx context.Context, networkID, transportStreamID, serviceID uint16) (*Service, error) {
+	svc, err := s.q.GetServiceByTriplet(ctx, gen.GetServiceByTripletParams{
+		NetworkID:         int64(networkID),
+		TransportStreamID: int64(transportStreamID),
+		ServiceID:         int64(serviceID),
+	})
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return fromServiceRow(getServiceByTripletRow(svc)), nil
+}
+
 func (s *sqliteStore) GetLogoByServiceItemID(ctx context.Context, itemID int64) ([]byte, error) {
 	data, err := s.q.GetLogoByServiceItemID(ctx, itemID)
 	if err == sql.ErrNoRows {
@@ -162,6 +177,40 @@ func (s *sqliteStore) MissingLogoTargets(ctx context.Context) ([]LogoTarget, err
 		})
 	}
 	return result, nil
+}
+
+func (s *sqliteStore) ListCommonDataAnnouncements(ctx context.Context) ([]CommonDataAnnouncement, error) {
+	rows, err := s.q.ListCommonDataAnnouncements(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]CommonDataAnnouncement, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, CommonDataAnnouncement{
+			OriginalNetworkID:   uint16(row.OriginalNetworkID),
+			TransportStreamID:   uint16(row.TransportStreamID),
+			ServiceID:           uint16(row.ServiceID),
+			DownloadID:          uint32(row.DownloadID),
+			VersionID:           uint16(row.VersionID),
+			ObservedChannelType: row.ObservedChannelType,
+			ObservedChannelID:   row.ObservedChannelID,
+			SeenAt:              row.SeenAt,
+		})
+	}
+	return result, nil
+}
+
+func (s *sqliteStore) UpsertCommonDataAnnouncement(ctx context.Context, announcement CommonDataAnnouncement) error {
+	return s.q.UpsertCommonDataAnnouncement(ctx, gen.UpsertCommonDataAnnouncementParams{
+		OriginalNetworkID:   int64(announcement.OriginalNetworkID),
+		TransportStreamID:   int64(announcement.TransportStreamID),
+		ServiceID:           int64(announcement.ServiceID),
+		DownloadID:          int64(announcement.DownloadID),
+		VersionID:           int64(announcement.VersionID),
+		ObservedChannelType: announcement.ObservedChannelType,
+		ObservedChannelID:   announcement.ObservedChannelID,
+		SeenAt:              announcement.SeenAt,
+	})
 }
 
 func (s *sqliteStore) SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
@@ -450,6 +499,10 @@ func getServicesByChannelRow(s gen.GetServicesByChannelRow) serviceRow {
 }
 
 func getServiceByChannelAndIDRow(s gen.GetServiceByChannelAndIDRow) serviceRow {
+	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
+}
+
+func getServiceByTripletRow(s gen.GetServiceByTripletRow) serviceRow {
 	return serviceRow{s.ID, s.ServiceID, s.NetworkID, s.TransportStreamID, s.Name, s.Type, s.EitScheduleFlag, s.EitPresentFollowing, s.LogoID, s.LogoVersion, s.LogoDownloadDataID, s.HasLogoData, s.RemoteControlKeyID, s.ChannelType, s.ChannelID, s.LastAttemptAt, s.LastSuccessAt, s.LastError}
 }
 

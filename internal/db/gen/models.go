@@ -4,6 +4,17 @@
 
 package gen
 
+type CommonDataAnnouncement struct {
+	OriginalNetworkID   int64  `json:"original_network_id"`
+	TransportStreamID   int64  `json:"transport_stream_id"`
+	ServiceID           int64  `json:"service_id"`
+	DownloadID          int64  `json:"download_id"`
+	VersionID           int64  `json:"version_id"`
+	ObservedChannelType string `json:"observed_channel_type"`
+	ObservedChannelID   string `json:"observed_channel_id"`
+	SeenAt              int64  `json:"seen_at"`
+}
+
 type EpgServiceStatus struct {
 	NetworkID     int64   `json:"network_id"`
 	ServiceID     int64   `json:"service_id"`

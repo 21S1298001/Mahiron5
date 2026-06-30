@@ -215,6 +215,8 @@ type CommonDataAnnouncement struct {
 	OriginalNetworkID uint16
 	TransportStreamID uint16
 	ServiceID         uint16
+	DownloadID        uint32
+	VersionID         uint16
 }
 
 type DSMCCLogoCarousel struct {
@@ -308,21 +310,133 @@ func ParseSDTTCommonDataAnnouncements(s Section) ([]CommonDataAnnouncement, erro
 	if len(s) < 12 || s.TableID() != TableIDSDTT || s.TotalLength() > len(s) || !s.ValidateCRC() {
 		return nil, ErrInvalidSection
 	}
-	payload := s[8 : s.TotalLength()-4]
-	var result []CommonDataAnnouncement
-	for i := 0; i+6 <= len(payload); i++ {
-		onid := binary.BigEndian.Uint16(payload[i : i+2])
-		tsid := binary.BigEndian.Uint16(payload[i+2 : i+4])
-		sid := binary.BigEndian.Uint16(payload[i+4 : i+6])
-		if IsSatelliteOriginalNetworkID(onid) && sid != 0 && sid != 0xffff {
+	header, err := ParseSectionHeader(s)
+	if err != nil {
+		return nil, err
+	}
+	if !header.CurrentNextIndicator || header.SectionNumber != 0 || header.TableID != TableIDSDTT {
+		return nil, nil
+	}
+	tableIDExt := binary.BigEndian.Uint16(s[3:5])
+	if byte(tableIDExt>>8) != 0xff {
+		return nil, nil
+	}
+	end := s.TotalLength() - 4
+	if end < 17 {
+		return nil, ErrInvalidSection
+	}
+	tsid := binary.BigEndian.Uint16(s[8:10])
+	onid := binary.BigEndian.Uint16(s[10:12])
+	sid := binary.BigEndian.Uint16(s[12:14])
+	contentCount := int(s[14])
+	off := 15
+	result := make([]CommonDataAnnouncement, 0, contentCount)
+	for i := 0; i < contentCount; i++ {
+		if off+8 > end {
+			return nil, ErrInvalidSection
+		}
+		versionID := uint16(s[off+2])<<4 | uint16(s[off+3]>>4)
+		contentDescriptionLength := int(uint16(s[off+4])<<4 | uint16(s[off+5]>>4))
+		scheduleDescriptionLength := int(uint16(s[off+6])<<4 | uint16(s[off+7]>>4))
+		descriptorOff := off + 8 + scheduleDescriptionLength
+		contentEnd := off + 8 + contentDescriptionLength
+		if contentEnd > end {
+			return nil, ErrInvalidSection
+		}
+		if descriptorOff > contentEnd {
+			return nil, ErrInvalidSection
+		}
+		downloadID, ok, err := sdttDownloadContentID(s[descriptorOff:contentEnd])
+		if err != nil {
+			return nil, err
+		}
+		if ok && scheduleDescriptionLength == 0 && IsSatelliteOriginalNetworkID(onid) && sid != 0 && sid != 0xffff {
 			result = append(result, CommonDataAnnouncement{
 				OriginalNetworkID: onid,
 				TransportStreamID: tsid,
 				ServiceID:         sid,
+				DownloadID:        downloadID,
+				VersionID:         versionID,
 			})
 		}
+		off = contentEnd
 	}
 	return result, nil
+}
+
+func sdttDownloadContentID(descriptors []byte) (uint32, bool, error) {
+	for off := 0; off < len(descriptors); {
+		if off+2 > len(descriptors) {
+			return 0, false, ErrInvalidSection
+		}
+		tag := descriptors[off]
+		length := int(descriptors[off+1])
+		off += 2
+		if off+length > len(descriptors) {
+			return 0, false, ErrInvalidSection
+		}
+		data := descriptors[off : off+length]
+		off += length
+		if tag != DescriptorTagDownloadContent {
+			continue
+		}
+		if len(data) < 18 {
+			return 0, false, ErrInvalidSection
+		}
+		flags := data[0]
+		compatibilityFlag := flags&0x20 != 0
+		moduleInfoFlag := flags&0x10 != 0
+		textInfoFlag := flags&0x08 != 0
+		downloadID := binary.BigEndian.Uint32(data[5:9])
+		pos := 18
+		if compatibilityFlag {
+			if pos+2 > len(data) {
+				return 0, false, ErrInvalidSection
+			}
+			length := int(binary.BigEndian.Uint16(data[pos : pos+2]))
+			pos += 2 + length
+			if pos > len(data) {
+				return 0, false, ErrInvalidSection
+			}
+		}
+		if moduleInfoFlag {
+			if pos+1 > len(data) {
+				return 0, false, ErrInvalidSection
+			}
+			count := int(data[pos])
+			pos++
+			for i := 0; i < count; i++ {
+				if pos+7 > len(data) {
+					return 0, false, ErrInvalidSection
+				}
+				infoLen := int(data[pos+6])
+				pos += 7 + infoLen
+				if pos > len(data) {
+					return 0, false, ErrInvalidSection
+				}
+			}
+		}
+		if pos+1 > len(data) {
+			return 0, false, ErrInvalidSection
+		}
+		privateLen := int(data[pos])
+		pos += 1 + privateLen
+		if pos > len(data) {
+			return 0, false, ErrInvalidSection
+		}
+		if textInfoFlag {
+			if pos+4 > len(data) {
+				return 0, false, ErrInvalidSection
+			}
+			textLen := int(data[pos+3])
+			pos += 4 + textLen
+			if pos > len(data) {
+				return 0, false, ErrInvalidSection
+			}
+		}
+		return downloadID, true, nil
+	}
+	return 0, false, nil
 }
 
 func DefaultCommonDataAnnouncement() CommonDataAnnouncement {

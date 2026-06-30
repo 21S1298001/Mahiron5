@@ -323,6 +323,17 @@ func (s *ChannelSession) updateSection(ctx context.Context, section ts.Section) 
 			}
 		}
 	}
+	if section.TableID() == ts.TableIDSDTT && s.logoUpdater != nil {
+		announcements, err := ts.ParseSDTTCommonDataAnnouncements(section)
+		if err != nil {
+			slog.Error("failed to parse SDTT common data announcement", "type", s.typ, "channel", s.channel, "err", err)
+		}
+		for _, announcement := range announcements {
+			if err := s.logoUpdater.UpsertCommonDataAnnouncement(ctx, announcement, s.typ, s.channel); err != nil {
+				slog.Error("failed to update SDTT common data announcement", "type", s.typ, "channel", s.channel, "err", err)
+			}
+		}
+	}
 	if section.TableID() == ts.TableIDDSMCCDII && s.logoUpdater != nil {
 		if dii, err := ts.ParseDSMCCDII(section); err == nil {
 			s.logoCarousel.ObserveDII(dii)

@@ -591,8 +591,73 @@ func TestLogoGatherTargetsUsesONIDForCommonDataInsteadOfChannelType(t *testing.T
 	if len(targets) != 1 {
 		t.Fatalf("targets = %#v, want one satellite common-data target", targets)
 	}
-	if !targets[0].IsCommonData || targets[0].ChannelType != "anything" || targets[0].NetworkId != 4 {
+	if !targets[0].IsCommonData || !targets[0].IsSDTTProbe || targets[0].ChannelType != "anything" || targets[0].NetworkId != 4 {
 		t.Fatalf("target = %#v, want ONID-based common-data target", targets[0])
+	}
+}
+
+func TestLogoGatherTargetsUsesSDTTAnnouncementChannel(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	if err := store.ReplaceChannelServices(ctx, "sat", "target", []*Service{{
+		Id: "0000400101", NetworkId: 4, TransportStreamId: 0x4010, ServiceId: 101,
+		ChannelType: "sat", ChannelId: "target",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReplaceChannelServices(ctx, "sat", "common", []*Service{{
+		Id: "0000492900", NetworkId: 4, TransportStreamId: 0x4031, ServiceId: 929,
+		ChannelType: "sat", ChannelId: "common",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+	if err := manager.UpsertCommonDataAnnouncement(ctx, ts.CommonDataAnnouncement{
+		OriginalNetworkID: 4, TransportStreamID: 0x4031, ServiceID: 929, DownloadID: 0x12345678, VersionID: 7,
+	}, "sat", "target"); err != nil {
+		t.Fatal(err)
+	}
+	targets, err := manager.LogoGatherTargets(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets = %#v, want one common-data target", targets)
+	}
+	if !targets[0].IsCommonData || targets[0].IsSDTTProbe || targets[0].ChannelType != "sat" || targets[0].ChannelId != "common" {
+		t.Fatalf("target = %#v, want SDTT common-data channel", targets[0])
+	}
+}
+
+func TestCommonDataAnnouncementUpsertReplacesOlderRoute(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := NewSQLiteStore(database)
+	manager := NewServiceManager(store, config.ChannelsConfig{})
+	announcement := ts.CommonDataAnnouncement{OriginalNetworkID: 4, TransportStreamID: 0x4031, ServiceID: 929, DownloadID: 1, VersionID: 1}
+	if err := manager.UpsertCommonDataAnnouncement(ctx, announcement, "sat", "old"); err != nil {
+		t.Fatal(err)
+	}
+	announcement.DownloadID = 2
+	announcement.VersionID = 2
+	if err := manager.UpsertCommonDataAnnouncement(ctx, announcement, "sat", "new"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.ListCommonDataAnnouncements(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].DownloadID != 2 || got[0].VersionID != 2 || got[0].ObservedChannelID != "new" {
+		t.Fatalf("announcements = %#v, want replaced row", got)
 	}
 }
 

@@ -228,13 +228,13 @@ func (s *ServiceManager) appendCommonLogoTargets(ctx context.Context, targets []
 	if err != nil {
 		return nil, err
 	}
-	commonChannel := map[uint16]ChannelKey{}
-	for _, svc := range services {
-		if svc.NetworkId == ts.DefaultCommonLogoOriginalNetworkID &&
-			svc.TransportStreamId == ts.DefaultCommonLogoTransportStreamID &&
-			svc.ServiceId == ts.DefaultCommonLogoServiceID {
-			commonChannel[svc.NetworkId] = ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}
-		}
+	commonChannel, err := s.commonDataChannel(ctx)
+	if err != nil {
+		return nil, err
+	}
+	commonServices, err := s.commonDataServiceKeys(ctx)
+	if err != nil {
+		return nil, err
 	}
 	seen := make(map[string]struct{}, len(targets))
 	for _, target := range targets {
@@ -244,9 +244,14 @@ func (s *ServiceManager) appendCommonLogoTargets(ctx context.Context, targets []
 		if !ts.IsSatelliteOriginalNetworkID(svc.NetworkId) || svc.HasLogoData {
 			continue
 		}
+		if _, ok := commonServices[commonDataServiceKey{svc.NetworkId, svc.TransportStreamId, svc.ServiceId}]; ok {
+			continue
+		}
 		channel := ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}
-		if common, ok := commonChannel[ts.DefaultCommonLogoOriginalNetworkID]; ok {
-			channel = common
+		isProbe := true
+		if commonChannel != nil {
+			channel = *commonChannel
+			isProbe = false
 		}
 		target := LogoTarget{
 			NetworkId:         svc.NetworkId,
@@ -255,6 +260,7 @@ func (s *ServiceManager) appendCommonLogoTargets(ctx context.Context, targets []
 			ChannelType:       channel.Type,
 			ChannelId:         channel.ID,
 			IsCommonData:      true,
+			IsSDTTProbe:       isProbe,
 		}
 		key := commonLogoTargetKey(target)
 		if _, ok := seen[key]; ok {
@@ -266,8 +272,55 @@ func (s *ServiceManager) appendCommonLogoTargets(ctx context.Context, targets []
 	return targets, nil
 }
 
+type commonDataServiceKey struct {
+	networkID, transportStreamID, serviceID uint16
+}
+
+func (s *ServiceManager) commonDataServiceKeys(ctx context.Context) (map[commonDataServiceKey]struct{}, error) {
+	announcements, err := s.store.ListCommonDataAnnouncements(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[commonDataServiceKey]struct{}, len(announcements)+1)
+	for _, announcement := range announcements {
+		result[commonDataServiceKey{announcement.OriginalNetworkID, announcement.TransportStreamID, announcement.ServiceID}] = struct{}{}
+	}
+	defaultAnnouncement := ts.DefaultCommonDataAnnouncement()
+	result[commonDataServiceKey{defaultAnnouncement.OriginalNetworkID, defaultAnnouncement.TransportStreamID, defaultAnnouncement.ServiceID}] = struct{}{}
+	return result, nil
+}
+
+func (s *ServiceManager) commonDataChannel(ctx context.Context) (*ChannelKey, error) {
+	announcements, err := s.store.ListCommonDataAnnouncements(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, announcement := range announcements {
+		if !ts.IsSatelliteOriginalNetworkID(announcement.OriginalNetworkID) {
+			continue
+		}
+		svc, err := s.store.GetByTriplet(ctx, announcement.OriginalNetworkID, announcement.TransportStreamID, announcement.ServiceID)
+		if err != nil {
+			return nil, err
+		}
+		if svc == nil {
+			continue
+		}
+		return &ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}, nil
+	}
+	defaultAnnouncement := ts.DefaultCommonDataAnnouncement()
+	svc, err := s.store.GetByTriplet(ctx, defaultAnnouncement.OriginalNetworkID, defaultAnnouncement.TransportStreamID, defaultAnnouncement.ServiceID)
+	if err != nil {
+		return nil, err
+	}
+	if svc == nil {
+		return nil, nil
+	}
+	return &ChannelKey{Type: svc.ChannelType, ID: svc.ChannelId}, nil
+}
+
 func commonLogoTargetKey(target LogoTarget) string {
-	return fmt.Sprintf("%d/%d/%d/%t/%s/%s", target.NetworkId, target.TransportStreamId, target.ServiceId, target.IsCommonData, target.ChannelType, target.ChannelId)
+	return fmt.Sprintf("%d/%d/%d/%t/%t/%s/%s", target.NetworkId, target.TransportStreamId, target.ServiceId, target.IsCommonData, target.IsSDTTProbe, target.ChannelType, target.ChannelId)
 }
 
 func (s *ServiceManager) UpsertLogo(ctx context.Context, networkID, transportStreamID, serviceID uint16, logoID int64, logoType int64, logoVersion int64, downloadDataID int64, data []byte, updatedAt int64) error {
@@ -358,6 +411,19 @@ func (s *ServiceManager) UpsertCommonLogoImage(ctx context.Context, image ts.Com
 		}
 	}
 	return nil
+}
+
+func (s *ServiceManager) UpsertCommonDataAnnouncement(ctx context.Context, announcement ts.CommonDataAnnouncement, channelType, channelID string) error {
+	return s.store.UpsertCommonDataAnnouncement(ctx, CommonDataAnnouncement{
+		OriginalNetworkID:   announcement.OriginalNetworkID,
+		TransportStreamID:   announcement.TransportStreamID,
+		ServiceID:           announcement.ServiceID,
+		DownloadID:          announcement.DownloadID,
+		VersionID:           announcement.VersionID,
+		ObservedChannelType: channelType,
+		ObservedChannelID:   channelID,
+		SeenAt:              time.Now().UnixMilli(),
+	})
 }
 
 func (s *ServiceManager) shouldRefreshLogoTarget(target LogoTarget) bool {

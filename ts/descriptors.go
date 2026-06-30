@@ -38,6 +38,7 @@ const (
 	DescriptorTagComponent        = 0x50
 	DescriptorTagContent          = 0x54
 	DescriptorTagAudioComponent   = 0xC4
+	DescriptorTagDownloadContent  = 0xC9
 	DescriptorTagLogoTransmission = 0xCF
 	// TS information descriptor carries remote_control_key_id in terrestrial NIT TS loops.
 	DescriptorTagTSInformation = 0xCD

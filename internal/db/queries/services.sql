@@ -221,6 +221,36 @@ WHERE s.logo_id IS NOT NULL AND s.logo_id >= 0
   )
 ORDER BY s.channel_type, s.channel_id, s.network_id, s.service_id;
 
+-- name: GetServiceByTriplet :one
+SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
+       s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
+         SELECT 1 FROM service_logos l
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+       ) AS has_logo_data,
+       s.remote_control_key_id, s.channel_type, s.channel_id,
+       epg.last_attempt_at, epg.last_success_at, epg.last_error
+FROM services s
+LEFT JOIN epg_service_status epg
+  ON epg.network_id = s.network_id AND epg.service_id = s.service_id
+WHERE s.network_id = ? AND s.transport_stream_id = ? AND s.service_id = ?;
+
+-- name: ListCommonDataAnnouncements :many
+SELECT original_network_id, transport_stream_id, service_id, download_id, version_id, observed_channel_type, observed_channel_id, seen_at
+FROM common_data_announcements
+ORDER BY seen_at DESC, original_network_id, transport_stream_id, service_id;
+
+-- name: UpsertCommonDataAnnouncement :exec
+INSERT INTO common_data_announcements (original_network_id, transport_stream_id, service_id, download_id, version_id, observed_channel_type, observed_channel_id, seen_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(original_network_id, transport_stream_id, service_id) DO UPDATE SET
+  download_id=excluded.download_id,
+  version_id=excluded.version_id,
+  observed_channel_type=excluded.observed_channel_type,
+  observed_channel_id=excluded.observed_channel_id,
+  seen_at=excluded.seen_at;
+
 -- name: SetEPGAttempt :exec
 INSERT INTO epg_service_status (network_id, service_id, last_attempt_at, last_error)
 VALUES (?, ?, ?, ?)

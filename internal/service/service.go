@@ -37,6 +37,18 @@ type LogoTarget struct {
 	LogoVersion        int64
 	LogoDownloadDataId int64
 	IsCommonData       bool
+	IsSDTTProbe        bool
+}
+
+type CommonDataAnnouncement struct {
+	OriginalNetworkID   uint16
+	TransportStreamID   uint16
+	ServiceID           uint16
+	DownloadID          uint32
+	VersionID           uint16
+	ObservedChannelType string
+	ObservedChannelID   string
+	SeenAt              int64
 }
 
 func (s *Service) ItemId() int64 {

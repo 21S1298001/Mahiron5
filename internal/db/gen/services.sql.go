@@ -462,6 +462,75 @@ func (q *Queries) GetServiceByNetworkServiceID(ctx context.Context, arg GetServi
 	return i, err
 }
 
+const getServiceByTriplet = `-- name: GetServiceByTriplet :one
+SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
+       s.eit_schedule_flag, s.eit_present_following,
+       s.logo_id, s.logo_version, s.logo_download_data_id, EXISTS (
+         SELECT 1 FROM service_logos l
+         WHERE l.network_id = s.network_id AND l.transport_stream_id = s.transport_stream_id AND l.service_id = s.service_id AND l.logo_id = s.logo_id
+           AND l.logo_version = s.logo_version AND l.download_data_id = s.logo_download_data_id
+       ) AS has_logo_data,
+       s.remote_control_key_id, s.channel_type, s.channel_id,
+       epg.last_attempt_at, epg.last_success_at, epg.last_error
+FROM services s
+LEFT JOIN epg_service_status epg
+  ON epg.network_id = s.network_id AND epg.service_id = s.service_id
+WHERE s.network_id = ? AND s.transport_stream_id = ? AND s.service_id = ?
+`
+
+type GetServiceByTripletParams struct {
+	NetworkID         int64 `json:"network_id"`
+	TransportStreamID int64 `json:"transport_stream_id"`
+	ServiceID         int64 `json:"service_id"`
+}
+
+type GetServiceByTripletRow struct {
+	ID                  string  `json:"id"`
+	ServiceID           int64   `json:"service_id"`
+	NetworkID           int64   `json:"network_id"`
+	TransportStreamID   int64   `json:"transport_stream_id"`
+	Name                string  `json:"name"`
+	Type                int64   `json:"type"`
+	EitScheduleFlag     int64   `json:"eit_schedule_flag"`
+	EitPresentFollowing int64   `json:"eit_present_following"`
+	LogoID              *int64  `json:"logo_id"`
+	LogoVersion         *int64  `json:"logo_version"`
+	LogoDownloadDataID  *int64  `json:"logo_download_data_id"`
+	HasLogoData         bool    `json:"has_logo_data"`
+	RemoteControlKeyID  int64   `json:"remote_control_key_id"`
+	ChannelType         string  `json:"channel_type"`
+	ChannelID           string  `json:"channel_id"`
+	LastAttemptAt       *int64  `json:"last_attempt_at"`
+	LastSuccessAt       *int64  `json:"last_success_at"`
+	LastError           *string `json:"last_error"`
+}
+
+func (q *Queries) GetServiceByTriplet(ctx context.Context, arg GetServiceByTripletParams) (GetServiceByTripletRow, error) {
+	row := q.db.QueryRowContext(ctx, getServiceByTriplet, arg.NetworkID, arg.TransportStreamID, arg.ServiceID)
+	var i GetServiceByTripletRow
+	err := row.Scan(
+		&i.ID,
+		&i.ServiceID,
+		&i.NetworkID,
+		&i.TransportStreamID,
+		&i.Name,
+		&i.Type,
+		&i.EitScheduleFlag,
+		&i.EitPresentFollowing,
+		&i.LogoID,
+		&i.LogoVersion,
+		&i.LogoDownloadDataID,
+		&i.HasLogoData,
+		&i.RemoteControlKeyID,
+		&i.ChannelType,
+		&i.ChannelID,
+		&i.LastAttemptAt,
+		&i.LastSuccessAt,
+		&i.LastError,
+	)
+	return i, err
+}
+
 const getServicesByChannel = `-- name: GetServicesByChannel :many
 SELECT s.id, s.service_id, s.network_id, s.transport_stream_id, s.name, s.type,
        s.eit_schedule_flag, s.eit_present_following,
@@ -584,6 +653,44 @@ func (q *Queries) KnownLogoTargets(ctx context.Context) ([]KnownLogoTargetsRow, 
 			&i.LogoID,
 			&i.LogoVersion,
 			&i.LogoDownloadDataID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCommonDataAnnouncements = `-- name: ListCommonDataAnnouncements :many
+SELECT original_network_id, transport_stream_id, service_id, download_id, version_id, observed_channel_type, observed_channel_id, seen_at
+FROM common_data_announcements
+ORDER BY seen_at DESC, original_network_id, transport_stream_id, service_id
+`
+
+func (q *Queries) ListCommonDataAnnouncements(ctx context.Context) ([]CommonDataAnnouncement, error) {
+	rows, err := q.db.QueryContext(ctx, listCommonDataAnnouncements)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CommonDataAnnouncement
+	for rows.Next() {
+		var i CommonDataAnnouncement
+		if err := rows.Scan(
+			&i.OriginalNetworkID,
+			&i.TransportStreamID,
+			&i.ServiceID,
+			&i.DownloadID,
+			&i.VersionID,
+			&i.ObservedChannelType,
+			&i.ObservedChannelID,
+			&i.SeenAt,
 		); err != nil {
 			return nil, err
 		}
@@ -813,6 +920,42 @@ func (q *Queries) UpdateServiceLogoMetadata(ctx context.Context, arg UpdateServi
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const upsertCommonDataAnnouncement = `-- name: UpsertCommonDataAnnouncement :exec
+INSERT INTO common_data_announcements (original_network_id, transport_stream_id, service_id, download_id, version_id, observed_channel_type, observed_channel_id, seen_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(original_network_id, transport_stream_id, service_id) DO UPDATE SET
+  download_id=excluded.download_id,
+  version_id=excluded.version_id,
+  observed_channel_type=excluded.observed_channel_type,
+  observed_channel_id=excluded.observed_channel_id,
+  seen_at=excluded.seen_at
+`
+
+type UpsertCommonDataAnnouncementParams struct {
+	OriginalNetworkID   int64  `json:"original_network_id"`
+	TransportStreamID   int64  `json:"transport_stream_id"`
+	ServiceID           int64  `json:"service_id"`
+	DownloadID          int64  `json:"download_id"`
+	VersionID           int64  `json:"version_id"`
+	ObservedChannelType string `json:"observed_channel_type"`
+	ObservedChannelID   string `json:"observed_channel_id"`
+	SeenAt              int64  `json:"seen_at"`
+}
+
+func (q *Queries) UpsertCommonDataAnnouncement(ctx context.Context, arg UpsertCommonDataAnnouncementParams) error {
+	_, err := q.db.ExecContext(ctx, upsertCommonDataAnnouncement,
+		arg.OriginalNetworkID,
+		arg.TransportStreamID,
+		arg.ServiceID,
+		arg.DownloadID,
+		arg.VersionID,
+		arg.ObservedChannelType,
+		arg.ObservedChannelID,
+		arg.SeenAt,
+	)
+	return err
 }
 
 const upsertService = `-- name: UpsertService :exec
