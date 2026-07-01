@@ -41,7 +41,7 @@ export default function EPG({ dashboard }: { dashboard: DashboardState }) {
             <div className="station-head" style={{ width: timelineWidth }}>
               {epgColumns.map((column) => (
                 <div
-                  className={`station-cell ${column.foldedServices.length === 1 ? "subchannel" : ""}`}
+                  className={`station-cell ${column.isSubchannel ? "subchannel" : ""}`}
                   key={column.key}
                   style={{ width: serviceWidth }}
                 >
@@ -101,7 +101,7 @@ export default function EPG({ dashboard }: { dashboard: DashboardState }) {
                             isTight ? "tight" : "",
                             isCompact ? "compact" : "",
                             isMicro ? "micro" : "",
-                            column.foldedServices.length === 1 ? "subchannel" : "",
+                            column.isSubchannel ? "subchannel" : "",
                           ].filter(Boolean).join(" ")}
                           key={key}
                           style={{ top, height }}

@@ -6,6 +6,7 @@ type EpgColumn = {
   primaryService: Service;
   services: Service[];
   foldedServices: Service[];
+  isSubchannel: boolean;
 };
 
 type EpgProgramBlock = {
@@ -448,6 +449,7 @@ export function makeEpgColumns(services: Service[], programsByService: Map<strin
       primaryService: groupServices[0],
       services: [],
       foldedServices: [...groupServices],
+      isSubchannel: false,
     };
     const seenContent = new Set<string>();
     const foldedServiceKeys = new Set<string>();
@@ -466,10 +468,11 @@ export function makeEpgColumns(services: Service[], programsByService: Map<strin
 
       if (index === 0 || hasDistinctContent) {
         const column = index === 0 ? primaryColumn : {
-          key: index === 0 ? groupKey : `${groupKey}:service:${service.id}`,
+          key: `${groupKey}:service:${service.id}`,
           primaryService: service,
           services: [service],
           foldedServices: [service],
+          isSubchannel: true,
         };
         if (index === 0) {
           primaryColumn.services.push(service);
@@ -634,11 +637,12 @@ export function epgServiceGroupKey(service: Service) {
       service.remoteControlKeyId,
     ].join(":");
   }
-  return service.channel ? channelKey(service.channel) : serviceKey(service);
+  return epgServiceUnitKey(service);
 }
 
 export function isTerrestrialService(service: Service) {
-  return service.channel?.type.toUpperCase() === "GR";
+  // remoteControlKeyId is set from TSInformationDescriptor (tag 0xCD), terrestrial NIT only
+  return service.remoteControlKeyId != null;
 }
 
 export function channelLabel(type?: string, channel?: string) {
@@ -647,6 +651,16 @@ export function channelLabel(type?: string, channel?: string) {
 
 export function serviceKey(service: Pick<Service, "networkId" | "serviceId">) {
   return `service:${service.networkId}:${service.serviceId}`;
+}
+
+export function epgServiceUnitKey(service: Pick<Service, "id" | "networkId" | "serviceId" | "transportStreamId">) {
+  if (service.id != null) {
+    return `service-id:${service.id}`;
+  }
+  if (service.transportStreamId != null) {
+    return `service:${service.networkId}:${service.transportStreamId}:${service.serviceId}`;
+  }
+  return serviceKey(service);
 }
 
 export function channelKey(channel?: Pick<Channel, "type" | "channel">) {
