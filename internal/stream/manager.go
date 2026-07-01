@@ -18,7 +18,6 @@ import (
 )
 
 type StreamManager struct {
-	mu                    sync.Mutex
 	eitUpdater            EITSectionUpdater
 	logoUpdater           LogoUpdater
 	programUpdater        ProgramUpdater
@@ -27,9 +26,7 @@ type StreamManager struct {
 	remoteEventSyncWG     sync.WaitGroup
 	remotes               map[string]*RemoteClient
 	serviceLister         ServiceLister
-	sessionCreates        map[sessionKey]*sessionCreate
-	sessions              map[sessionKey]sessionEntry
-	shuttingDown          bool
+	registry              *sessionRegistry
 	sources               *SourcePool
 }
 
@@ -42,24 +39,6 @@ type StreamManagerConfig struct {
 	ProgramUpdater     ProgramUpdater
 	ServiceLister      ServiceLister
 	TunerManager       TunerManager
-}
-
-type sessionKey struct {
-	channel string
-	typ     string
-}
-
-type sessionEntry struct {
-	session   Session
-	routeType string
-	source    string
-	startedAt time.Time
-}
-
-type sessionCreate struct {
-	done    chan struct{}
-	err     error
-	session Session
 }
 
 const (
@@ -92,8 +71,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		programUpdater: cfg.ProgramUpdater,
 		remotes:        remotes,
 		serviceLister:  cfg.ServiceLister,
-		sessionCreates: map[sessionKey]*sessionCreate{},
-		sessions:       map[sessionKey]sessionEntry{},
+		registry:       newSessionRegistry(),
 		sources:        NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
 	}
 }
@@ -193,34 +171,28 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 
 	key := sessionKey{typ: channelType, channel: channel}
 
-	m.mu.Lock()
-	if entry, ok := m.sessions[key]; ok {
-		m.mu.Unlock()
+	res := m.registry.acquire(key)
+	switch {
+	case res.hasEntry:
 		recordStart = false
 		slog.Debug("reusing stream session", "type", channelType, "channel", channel)
-		return entry.session, nil
-	}
-	if m.shuttingDown {
-		m.mu.Unlock()
+		return res.entry.session, nil
+	case res.shuttingDown:
 		return nil, ErrStreamManagerShutdown
-	}
-	if create, ok := m.sessionCreates[key]; ok {
-		m.mu.Unlock()
+	case res.pending != nil:
 		select {
-		case <-create.done:
-			if create.err != nil {
-				return nil, create.err
+		case <-res.pending.done:
+			if res.pending.err != nil {
+				return nil, res.pending.err
 			}
 			recordStart = false
 			slog.Debug("reusing stream session", "type", channelType, "channel", channel)
-			return create.session, nil
+			return res.pending.session, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
-	create := &sessionCreate{done: make(chan struct{})}
-	m.sessionCreates[key] = create
-	m.mu.Unlock()
+	create := res.create
 
 	slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
 	session, routeType, source, err := m.createSession(ctx, key, channelType, channel, wait)
@@ -228,15 +200,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 		slog.Debug("failed to acquire stream source", "type", channelType, "channel", channel, "wait", wait, "err", err)
 	}
 
-	m.mu.Lock()
-	if err == nil {
-		m.addSessionLocked(key, session, routeType, source)
-	}
-	create.session = session
-	create.err = err
-	delete(m.sessionCreates, key)
-	close(create.done)
-	m.mu.Unlock()
+	m.registry.completeCreate(key, create, session, routeType, source, err)
 
 	if err != nil {
 		return nil, err
@@ -247,61 +211,16 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 	return session, nil
 }
 
-func (m *StreamManager) createSession(ctx context.Context, key sessionKey, channelType, channel string, wait bool) (Session, string, string, error) {
-	lease, err := m.sources.Acquire(ctx, channelType, channel, wait)
-	if err != nil {
-		return nil, "", "", err
-	}
-	source := streamSessionSource(lease)
-	if lease.Session != nil {
-		return lease.Session, lease.RouteType, source, nil
-	}
-
-	broadcast := lease.Broadcast
-	if broadcast == nil {
-		broadcast = NewBroadcast(lease.Source, func() { m.remove(key) })
-	} else {
-		if !broadcast.AddOnStop(func() { m.remove(key) }) {
-			return nil, "", "", errors.New("broadcast stopped")
-		}
-	}
-
-	session := NewChannelSession(ChannelSessionConfig{
-		Channel:     channel,
-		Broadcast:   broadcast,
-		Descrambler: lease.Descrambler,
-		EITUpdater:  m.eitUpdater,
-		LogoUpdater: m.logoUpdater,
-		OnStop:      func() { m.remove(key) },
-		Type:        channelType,
-	})
-	return session, lease.RouteType, source, nil
-}
-
 func (m *StreamManager) HasSession(channelType, channel string) bool {
-	key := sessionKey{typ: channelType, channel: channel}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	_, ok := m.sessions[key]
-	return ok
+	return m.registry.has(sessionKey{typ: channelType, channel: channel})
 }
 
 func (m *StreamManager) ActiveSessionCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.sessions)
+	return m.registry.count()
 }
 
 func (m *StreamManager) ActiveSessionCountByType(channelType string) int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	count := 0
-	for _, entry := range m.sessions {
-		if entry.routeType == channelType {
-			count++
-		}
-	}
-	return count
+	return m.registry.countByType(channelType)
 }
 
 func (m *StreamManager) Shutdown(ctx context.Context) error {
@@ -310,13 +229,7 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 		m.remoteEventSyncCancel()
 	}
 
-	m.mu.Lock()
-	m.shuttingDown = true
-	creates := make([]*sessionCreate, 0, len(m.sessionCreates))
-	for _, create := range m.sessionCreates {
-		creates = append(creates, create)
-	}
-	m.mu.Unlock()
+	creates := m.registry.beginShutdown()
 
 	eventSyncDone := make(chan struct{})
 	go func() {
@@ -333,75 +246,18 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 		result = errors.Join(result, err)
 	}
 
-	m.mu.Lock()
-	sessions := make([]Session, 0, len(m.sessions))
-	for _, entry := range m.sessions {
-		sessions = append(sessions, entry.session)
-	}
-	m.mu.Unlock()
-
-	for _, session := range sessions {
+	for _, session := range m.registry.activeSessions() {
 		if err := session.Stop(ctx); err != nil {
 			result = errors.Join(result, err)
 		}
 	}
-	m.mu.Lock()
-	for key := range m.sessions {
-		m.removeSessionLocked(key)
-	}
-	m.mu.Unlock()
-	return result
-}
-
-func waitSessionCreates(ctx context.Context, creates []*sessionCreate) error {
-	var result error
-	for _, create := range creates {
-		select {
-		case <-create.done:
-		case <-ctx.Done():
-			result = errors.Join(result, ctx.Err())
-		}
-	}
+	m.registry.clear()
 	return result
 }
 
 func (m *StreamManager) remove(key sessionKey) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.removeSessionLocked(key)
+	m.registry.remove(key)
 	slog.Debug("stream session removed", "type", key.typ, "channel", key.channel)
-}
-
-func (m *StreamManager) addSessionLocked(key sessionKey, session Session, routeType, source string) {
-	m.sessions[key] = sessionEntry{
-		session:   session,
-		routeType: routeType,
-		source:    source,
-		startedAt: time.Now(),
-	}
-}
-
-func (m *StreamManager) removeSessionLocked(key sessionKey) {
-	entry, ok := m.sessions[key]
-	if !ok {
-		return
-	}
-	m.recordSessionDurationLocked(key, entry)
-	delete(m.sessions, key)
-}
-
-func (m *StreamManager) recordSessionDurationLocked(key sessionKey, entry sessionEntry) {
-	if entry.startedAt.IsZero() {
-		return
-	}
-	observability.RecordStreamSessionDuration(context.Background(), key.typ, entry.routeType, entry.source, time.Since(entry.startedAt).Milliseconds())
-}
-
-func streamSessionSource(lease *SourceLease) string {
-	if lease != nil && lease.Session != nil {
-		return "remote"
-	}
-	return "local"
 }
 
 func streamSessionStartResult(err error) string {
