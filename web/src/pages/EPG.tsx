@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import type { Program } from "../api";
 import type { DashboardState } from "../dashboard";
-import { Empty, ErrorList, floorHour, formatHourOnly, formatMinute, formatMonthDayWeekday, isSameDate, isVisibleService, Logo, makeEpgColumns, makeEpgProgramBlocks, PageFrame, ProgramModal, programGenreClass } from "../shared";
+import { programGenreClass } from "../domain/program";
+import { isVisibleService } from "../domain/service";
+import { makeEpgColumns, makeEpgProgramBlocks } from "../epg/grid";
+import { floorHour, formatHourOnly, formatMinute, formatMonthDayWeekday, isSameDate } from "../format/date";
+import { ProgramModal } from "../modals/ProgramModal";
+import { Empty, Logo, PageFrame } from "../ui/layout";
+import { ErrorList } from "../ui/logs";
 
 export default function EPG({ dashboard }: { dashboard: DashboardState }) {
   const { services, programs } = dashboard;

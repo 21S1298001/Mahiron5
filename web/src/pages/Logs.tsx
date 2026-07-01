@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, streamEvents, streamLog, type EventItem } from "../api";
-import { useAsync } from "../hooks";
-import { ErrorList, EventList, LogPanelActions, PageFrame, Panel, useAutoScroll } from "../shared";
+import { useAsync, useAutoScroll } from "../hooks";
+import { LogPanelActions } from "../ui/actions";
+import { PageFrame, Panel } from "../ui/layout";
+import { ErrorList, EventList } from "../ui/logs";
 
 export default function Logs() {
   const events = useAsync(api.events);

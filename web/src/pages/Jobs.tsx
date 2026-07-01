@@ -2,7 +2,10 @@ import { useEffect } from "react";
 import { api } from "../api";
 import type { DashboardState } from "../dashboard";
 import { useAsync } from "../hooks";
-import { ErrorList, formatDate, jobStatusLabel, PageFrame } from "../shared";
+import { jobStatusLabel } from "../domain/job";
+import { formatDate } from "../format/date";
+import { PageFrame } from "../ui/layout";
+import { ErrorList } from "../ui/logs";
 
 export default function Jobs({ dashboard }: { dashboard: DashboardState }) {
   const { jobs } = dashboard;

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { Program, Service } from "./api";
+import type { Program, Service } from "../api";
 import {
   makeEpgColumns,
   makeEpgProgramBlocks,
   makeSharedProgramKeyResolver,
   programContentKey,
-} from "./shared";
+} from "./grid";
 
 // Characterization tests for the EPG grid logic. These pin the current
 // behaviour so the Phase 2 split of shared.tsx stays behaviour-invariant.

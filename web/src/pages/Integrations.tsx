@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import type { DashboardState } from "../dashboard";
-import { CopyRow, isVisibleService, PageFrame } from "../shared";
+import { isVisibleService } from "../domain/service";
+import { CopyRow } from "../ui/actions";
+import { PageFrame } from "../ui/layout";
 
 export default function Integrations({ dashboard }: { dashboard: DashboardState }) {
   const { services } = dashboard;

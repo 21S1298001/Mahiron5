@@ -1,6 +1,13 @@
 import { useMemo } from "react";
 import type { DashboardState } from "../dashboard";
-import { channelLabel, currentGatheringNetworks, Definition, Empty, ErrorList, formatDate, formatNumber, isVisibleService, Logo, Metric, openServiceMap, openServiceUsers, PageFrame, Panel, StatusPill } from "../shared";
+import { currentGatheringNetworks } from "../domain/job";
+import { channelLabel, isVisibleService } from "../domain/service";
+import { openServiceMap, openServiceUsers } from "../domain/tuner";
+import { formatNumber } from "../format/common";
+import { formatDate } from "../format/date";
+import { Empty, Logo, PageFrame, Panel } from "../ui/layout";
+import { ErrorList } from "../ui/logs";
+import { Definition, Metric, StatusPill } from "../ui/metrics";
 
 export default function Overview({ dashboard }: { dashboard: DashboardState }) {
   const { status, tuners, services, jobs } = dashboard;

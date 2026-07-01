@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type UIEvent } from "react";
 
 export function useAsync<T>(loader: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
@@ -70,4 +70,50 @@ export function useAutoResource<T>(loader: () => Promise<T>, options: { interval
   }, [options.intervalMs, reload]);
 
   return { data, error, loading, reload, setData };
+}
+
+export function useAutoScroll<T extends HTMLElement>(deps: unknown[]) {
+  const ref = useRef<T | null>(null);
+  const shouldFollowRef = useRef(true);
+  const [following, setFollowing] = useState(true);
+
+  function updateFollowing(element: T) {
+    const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+    const nextFollowing = distanceToBottom < 48;
+    shouldFollowRef.current = nextFollowing;
+    setFollowing(nextFollowing);
+  }
+
+  function scrollToBottom() {
+    const element = ref.current;
+    if (!element) return;
+    shouldFollowRef.current = true;
+    setFollowing(true);
+    element.scrollTop = element.scrollHeight;
+  }
+
+  function onScroll(event: UIEvent<T>) {
+    updateFollowing(event.currentTarget);
+  }
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const onScroll = () => {
+      updateFollowing(element);
+    };
+
+    onScroll();
+    element.addEventListener("scroll", onScroll, { passive: true });
+    return () => element.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !shouldFollowRef.current) return;
+    element.scrollTop = element.scrollHeight;
+  }, deps);
+
+  return { ref, following, onScroll, scrollToBottom };
 }
