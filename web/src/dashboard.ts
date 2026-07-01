@@ -41,6 +41,42 @@ function isFullProgramEventData(data: ProgramEventData): data is Program {
   return "eventId" in data;
 }
 
+// Which dashboard resources a given event should trigger a refresh for.
+export function resourcesToRefresh(event: EventItem): DashboardResource[] {
+  switch (event.resource) {
+    case "tuner":
+      return ["tuners", "status"];
+    case "service":
+      return ["services"];
+    case "job":
+    case "job_schedule":
+      return ["jobs", "status"];
+    case "program":
+      return ["programs"];
+    default:
+      return ["status"];
+  }
+}
+
+// Applies a program create/update/remove event to a program list. Returns the same
+// array reference when the event doesn't concern the list, so callers can pass this
+// straight to a state setter without causing a spurious re-render.
+export function nextProgramList(current: Program[], event: EventItem): Program[] {
+  const data = parseProgramEventData(event);
+  if (!data) return current;
+  if (event.type === "remove") {
+    return current.filter((program) => program.id !== data.id);
+  }
+  if (!isFullProgramEventData(data)) {
+    return current;
+  }
+  const index = current.findIndex((program) => program.id === data.id);
+  if (index < 0) {
+    return [...current, data];
+  }
+  return current.map((program, currentIndex) => (currentIndex === index ? data : program));
+}
+
 export function useDashboard(): DashboardState {
   const status = useAutoResource(api.status, { intervalMs: pollIntervalMs });
   const tuners = useAutoResource(api.tuners, { intervalMs: pollIntervalMs });
@@ -72,42 +108,8 @@ export function useDashboard(): DashboardState {
 
   const onEvent = useCallback((event: EventItem) => {
     setLastEvent(event);
-    switch (event.resource) {
-      case "tuner":
-        refresh(["tuners", "status"]);
-        break;
-      case "service":
-        refresh(["services"]);
-        break;
-      case "job":
-      case "job_schedule":
-        refresh(["jobs", "status"]);
-        break;
-      case "program": {
-        const data = parseProgramEventData(event);
-        if (data) {
-          programs.setData((current) => {
-            const list = current ?? [];
-            if (event.type === "remove") {
-              return list.filter((program) => program.id !== data.id);
-            }
-            if (!isFullProgramEventData(data)) {
-              return current;
-            }
-            const index = list.findIndex((program) => program.id === data.id);
-            if (index < 0) {
-              return [...list, data];
-            }
-            return list.map((program, currentIndex) => currentIndex === index ? data : program);
-          });
-        }
-        refresh(["programs"]);
-        break;
-      }
-      default:
-        refresh(["status"]);
-        break;
-    }
+    programs.setData((current) => nextProgramList(current ?? [], event));
+    refresh(resourcesToRefresh(event));
   }, [programs.setData, refresh]);
 
   useEffect(() => {
