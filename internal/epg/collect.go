@@ -14,8 +14,9 @@ import (
 )
 
 type CollectResult struct {
-	Observed   []ServiceKey
-	Unobserved []ServiceKey
+	Observed     []ServiceKey
+	Unobserved   []ServiceKey
+	ProgramCount int
 }
 
 type eitClockCollector interface {
@@ -292,6 +293,7 @@ func persistObservedSnapshots(ctx context.Context, programStore ProgramStore, se
 			}
 			observed++
 			programs := observedPrograms[key]
+			result.ProgramCount += len(programs)
 			report := snapshot.CompletionReport(key)
 			basicComplete := snapshot.ServiceComplete(key)
 			observedExtendedComplete := snapshot.ObservedExtendedReady([]ServiceKey{key})

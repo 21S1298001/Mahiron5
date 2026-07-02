@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/21S1298001/mahiron/internal/job"
+	"github.com/21S1298001/mahiron/internal/jobreport"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -76,6 +77,9 @@ func apiJobItem(j *job.Job) *apigen.JobItem {
 	if j.Error != "" {
 		item.Error = apigen.NewOptString(j.Error)
 	}
+	if j.Result != nil {
+		item.Result = apigen.NewOptJobResult(apiJobResult(j.Result))
+	}
 	if j.StartedAt != nil {
 		item.StartedAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(j.StartedAt.UnixMilli()))
 	}
@@ -89,6 +93,40 @@ func apiJobItem(j *job.Job) *apigen.JobItem {
 		item.NextRunAt = apigen.NewOptUnixtimeMS(apigen.UnixtimeMS(j.NextRunAt.UnixMilli()))
 	}
 	return item
+}
+
+func apiJobResult(result *jobreport.Result) apigen.JobResult {
+	out := apigen.JobResult{Kind: result.Kind}
+	if result.Summary != "" {
+		out.Summary = apigen.NewOptString(result.Summary)
+	}
+	if len(result.Counts) > 0 {
+		counts := make(apigen.JobResultCounts, len(result.Counts))
+		for key, value := range result.Counts {
+			counts[key] = value
+		}
+		out.Counts = apigen.NewOptJobResultCounts(counts)
+	}
+	if len(result.Items) > 0 {
+		out.Items = make([]apigen.JobResultItem, len(result.Items))
+		for i, item := range result.Items {
+			out.Items[i] = apigen.JobResultItem{Kind: item.Kind}
+			if item.Summary != "" {
+				out.Items[i].Summary = apigen.NewOptString(item.Summary)
+			}
+			if len(item.Data) > 0 {
+				data := make(apigen.JobResultItemData, len(item.Data))
+				for key, value := range item.Data {
+					data[key] = apiRawJSON(value)
+				}
+				out.Items[i].Data = apigen.NewOptJobResultItemData(data)
+			}
+		}
+	}
+	if len(result.Warnings) > 0 {
+		out.Warnings = append([]string(nil), result.Warnings...)
+	}
+	return out
 }
 
 func apiJobStatus(status job.JobStatus) apigen.JobItemStatus {

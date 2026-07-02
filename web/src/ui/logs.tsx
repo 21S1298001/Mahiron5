@@ -19,11 +19,23 @@ export function EventList({
         <div className="event-item" key={`${event.time}-${index}`}>
           <time>{formatDate(event.time)}</time>
           <strong>{event.resource} / {event.type}</strong>
-          <code>{JSON.stringify(event.data)}</code>
+          <EventData data={event.data} resource={event.resource} />
         </div>
       ))}
     </div>
   );
+}
+
+function EventData({ data, resource }: { data: unknown; resource: string }) {
+  if (resource === "job" && isRecord(data) && isRecord(data.result)) {
+    return (
+      <>
+        <span>{String(data.name ?? data.key ?? "job")}: {String(data.result.summary ?? data.result.kind ?? "")}</span>
+        <code>{JSON.stringify(data)}</code>
+      </>
+    );
+  }
+  return <code>{JSON.stringify(data)}</code>;
 }
 
 export function ErrorList({ errors }: { errors: Array<string | null> }) {
@@ -34,4 +46,8 @@ export function ErrorList({ errors }: { errors: Array<string | null> }) {
       {visible.map((error, index) => <span key={index}>{error}</span>)}
     </div>
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

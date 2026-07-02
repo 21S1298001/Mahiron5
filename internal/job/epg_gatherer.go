@@ -9,6 +9,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/epg"
+	"github.com/21S1298001/mahiron/internal/jobreport"
 )
 
 const (
@@ -54,11 +55,22 @@ func epgGathererHandler(registry Registry, service EPGGatherer) func(context.Con
 		}
 		slog.Info("EPG gatherer dispatched", "networks", len(grouped), "queued", queued)
 
+		result := jobreport.Result{
+			Kind:    "epg_gatherer",
+			Summary: fmt.Sprintf("%d/%d networks queued", queued, len(grouped)),
+			Counts: map[string]int{
+				"networks": len(grouped),
+				"queued":   queued,
+			},
+		}
 		if err := service.Cleanup(ctx, time.Now()); err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("cleanup failed: %v", err))
 			slog.Warn("failed to clean up old EPG data", "err", err)
 		} else {
+			result.Counts["cleanupSucceeded"] = 1
 			slog.Debug("EPG cleanup completed")
 		}
+		jobreport.Set(ctx, result)
 		return nil
 	}
 }

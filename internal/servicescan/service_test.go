@@ -9,6 +9,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/jobreport"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -84,6 +85,51 @@ func TestServiceScanChannelReturnsOnlyNewNetworks(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertNIDs(t, got, map[uint16]bool{4: true, 5: true})
+}
+
+func TestServiceScanReportsNamedServiceResults(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := service.NewSQLiteStore(database)
+	manager := service.NewServiceManager(store, nil)
+	if err := store.ReplaceChannelServices(ctx, "BS", "BS01", []*service.Service{
+		{Id: idFor(4, 100), NetworkId: 4, ServiceId: 100, TransportStreamId: 1, Name: "Removed", ChannelType: "BS", ChannelId: "BS01"},
+		{Id: idFor(4, 101), NetworkId: 4, ServiceId: 101, TransportStreamId: 1, Name: "Known", ChannelType: "BS", ChannelId: "BS01"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reporter := &captureReporter{}
+	ctx = jobreport.ContextWithReporter(ctx, reporter)
+	scanner := &staticScanner{services: []ts.ServiceInfo{
+		{Nid: 4, Tsid: 1, Sid: 101, Name: "Known", Type: 1},
+		{Nid: 4, Tsid: 1, Sid: 102, Name: "New Service", Type: 1, RemoteControlKeyId: uint8Ptr(2)},
+	}}
+
+	if _, err := NewService(manager, scanner, nil, time.Second).ScanChannel(ctx, "BS", "BS01", false); err != nil {
+		t.Fatal(err)
+	}
+	if reporter.result == nil {
+		t.Fatal("expected service scan result")
+	}
+	if reporter.result.Counts["addedServices"] != 1 || reporter.result.Counts["removedServices"] != 1 {
+		t.Fatalf("result counts = %#v", reporter.result.Counts)
+	}
+	changes := map[string]string{}
+	for _, item := range reporter.result.Items {
+		if item.Kind != "service" {
+			continue
+		}
+		name, _ := item.Data["name"].(string)
+		change, _ := item.Data["change"].(string)
+		changes[name] = change
+	}
+	if changes["New Service"] != "added" || changes["Removed"] != "removed" || changes["Known"] != "unchanged" {
+		t.Fatalf("service result changes = %#v", changes)
+	}
 }
 
 func TestServiceScanChannelReturnsNoNetworksWhenAllServicesKnown(t *testing.T) {
@@ -190,6 +236,14 @@ type staticScanner struct {
 }
 
 type blockingScanner struct{}
+
+type captureReporter struct {
+	result *jobreport.Result
+}
+
+func (r *captureReporter) SetJobResult(result jobreport.Result) {
+	r.result = jobreport.Clone(&result)
+}
 
 func (blockingScanner) ScanServices(ctx context.Context, _, _ string, _ bool) ([]ts.ServiceInfo, error) {
 	<-ctx.Done()

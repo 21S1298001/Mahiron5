@@ -142,6 +142,21 @@ export type Job = {
   nextRunAt?: number;
   duration?: number;
   error?: string;
+  result?: JobResult;
+};
+
+export type JobResult = {
+  kind: string;
+  summary?: string;
+  counts?: Record<string, number>;
+  items?: JobResultItem[];
+  warnings?: string[];
+};
+
+export type JobResultItem = {
+  kind: string;
+  summary?: string;
+  data?: Record<string, unknown>;
 };
 
 export type JobSchedule = {

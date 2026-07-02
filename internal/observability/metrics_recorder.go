@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 
+	"github.com/21S1298001/mahiron/internal/jobreport"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -27,6 +28,48 @@ func RecordJobRun(ctx context.Context, key, result string, durationMS int64) {
 	}
 	if jobMetrics.duration != nil && durationMS >= 0 {
 		jobMetrics.duration.Record(ctx, durationMS, attrs)
+	}
+}
+
+func RecordJobItems(ctx context.Context, key string, result jobreport.Result) {
+	if jobMetrics.items == nil || key == "" {
+		return
+	}
+	status := result.Kind
+	if status == "" {
+		status = "unknown"
+	}
+	for countKey, count := range result.Counts {
+		if count <= 0 {
+			continue
+		}
+		jobMetrics.items.Add(ctx, int64(count), metric.WithAttributes(
+			AttrJobKey.String(key),
+			AttrJobResult.String(status),
+			AttrJobItemKind.String(countKey),
+		))
+	}
+	byKind := make(map[string]int64)
+	for _, item := range result.Items {
+		kind := item.Kind
+		if kind == "" {
+			kind = "item"
+		}
+		byKind[kind]++
+	}
+	for kind, count := range byKind {
+		jobMetrics.items.Add(ctx, count, metric.WithAttributes(
+			AttrJobKey.String(key),
+			AttrJobResult.String(status),
+			AttrJobItemKind.String(kind),
+		))
+	}
+	if len(result.Warnings) > 0 {
+		jobMetrics.items.Add(ctx, int64(len(result.Warnings)), metric.WithAttributes(
+			AttrJobKey.String(key),
+			AttrJobResult.String(status),
+			AttrJobItemKind.String("warnings"),
+		))
 	}
 }
 

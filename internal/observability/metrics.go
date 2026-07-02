@@ -17,6 +17,7 @@ const (
 	MetricEPGServicesFailed        = "mahiron.epg.services.failed"
 	MetricJobRuns                  = "mahiron.job.runs"
 	MetricJobDuration              = "mahiron.job.duration"
+	MetricJobItems                 = "mahiron.job.items"
 	MetricStreamSessionStarts      = "mahiron.stream.session.starts"
 	MetricStreamSessionDuration    = "mahiron.stream.session.duration"
 	MetricStreamBytes              = "mahiron.stream.bytes"
@@ -50,6 +51,7 @@ const (
 	AttrEventResource attribute.Key = "event.resource"
 	AttrEventType     attribute.Key = "event.type"
 	AttrJobResult     attribute.Key = "job.result"
+	AttrJobItemKind   attribute.Key = "job.item.kind"
 	AttrOperation     attribute.Key = "operation"
 	AttrResult        attribute.Key = "result"
 	AttrSource        attribute.Key = "source"
@@ -61,6 +63,7 @@ const (
 var jobMetrics struct {
 	runs                     metric.Int64Counter
 	duration                 metric.Int64Histogram
+	items                    metric.Int64Counter
 	streamSessionStarts      metric.Int64Counter
 	streamSessionDuration    metric.Int64Histogram
 	streamBytes              metric.Int64Counter
@@ -96,6 +99,10 @@ func initMetrics(provider metric.MeterProvider) {
 	duration, err := meter.Int64Histogram(MetricJobDuration, metric.WithUnit("ms"))
 	if err != nil {
 		slog.Warn("failed to create job duration metric", "err", err)
+	}
+	items, err := meter.Int64Counter(MetricJobItems)
+	if err != nil {
+		slog.Warn("failed to create job item metric", "err", err)
 	}
 	streamSessionStarts, err := meter.Int64Counter(MetricStreamSessionStarts)
 	if err != nil {
@@ -195,6 +202,7 @@ func initMetrics(provider metric.MeterProvider) {
 	}
 	jobMetrics.runs = runs
 	jobMetrics.duration = duration
+	jobMetrics.items = items
 	jobMetrics.streamSessionStarts = streamSessionStarts
 	jobMetrics.streamSessionDuration = streamSessionDuration
 	jobMetrics.streamBytes = streamBytes

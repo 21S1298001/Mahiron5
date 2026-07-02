@@ -1769,6 +1769,8 @@ components:
           type: boolean
         error:
           type: string
+        result:
+          $ref: "#/components/schemas/JobResult"
         createdAt:
           $ref: "#/components/schemas/UnixtimeMS"
         updatedAt:
@@ -1781,6 +1783,39 @@ components:
           $ref: "#/components/schemas/UnixtimeMS"
         duration:
           type: integer
+    JobResult:
+      required:
+        - kind
+      type: object
+      properties:
+        kind:
+          type: string
+        summary:
+          type: string
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobResultItem"
+        warnings:
+          type: array
+          items:
+            type: string
+    JobResultItem:
+      required:
+        - kind
+      type: object
+      properties:
+        kind:
+          type: string
+        summary:
+          type: string
+        data:
+          type: object
+          additionalProperties: {}
     Event:
       required:
         - data

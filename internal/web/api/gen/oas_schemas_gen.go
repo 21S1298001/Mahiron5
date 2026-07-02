@@ -1596,6 +1596,7 @@ type JobItem struct {
 	HasSkipped   OptBool       `json:"hasSkipped"`
 	HasFailed    OptBool       `json:"hasFailed"`
 	Error        OptString     `json:"error"`
+	Result       OptJobResult  `json:"result"`
 	CreatedAt    UnixtimeMS    `json:"createdAt"`
 	UpdatedAt    UnixtimeMS    `json:"updatedAt"`
 	StartedAt    OptUnixtimeMS `json:"startedAt"`
@@ -1677,6 +1678,11 @@ func (s *JobItem) GetHasFailed() OptBool {
 // GetError returns the value of Error.
 func (s *JobItem) GetError() OptString {
 	return s.Error
+}
+
+// GetResult returns the value of Result.
+func (s *JobItem) GetResult() OptJobResult {
+	return s.Result
 }
 
 // GetCreatedAt returns the value of CreatedAt.
@@ -1784,6 +1790,11 @@ func (s *JobItem) SetError(val OptString) {
 	s.Error = val
 }
 
+// SetResult sets the value of Result.
+func (s *JobItem) SetResult(val OptJobResult) {
+	s.Result = val
+}
+
 // SetCreatedAt sets the value of CreatedAt.
 func (s *JobItem) SetCreatedAt(val UnixtimeMS) {
 	s.CreatedAt = val
@@ -1867,6 +1878,124 @@ func (s *JobItemStatus) UnmarshalText(data []byte) error {
 	default:
 		return errors.Errorf("invalid value: %q", data)
 	}
+}
+
+// Ref: #/components/schemas/JobResult
+type JobResult struct {
+	Kind     string             `json:"kind"`
+	Summary  OptString          `json:"summary"`
+	Counts   OptJobResultCounts `json:"counts"`
+	Items    []JobResultItem    `json:"items"`
+	Warnings []string           `json:"warnings"`
+}
+
+// GetKind returns the value of Kind.
+func (s *JobResult) GetKind() string {
+	return s.Kind
+}
+
+// GetSummary returns the value of Summary.
+func (s *JobResult) GetSummary() OptString {
+	return s.Summary
+}
+
+// GetCounts returns the value of Counts.
+func (s *JobResult) GetCounts() OptJobResultCounts {
+	return s.Counts
+}
+
+// GetItems returns the value of Items.
+func (s *JobResult) GetItems() []JobResultItem {
+	return s.Items
+}
+
+// GetWarnings returns the value of Warnings.
+func (s *JobResult) GetWarnings() []string {
+	return s.Warnings
+}
+
+// SetKind sets the value of Kind.
+func (s *JobResult) SetKind(val string) {
+	s.Kind = val
+}
+
+// SetSummary sets the value of Summary.
+func (s *JobResult) SetSummary(val OptString) {
+	s.Summary = val
+}
+
+// SetCounts sets the value of Counts.
+func (s *JobResult) SetCounts(val OptJobResultCounts) {
+	s.Counts = val
+}
+
+// SetItems sets the value of Items.
+func (s *JobResult) SetItems(val []JobResultItem) {
+	s.Items = val
+}
+
+// SetWarnings sets the value of Warnings.
+func (s *JobResult) SetWarnings(val []string) {
+	s.Warnings = val
+}
+
+type JobResultCounts map[string]int
+
+func (s *JobResultCounts) init() JobResultCounts {
+	m := *s
+	if m == nil {
+		m = map[string]int{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/JobResultItem
+type JobResultItem struct {
+	Kind    string               `json:"kind"`
+	Summary OptString            `json:"summary"`
+	Data    OptJobResultItemData `json:"data"`
+}
+
+// GetKind returns the value of Kind.
+func (s *JobResultItem) GetKind() string {
+	return s.Kind
+}
+
+// GetSummary returns the value of Summary.
+func (s *JobResultItem) GetSummary() OptString {
+	return s.Summary
+}
+
+// GetData returns the value of Data.
+func (s *JobResultItem) GetData() OptJobResultItemData {
+	return s.Data
+}
+
+// SetKind sets the value of Kind.
+func (s *JobResultItem) SetKind(val string) {
+	s.Kind = val
+}
+
+// SetSummary sets the value of Summary.
+func (s *JobResultItem) SetSummary(val OptString) {
+	s.Summary = val
+}
+
+// SetData sets the value of Data.
+func (s *JobResultItem) SetData(val OptJobResultItemData) {
+	s.Data = val
+}
+
+type JobResultItemData map[string]jx.Raw
+
+func (s *JobResultItemData) init() JobResultItemData {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
 }
 
 // Ref: #/components/schemas/JobScheduleItem
@@ -2300,6 +2429,144 @@ func (o OptInt) Get() (v int, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptInt) Or(d int) int {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptJobResult returns new OptJobResult with value set to v.
+func NewOptJobResult(v JobResult) OptJobResult {
+	return OptJobResult{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptJobResult is optional JobResult.
+type OptJobResult struct {
+	Value JobResult
+	Set   bool
+}
+
+// IsSet returns true if OptJobResult was set.
+func (o OptJobResult) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptJobResult) Reset() {
+	var v JobResult
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptJobResult) SetTo(v JobResult) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptJobResult) Get() (v JobResult, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptJobResult) Or(d JobResult) JobResult {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptJobResultCounts returns new OptJobResultCounts with value set to v.
+func NewOptJobResultCounts(v JobResultCounts) OptJobResultCounts {
+	return OptJobResultCounts{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptJobResultCounts is optional JobResultCounts.
+type OptJobResultCounts struct {
+	Value JobResultCounts
+	Set   bool
+}
+
+// IsSet returns true if OptJobResultCounts was set.
+func (o OptJobResultCounts) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptJobResultCounts) Reset() {
+	var v JobResultCounts
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptJobResultCounts) SetTo(v JobResultCounts) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptJobResultCounts) Get() (v JobResultCounts, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptJobResultCounts) Or(d JobResultCounts) JobResultCounts {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptJobResultItemData returns new OptJobResultItemData with value set to v.
+func NewOptJobResultItemData(v JobResultItemData) OptJobResultItemData {
+	return OptJobResultItemData{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptJobResultItemData is optional JobResultItemData.
+type OptJobResultItemData struct {
+	Value JobResultItemData
+	Set   bool
+}
+
+// IsSet returns true if OptJobResultItemData was set.
+func (o OptJobResultItemData) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptJobResultItemData) Reset() {
+	var v JobResultItemData
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptJobResultItemData) SetTo(v JobResultItemData) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptJobResultItemData) Get() (v JobResultItemData, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptJobResultItemData) Or(d JobResultItemData) JobResultItemData {
 	if v, ok := o.Get(); ok {
 		return v
 	}

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/jobreport"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -219,6 +220,55 @@ func TestHandlerError(t *testing.T) {
 	}
 	if job.Error != "something went wrong" {
 		t.Errorf("expected error message, got %s", job.Error)
+	}
+}
+
+func TestJobResultReportedInHistoryAndEvents(t *testing.T) {
+	publisher := &fakeEventPublisher{}
+	mgr, err := NewManager(Config{MaxHistory: 10}, publisher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reported := jobreport.Result{
+		Kind:    "service_scan",
+		Summary: "GR/27: 1 services",
+		Counts:  map[string]int{"services": 1},
+		Items: []jobreport.Item{{
+			Kind:    "service",
+			Summary: "NHK",
+			Data:    map[string]any{"name": "NHK"},
+		}},
+	}
+	mgr.Register(JobDefinition{
+		Key:  "report-job",
+		Name: "Report Job",
+		Handler: func(ctx context.Context) error {
+			jobreport.Set(ctx, reported)
+			return nil
+		},
+	})
+
+	id, err := mgr.Enqueue("report-job")
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := waitJob(t, mgr, id)
+	if finished.Result == nil || finished.Result.Summary != reported.Summary {
+		t.Fatalf("job result = %#v, want %#v", finished.Result, reported)
+	}
+	if len(publisher.events) == 0 {
+		t.Fatal("expected job update events")
+	}
+	found := false
+	for _, event := range publisher.events {
+		result, ok := event.data["result"].(*jobreport.Result)
+		if ok && result.Summary == reported.Summary {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("result event not found in %#v", publisher.events)
 	}
 }
 

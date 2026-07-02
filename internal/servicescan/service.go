@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/jobreport"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type Store interface {
@@ -70,8 +73,10 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 		return nil, fmt.Errorf("list existing services: %w", err)
 	}
 	before := make(map[string]struct{}, len(existing))
+	beforeServices := make(map[string]*service.Service, len(existing))
 	for _, svc := range existing {
 		before[svc.Id] = struct{}{}
+		beforeServices[svc.Id] = svc
 	}
 
 	yes := true
@@ -150,8 +155,99 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 	}
 
 	newNIDs = newNetworkIDsFromDiff(before, scanned)
-	slog.Info("service scan completed", "type", channelType, "channel", channelID, "services", len(scanned), "newNetworks", len(newNIDs), "duration", time.Since(startedAt))
+	result := serviceScanResult(channelType, channelID, scanned, beforeServices, newNIDs)
+	jobreport.Set(ctx, result)
+	span.SetAttributes(
+		observability.AttrServiceCount.Int(len(scanned)),
+		attribute.Int("service.added", result.Counts["addedServices"]),
+		attribute.Int("service.removed", result.Counts["removedServices"]),
+		attribute.Int("service.new_networks", len(newNIDs)),
+	)
+	slog.Info("service scan completed",
+		"type", channelType,
+		"channel", channelID,
+		"services", len(scanned),
+		"serviceNames", serviceNames(scanned),
+		"newNetworks", len(newNIDs),
+		"addedServices", result.Counts["addedServices"],
+		"removedServices", result.Counts["removedServices"],
+		"duration", time.Since(startedAt))
 	return newNIDs, nil
+}
+
+func serviceScanResult(channelType, channelID string, scanned []*service.Service, before map[string]*service.Service, newNIDs []uint16) jobreport.Result {
+	after := make(map[string]*service.Service, len(scanned))
+	items := make([]jobreport.Item, 0, len(scanned)+len(before))
+	added := 0
+	unchanged := 0
+	for _, svc := range scanned {
+		after[svc.Id] = svc
+		change := "unchanged"
+		if _, ok := before[svc.Id]; !ok {
+			change = "added"
+			added++
+		} else {
+			unchanged++
+		}
+		items = append(items, jobreport.Item{
+			Kind:    "service",
+			Summary: svc.Name,
+			Data: map[string]any{
+				"networkId":          svc.NetworkId,
+				"serviceId":          svc.ServiceId,
+				"transportStreamId":  svc.TransportStreamId,
+				"name":               svc.Name,
+				"type":               svc.Type,
+				"remoteControlKeyId": svc.RemoteControlKeyId,
+				"hasLogoInfo":        svc.LogoId != nil || svc.LogoVersion != nil || svc.LogoDownloadDataId != nil,
+				"change":             change,
+			},
+		})
+	}
+	removed := 0
+	for id, svc := range before {
+		if _, ok := after[id]; ok {
+			continue
+		}
+		removed++
+		items = append(items, jobreport.Item{
+			Kind:    "service",
+			Summary: svc.Name,
+			Data: map[string]any{
+				"networkId":          svc.NetworkId,
+				"serviceId":          svc.ServiceId,
+				"transportStreamId":  svc.TransportStreamId,
+				"name":               svc.Name,
+				"type":               svc.Type,
+				"remoteControlKeyId": svc.RemoteControlKeyId,
+				"hasLogoInfo":        svc.LogoId != nil || svc.LogoVersion != nil || svc.LogoDownloadDataId != nil,
+				"change":             "removed",
+			},
+		})
+	}
+	return jobreport.Result{
+		Kind:    "service_scan",
+		Summary: fmt.Sprintf("%s/%s: %d services (%d added, %d removed)", channelType, channelID, len(scanned), added, removed),
+		Counts: map[string]int{
+			"services":         len(scanned),
+			"addedServices":    added,
+			"existingServices": unchanged,
+			"removedServices":  removed,
+			"newNetworks":      len(newNIDs),
+		},
+		Items: items,
+	}
+}
+
+func serviceNames(services []*service.Service) string {
+	names := make([]string, 0, len(services))
+	for _, svc := range services {
+		if svc.Name == "" {
+			continue
+		}
+		names = append(names, svc.Name)
+	}
+	return strings.Join(names, ", ")
 }
 
 // newNetworkIDsFromDiff returns the deduplicated network IDs of services in

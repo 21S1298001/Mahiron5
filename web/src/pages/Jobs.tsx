@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { api } from "../api";
+import { api, type Job, type JobResultItem } from "../api";
 import type { DashboardState } from "../dashboard";
 import { useAsync } from "../hooks";
 import { jobStatusLabel } from "../domain/job";
@@ -33,6 +33,7 @@ export default function Jobs({ dashboard }: { dashboard: DashboardState }) {
             <tr>
               <th>名前</th>
               <th>状態</th>
+              <th>結果</th>
               <th>更新日時</th>
               <th>時間</th>
               <th>操作</th>
@@ -47,6 +48,7 @@ export default function Jobs({ dashboard }: { dashboard: DashboardState }) {
                   {job.error && <em>{job.error}</em>}
                 </td>
                 <td><span className={`badge ${job.hasFailed ? "bad" : job.status}`}>{job.hasFailed ? "失敗" : jobStatusLabel(job.status)}</span></td>
+                <td><JobResultView job={job} /></td>
                 <td>{formatDate(job.updatedAt)}</td>
                 <td>{job.duration ? `${Math.round(job.duration / 1000)}秒` : "-"}</td>
                 <td className="actions">
@@ -85,4 +87,125 @@ export default function Jobs({ dashboard }: { dashboard: DashboardState }) {
       </section>
     </PageFrame>
   );
+}
+
+function JobResultView({ job }: { job: Job }) {
+  const result = job.result;
+  if (!result) return <span>-</span>;
+  return (
+    <div className="job-result">
+      <strong>{result.summary || result.kind}</strong>
+      {result.counts && <span>{formatCounts(result.counts)}</span>}
+      {result.warnings?.map((warning, index) => <em key={index}>{warning}</em>)}
+      {(result.items?.length ?? 0) > 0 && (
+        <details>
+          <summary>詳細 {result.items?.length}件</summary>
+          <div className="job-result-items">
+            {result.items?.map((item, index) => (
+              <JobResultItemView item={item} key={index} />
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function JobResultItemView({ item }: { item: JobResultItem }) {
+  if (item.kind === "service") {
+    const data = item.data ?? {};
+    const name = stringValue(data.name) || item.summary || "サービス";
+    return (
+      <div className="job-result-item">
+        <strong>{name}</strong>
+        <span>
+          {changeLabel(stringValue(data.change))}
+          {numberValue(data.networkId) !== null && ` / NID ${numberValue(data.networkId)}`}
+          {numberValue(data.serviceId) !== null && ` / SID ${numberValue(data.serviceId)}`}
+          {numberValue(data.transportStreamId) !== null && ` / TSID ${numberValue(data.transportStreamId)}`}
+          {numberValue(data.remoteControlKeyId) ? ` / リモコン ${numberValue(data.remoteControlKeyId)}` : ""}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="job-result-item">
+      <strong>{item.summary || item.kind}</strong>
+      {item.data && <code>{JSON.stringify(item.data)}</code>}
+    </div>
+  );
+}
+
+function formatCounts(counts: Record<string, number>) {
+  return orderedCountEntries(counts)
+    .map(([key, value]) => `${countLabel(key)} ${value}`)
+    .join(" / ");
+}
+
+const countOrder = [
+  "services",
+  "addedServices",
+  "existingServices",
+  "removedServices",
+  "newNetworks",
+  "networks",
+  "queued",
+  "candidates",
+  "observedServices",
+  "remainingServices",
+  "programs",
+  "targets",
+  "logos",
+  "remaining",
+  "timedOut",
+];
+
+function orderedCountEntries(counts: Record<string, number>) {
+  const order = new Map(countOrder.map((key, index) => [key, index]));
+  return Object.entries(counts).sort(([left], [right]) => {
+    const leftOrder = order.get(left);
+    const rightOrder = order.get(right);
+    if (leftOrder !== undefined && rightOrder !== undefined) return leftOrder - rightOrder;
+    if (leftOrder !== undefined) return -1;
+    if (rightOrder !== undefined) return 1;
+    return left.localeCompare(right);
+  });
+}
+
+function countLabel(key: string) {
+  const labels: Record<string, string> = {
+    services: "サービス",
+    addedServices: "追加",
+    existingServices: "既存",
+    removedServices: "削除",
+    newNetworks: "新規NID",
+    networks: "ネットワーク",
+    queued: "キュー",
+    candidates: "候補",
+    observedServices: "取得済み",
+    remainingServices: "未取得",
+    programs: "番組",
+    targets: "対象",
+    logos: "ロゴ",
+    remaining: "残り",
+    timedOut: "タイムアウト",
+  };
+  return labels[key] ?? key;
+}
+
+function changeLabel(change: string | null) {
+  const labels: Record<string, string> = {
+    added: "追加",
+    unchanged: "既存",
+    removed: "削除",
+  };
+  return change ? (labels[change] ?? change) : "項目";
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" ? value : null;
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+
+	"github.com/21S1298001/mahiron/internal/jobreport"
 )
 
 const (
@@ -18,7 +20,8 @@ func RegisterServiceUpdater(registry Registry, scanner ServiceScanner, epgServic
 		Key: ServiceUpdaterKey, Name: ServiceUpdaterName, IsRerunnable: true,
 		Handler: func(ctx context.Context) error {
 			queued := 0
-			for _, configured := range scanner.Channels() {
+			channels := scanner.Channels()
+			for _, configured := range channels {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
@@ -54,6 +57,14 @@ func RegisterServiceUpdater(registry Registry, scanner ServiceScanner, epgServic
 				}
 				queued++
 			}
+			jobreport.Set(ctx, jobreport.Result{
+				Kind:    "service_updater",
+				Summary: fmt.Sprintf("%d/%d channel scans queued", queued, len(channels)),
+				Counts: map[string]int{
+					"channels": len(channels),
+					"queued":   queued,
+				},
+			})
 			slog.Info("service updater dispatched", "queued", queued)
 			return nil
 		},

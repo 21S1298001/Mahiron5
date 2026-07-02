@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/21S1298001/mahiron/internal/jobreport"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -34,6 +35,14 @@ func RegisterLogoGatherer(registry Registry, collector LogoCollector, store Logo
 			if err != nil {
 				return err
 			}
+			jobreport.Set(ctx, jobreport.Result{
+				Kind:    "logo_gatherer",
+				Summary: fmt.Sprintf("%d channels queued for %d targets", queued, len(targets)),
+				Counts: map[string]int{
+					"targets": len(targets),
+					"queued":  queued,
+				},
+			})
 			slog.Info("logo gatherer dispatched", "queued", queued)
 			return nil
 		},
@@ -84,7 +93,8 @@ func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector 
 					}
 					return nil
 				})
-				if errors.Is(err, errLogoTargetsComplete) || errors.Is(err, context.DeadlineExceeded) || (errors.Is(err, context.Canceled) && childCtx.Err() == nil) {
+				timedOut := errors.Is(err, context.DeadlineExceeded) || (errors.Is(err, context.Canceled) && childCtx.Err() == nil)
+				if errors.Is(err, errLogoTargetsComplete) || timedOut {
 					err = nil
 				}
 				if err != nil {
@@ -99,6 +109,7 @@ func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector 
 						return err
 					}
 				}
+				jobreport.Set(childCtx, logoGatherResult(channelType, channelID, channelTargets, count, len(remaining), timedOut))
 				slog.Info("logo gather completed", "channel", fmt.Sprintf("%s/%s", channelType, channelID), "logos", count, "remaining", len(remaining), "timeout", timeout)
 				return nil
 			},
@@ -112,6 +123,48 @@ func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector 
 		queued++
 	}
 	return queued, nil
+}
+
+func logoGatherResult(channelType, channelID string, targets []service.LogoTarget, logos, remaining int, timedOut bool) jobreport.Result {
+	items := make([]jobreport.Item, 0, len(targets))
+	for _, target := range targets {
+		items = append(items, jobreport.Item{
+			Kind:    "logo_target",
+			Summary: fmt.Sprintf("service %d logo %d", target.ServiceId, target.LogoId),
+			Data: map[string]any{
+				"networkId":      target.NetworkId,
+				"serviceId":      target.ServiceId,
+				"logoId":         target.LogoId,
+				"logoVersion":    target.LogoVersion,
+				"downloadDataId": target.LogoDownloadDataId,
+				"isCommonData":   target.IsCommonData,
+				"isSDTTProbe":    target.IsSDTTProbe,
+			},
+		})
+	}
+	warnings := []string(nil)
+	if timedOut && remaining > 0 {
+		warnings = append(warnings, "logo gathering reached timeout before all targets were observed")
+	}
+	return jobreport.Result{
+		Kind:    "logo_gather",
+		Summary: fmt.Sprintf("%s/%s: %d logos observed, %d remaining", channelType, channelID, logos, remaining),
+		Counts: map[string]int{
+			"targets":   len(targets),
+			"logos":     logos,
+			"remaining": remaining,
+			"timedOut":  boolCount(timedOut),
+		},
+		Items:    items,
+		Warnings: warnings,
+	}
+}
+
+func boolCount(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 func resolvedCommonLogoTargets(targets []service.LogoTarget) []service.LogoTarget {
