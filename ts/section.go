@@ -17,12 +17,6 @@ func (s Section) SectionLength() int {
 // TotalLength returns the total byte length including the 3-byte prefix and CRC.
 func (s Section) TotalLength() int { return 3 + s.SectionLength() }
 
-// CRC32 returns the CRC32 stored at the end of the section.
-func (s Section) CRC32() uint32 {
-	end := s.TotalLength() - 4
-	return uint32(s[end])<<24 | uint32(s[end+1])<<16 | uint32(s[end+2])<<8 | uint32(s[end+3])
-}
-
 // ValidateCRC checks the section CRC32-MPEG-2.
 func (s Section) ValidateCRC() bool {
 	if len(s) < 4 || s.TotalLength() > len(s) {
@@ -146,58 +140,6 @@ func (sa *SectionAssembler) completeSections(keepRemainder bool) []Section {
 		sa.expecting = false
 	}
 	return sections
-}
-
-// SectionScanner reads complete sections from a PacketReader for specific PIDs.
-type SectionScanner struct {
-	reader     *PacketReader
-	assemblers map[uint16]*SectionAssembler
-	pidFilter  map[uint16]bool
-}
-
-// NewSectionScanner creates a scanner that collects sections for the given PIDs.
-func NewSectionScanner(r *PacketReader, pids ...uint16) *SectionScanner {
-	filter := make(map[uint16]bool, len(pids))
-	for _, pid := range pids {
-		filter[pid] = true
-	}
-	return &SectionScanner{
-		reader:     r,
-		assemblers: make(map[uint16]*SectionAssembler),
-		pidFilter:  filter,
-	}
-}
-
-// Next returns the next complete section for the configured PIDs.
-func (ss *SectionScanner) Next() (Section, error) {
-	for {
-		for _, assembler := range ss.assemblers {
-			if len(assembler.pending) > 0 {
-				section := assembler.pending[0]
-				assembler.pending = assembler.pending[1:]
-				return section, nil
-			}
-		}
-		p, err := ss.reader.Next()
-		if err != nil {
-			return nil, err
-		}
-		if !ss.pidFilter[p.PID()] {
-			continue
-		}
-		assembler := ss.assemblers[p.PID()]
-		if assembler == nil {
-			assembler = NewSectionAssembler(p.PID())
-			ss.assemblers[p.PID()] = assembler
-		}
-		section, err := assembler.Feed(p)
-		if err != nil {
-			return nil, err
-		}
-		if section != nil {
-			return section, nil
-		}
-	}
 }
 
 func crc32MPEG2(data []byte) uint32 {

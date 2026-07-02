@@ -307,31 +307,6 @@ func (tm *TunerManager) DecoderCommandByType(channelType string) string {
 	return item.DecoderCommand()
 }
 
-func (tm *TunerManager) TunerCount() int { return len(tm.tuners) }
-
-func (tm *TunerManager) TunerCountByType(channelType string) int {
-	count := 0
-	for _, item := range tm.tuners {
-		if !item.IsDisabled() && slices.Contains(item.Groups(), channelType) {
-			count++
-		}
-	}
-	return count
-}
-
-func (tm *TunerManager) CountTunersByType() map[string]int {
-	counts := make(map[string]int)
-	for _, item := range tm.tuners {
-		if item.IsDisabled() {
-			continue
-		}
-		for _, group := range item.Groups() {
-			counts[group]++
-		}
-	}
-	return counts
-}
-
 type managedDevice struct {
 	Device
 	manager *TunerManager

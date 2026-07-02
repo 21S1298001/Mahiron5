@@ -15,7 +15,6 @@ const (
 	SpanEPGReplaceRemoteServicePrograms   = "epg.replace_remote_service_programs"
 	SpanEPGSyncStoredServicePrograms      = "epg.sync_stored_service_programs"
 	SpanJobRun                            = "job.run"
-	SpanRemoteCheckAvailable              = "remote.check_available"
 	SpanRemoteListServicePrograms         = "remote.list_service_programs"
 	SpanRemoteScanServices                = "remote.scan_services"
 	SpanRemoteStreamProgramEventsConnect  = "remote.stream_program_events.connect"

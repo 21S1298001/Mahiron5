@@ -15,16 +15,8 @@ const (
 	SyncByte = 0x47
 )
 
-var (
-	// ErrNoSync is returned when the reader cannot find a sync byte within a reasonable window.
-	ErrNoSync = errors.New("ts: sync byte not found")
-)
-
 // Packet represents a single 188-byte MPEG-2 Transport Stream packet.
 type Packet []byte
-
-// Sync returns the sync byte (must be 0x47 for a valid packet).
-func (p Packet) Sync() byte { return p[0] }
 
 // TransportErrorIndicator returns true if the packet has a transport error.
 func (p Packet) TransportErrorIndicator() bool { return p[1]&0x80 != 0 }
@@ -37,9 +29,6 @@ func (p Packet) Priority() bool { return p[1]&0x20 != 0 }
 
 // PID returns the 13-bit packet identifier.
 func (p Packet) PID() uint16 { return (uint16(p[1]&0x1f) << 8) | uint16(p[2]) }
-
-// ScramblingControl returns the 2-bit transport scrambling control value.
-func (p Packet) ScramblingControl() byte { return (p[3] >> 6) & 0x03 }
 
 // HasAdaptationField reports whether the packet contains an adaptation field.
 func (p Packet) HasAdaptationField() bool { return (p[3]>>4)&0x03 >= 2 }

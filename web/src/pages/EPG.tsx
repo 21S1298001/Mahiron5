@@ -91,7 +91,7 @@ export default function EPG({ dashboard }: { dashboard: DashboardState }) {
                 const columnPrograms = makeEpgProgramBlocks(column, programsByService);
                 return (
                   <div className="program-lane" key={column.key} style={{ left: index * serviceWidth, width: serviceWidth }}>
-                    {columnPrograms.map(({ key, program, service }) => {
+                    {columnPrograms.map(({ key, program }) => {
                       const visibleStart = Math.max(program.startAt, windowStart);
                       const visibleEnd = Math.min(program.startAt + program.duration, windowEnd);
                       const top = ((visibleStart - windowStart) / 60000) * pxPerMinute;
