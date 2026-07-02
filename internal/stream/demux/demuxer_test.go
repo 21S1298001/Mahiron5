@@ -1,4 +1,4 @@
-package tsengine
+package demux
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 	"github.com/21S1298001/mahiron/ts"
 )
 
-func TestPacketEngineNormalizesInputFrames(t *testing.T) {
+func TestPacketDemuxerNormalizesInputFrames(t *testing.T) {
 	packet := streamtest.TestPacket(0x0100, 3)
 	for _, tc := range []struct {
 		name  string
@@ -51,7 +51,7 @@ func TestPacketEngineNormalizesInputFrames(t *testing.T) {
 	}
 }
 
-func TestPacketEngineReportsStreamInfo(t *testing.T) {
+func TestPacketDemuxerReportsStreamInfo(t *testing.T) {
 	input := append(streamtest.TestPacket(0x0100, 1), streamtest.TestPacket(0x0100, 3)...)
 	input = append(input, streamtest.TestPacket(0x0100, 5)...)
 	engine := New(func(_ context.Context, dst io.Writer) error {
@@ -78,7 +78,7 @@ func TestPacketEngineReportsStreamInfo(t *testing.T) {
 	}
 }
 
-func TestPacketEngineSharesOneSourceAcrossSubscribers(t *testing.T) {
+func TestPacketDemuxerSharesOneSourceAcrossSubscribers(t *testing.T) {
 	packet := streamtest.TestPacket(0x0100, 1)
 	start := make(chan struct{})
 	var starts atomic.Int32
@@ -93,7 +93,7 @@ func TestPacketEngineSharesOneSourceAcrossSubscribers(t *testing.T) {
 	errs := make(chan error, 2)
 	go func() { errs <- engine.SubscribeChannel(t.Context(), &first) }()
 	go func() { errs <- engine.SubscribeChannel(t.Context(), &second) }()
-	waitForEngineSubscribers(t, engine, 2)
+	waitForDemuxerSubscribers(t, engine, 2)
 	close(start)
 	for range 2 {
 		if err := <-errs; err != nil {
@@ -108,7 +108,7 @@ func TestPacketEngineSharesOneSourceAcrossSubscribers(t *testing.T) {
 	}
 }
 
-func TestPacketEngineDisconnectsOverflowingSubscriberOnly(t *testing.T) {
+func TestPacketDemuxerDisconnectsOverflowingSubscriberOnly(t *testing.T) {
 	packet := streamtest.TestPacket(0x0100, 1)
 	start := make(chan struct{})
 	engine := New(func(_ context.Context, dst io.Writer) error {
@@ -127,7 +127,7 @@ func TestPacketEngineDisconnectsOverflowingSubscriberOnly(t *testing.T) {
 	errs := make(chan error, 2)
 	go func() { errs <- engine.SubscribeChannel(t.Context(), blocked) }()
 	go func() { errs <- engine.SubscribeChannel(t.Context(), &fast) }()
-	waitForEngineSubscribers(t, engine, 2)
+	waitForDemuxerSubscribers(t, engine, 2)
 	close(start)
 	<-blocked.entered
 
@@ -147,7 +147,7 @@ func TestPacketEngineDisconnectsOverflowingSubscriberOnly(t *testing.T) {
 	}
 }
 
-func TestPacketEngineObserveSectionsWaitsForObserverOnCancel(t *testing.T) {
+func TestPacketDemuxerObserveSectionsWaitsForObserverOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	engine := New(func(context.Context, io.Writer) error {
 		return nil
@@ -221,7 +221,7 @@ func (w *blockingWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func waitForEngineSubscribers(t *testing.T, engine *Engine, want int) {
+func waitForDemuxerSubscribers(t *testing.T, engine *Demuxer, want int) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {

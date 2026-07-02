@@ -181,7 +181,7 @@ func TestSharedSessionUsesOneDescramblerForDecodedSubscribers(t *testing.T) {
 	errs := make(chan error, 2)
 	go func() { errs <- session.ChannelStream(t.Context(), true, &first) }()
 	go func() { errs <- session.ChannelStream(t.Context(), true, &second) }()
-	if !streamtest.Eventually(time.Second, func() bool { return session.decodedEngine.PacketSubscriberCount() == 2 }) {
+	if !streamtest.Eventually(time.Second, func() bool { return session.decodedDemuxer.PacketSubscriberCount() == 2 }) {
 		t.Fatal("decoded subscribers did not reach 2")
 	}
 	close(start)

@@ -1,4 +1,4 @@
-package tsengine
+package demux
 
 import (
 	"context"
@@ -19,7 +19,7 @@ var ErrSubscriberOverflow = errors.New("ts subscriber buffer overflow")
 
 type SourceSubscriber func(context.Context, io.Writer) error
 
-type Engine struct {
+type Demuxer struct {
 	cancel      context.CancelFunc
 	channelID   string
 	channelType string
@@ -39,8 +39,8 @@ type Engine struct {
 	stopOnce    sync.Once
 }
 
-func New(source SourceSubscriber, onEmpty func(), onSections ...func(ts.Section)) *Engine {
-	return &Engine{
+func New(source SourceSubscriber, onEmpty func(), onSections ...func(ts.Section)) *Demuxer {
+	return &Demuxer{
 		continuity: &continuityMonitor{last: map[uint16]byte{}},
 		demux:      ts.NewDemuxer(),
 		done:       make(chan struct{}),
@@ -52,29 +52,29 @@ func New(source SourceSubscriber, onEmpty func(), onSections ...func(ts.Section)
 	}
 }
 
-func (e *Engine) WithMetricLabels(channelType, channelID string) *Engine {
+func (e *Demuxer) WithMetricLabels(channelType, channelID string) *Demuxer {
 	e.channelType = channelType
 	e.channelID = channelID
 	return e
 }
 
-func (e *Engine) SubscribeChannel(ctx context.Context, dst io.Writer) error {
+func (e *Demuxer) SubscribeChannel(ctx context.Context, dst io.Writer) error {
 	return e.subscribePackets(ctx, nil, dst)
 }
 
-func (e *Engine) SubscribeService(ctx context.Context, serviceID uint16, dst io.Writer) error {
+func (e *Demuxer) SubscribeService(ctx context.Context, serviceID uint16, dst io.Writer) error {
 	return e.subscribePackets(ctx, &serviceID, dst)
 }
 
-func (e *Engine) ObserveSections(ctx context.Context, accept func(ts.Section) bool, observe func(ts.Section) error) error {
+func (e *Demuxer) ObserveSections(ctx context.Context, accept func(ts.Section) bool, observe func(ts.Section) error) error {
 	return e.observeSections(ctx, accept, observe, nil, true)
 }
 
-func (e *Engine) ObserveSectionsPassive(ctx context.Context, accept func(ts.Section) bool, observe func(ts.Section) error, attached chan<- struct{}) error {
+func (e *Demuxer) ObserveSectionsPassive(ctx context.Context, accept func(ts.Section) bool, observe func(ts.Section) error, attached chan<- struct{}) error {
 	return e.observeSections(ctx, accept, observe, attached, false)
 }
 
-func (e *Engine) observeSections(ctx context.Context, accept func(ts.Section) bool, observe func(ts.Section) error, attached chan<- struct{}, start bool) error {
+func (e *Demuxer) observeSections(ctx context.Context, accept func(ts.Section) bool, observe func(ts.Section) error, attached chan<- struct{}, start bool) error {
 	sub := &sectionSubscription{
 		accept:     accept,
 		done:       make(chan struct{}),
@@ -109,7 +109,7 @@ func (e *Engine) observeSections(ctx context.Context, accept func(ts.Section) bo
 	}
 }
 
-func (e *Engine) Stop() {
+func (e *Demuxer) Stop() {
 	e.mu.Lock()
 	if e.stopped {
 		started := e.started
@@ -134,7 +134,7 @@ func (e *Engine) Stop() {
 	<-e.done
 }
 
-func (e *Engine) Err() error {
+func (e *Demuxer) Err() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.err
@@ -142,14 +142,14 @@ func (e *Engine) Err() error {
 
 // PacketSubscriberCount reports the number of attached packet subscribers.
 // It exists so tests can wait for subscribers without reaching into the
-// engine's internals.
-func (e *Engine) PacketSubscriberCount() int {
+// demuxer's internals.
+func (e *Demuxer) PacketSubscriberCount() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return len(e.packets)
 }
 
-func (e *Engine) subscribePackets(ctx context.Context, serviceID *uint16, dst io.Writer) error {
+func (e *Demuxer) subscribePackets(ctx context.Context, serviceID *uint16, dst io.Writer) error {
 	sub := &packetSubscription{
 		ctx:        ctx,
 		continuity: &continuityMonitor{last: map[uint16]byte{}},
@@ -184,11 +184,11 @@ func (e *Engine) subscribePackets(ctx context.Context, serviceID *uint16, dst io
 	}
 }
 
-func (e *Engine) attachPacket(sub *packetSubscription) (uint64, error) {
+func (e *Demuxer) attachPacket(sub *packetSubscription) (uint64, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.stopped {
-		return 0, errors.New("ts engine stopped")
+		return 0, errors.New("ts demuxer stopped")
 	}
 	id := e.nextID
 	e.nextID++
@@ -200,11 +200,11 @@ func (e *Engine) attachPacket(sub *packetSubscription) (uint64, error) {
 	return id, nil
 }
 
-func (e *Engine) attachSection(sub *sectionSubscription, start bool) (uint64, error) {
+func (e *Demuxer) attachSection(sub *sectionSubscription, start bool) (uint64, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.stopped {
-		return 0, errors.New("ts engine stopped")
+		return 0, errors.New("ts demuxer stopped")
 	}
 	id := e.nextID
 	e.nextID++
@@ -215,7 +215,7 @@ func (e *Engine) attachSection(sub *sectionSubscription, start bool) (uint64, er
 	return id, nil
 }
 
-func (e *Engine) startLocked() {
+func (e *Demuxer) startLocked() {
 	if e.started {
 		return
 	}
@@ -225,7 +225,7 @@ func (e *Engine) startLocked() {
 	go e.run(ctx)
 }
 
-func (e *Engine) run(ctx context.Context) {
+func (e *Demuxer) run(ctx context.Context) {
 	r, w := io.Pipe()
 	sourceDone := make(chan error, 1)
 	go func() {
@@ -278,7 +278,7 @@ func (m *continuityMonitor) observe(packet ts.Packet) bool {
 	return ok && counter != ((last+1)&0x0f)
 }
 
-func (e *Engine) dispatch(packet ts.Packet, sections []ts.Section) {
+func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.Section) {
 	e.mu.Lock()
 	for id, sub := range e.packets {
 		out := packet

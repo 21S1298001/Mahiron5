@@ -17,7 +17,7 @@ func (s *Session) programStream(ctx context.Context, p *program.Program, decode 
 	observerAttached := make(chan struct{})
 	observeDone := make(chan error, 1)
 	go func() {
-		observeDone <- s.rawEngine.ObserveSectionsPassive(ctx, func(section ts.Section) bool {
+		observeDone <- s.rawDemuxer.ObserveSectionsPassive(ctx, func(section ts.Section) bool {
 			return ts.IsEITPF(section.TableID())
 		}, func(section ts.Section) error {
 			eit, err := ts.ParseEIT(section)
@@ -38,7 +38,7 @@ func (s *Session) programStream(ctx context.Context, p *program.Program, decode 
 	r, w := io.Pipe()
 	sourceDone := make(chan error, 1)
 	go func() {
-		sourceDone <- s.attachEngine(ctx, decode, p.ServiceID, true, w)
+		sourceDone <- s.attachDemuxer(ctx, decode, p.ServiceID, true, w)
 		_ = w.Close()
 	}()
 	err := runProgramGate(r, dst, gate)

@@ -9,7 +9,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream/source"
-	"github.com/21S1298001/mahiron/internal/stream/tsengine"
+	"github.com/21S1298001/mahiron/internal/stream/demux"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/util"
 	"github.com/21S1298001/mahiron/ts"
@@ -22,8 +22,8 @@ type Session struct {
 	mu            sync.Mutex
 	stopped       bool
 	typ           string
-	rawEngine     *tsengine.Engine
-	decodedEngine *tsengine.Engine
+	rawDemuxer     *demux.Demuxer
+	decodedDemuxer *demux.Demuxer
 	eitUpdater    EITSectionUpdater
 	logoUpdater   LogoUpdater
 	logoCarousel  *ts.DSMCCLogoCarousel
@@ -55,8 +55,8 @@ func NewSession(config Config) *Session {
 	session.sectionCancel = sectionCancel
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	go session.runSectionUpdates(sectionCtx)
-	session.rawEngine = tsengine.New(config.Broadcast.SubscribeRaw, config.OnStop, session.observeSection).WithMetricLabels(config.Type, config.Channel)
-	session.decodedEngine = tsengine.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
+	session.rawDemuxer = demux.New(config.Broadcast.SubscribeRaw, config.OnStop, session.observeSection).WithMetricLabels(config.Type, config.Channel)
+	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
 }
 
@@ -71,11 +71,11 @@ func (s *Session) Channel() string {
 }
 
 func (s *Session) ChannelStream(ctx context.Context, decode bool, dst io.Writer) error {
-	return s.attachEngine(ctx, decode, 0, false, dst)
+	return s.attachDemuxer(ctx, decode, 0, false, dst)
 }
 
 func (s *Session) ServiceStream(ctx context.Context, serviceID uint16, decode bool, dst io.Writer) error {
-	return s.attachEngine(ctx, decode, serviceID, true, dst)
+	return s.attachDemuxer(ctx, decode, serviceID, true, dst)
 }
 
 func (s *Session) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
@@ -85,7 +85,7 @@ func (s *Session) ProgramStream(ctx context.Context, p *program.Program, decode 
 func (s *Session) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
 	scan := ts.NewServiceScan()
 	err := s.broadcast.WithUser(ctx, func(ctx context.Context) error {
-		return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
+		return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
 			switch section.TableID() {
 			case ts.TableIDPAT, ts.TableIDSDT0, ts.TableIDNIT0:
 				return true
@@ -118,7 +118,7 @@ func (s *Session) CollectEITWithClock(ctx context.Context, observe func(*ts.EIT,
 
 func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
 	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
-		return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
+		return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
 			return section.TableID() == ts.TableIDCDT
 		}, func(section ts.Section) error {
 			cdt, err := ts.ParseCDT(section)
@@ -142,16 +142,16 @@ func (s *Session) Stop(ctx context.Context) error {
 	}
 	s.stopped = true
 	broadcast := s.broadcast
-	rawEngine := s.rawEngine
-	decodedEngine := s.decodedEngine
+	rawDemuxer := s.rawDemuxer
+	decodedDemuxer := s.decodedDemuxer
 	sectionCancel := s.sectionCancel
 	s.mu.Unlock()
 
-	if decodedEngine != nil {
-		decodedEngine.Stop()
+	if decodedDemuxer != nil {
+		decodedDemuxer.Stop()
 	}
-	if rawEngine != nil {
-		rawEngine.Stop()
+	if rawDemuxer != nil {
+		rawDemuxer.Stop()
 	}
 	if sectionCancel != nil {
 		sectionCancel()
@@ -166,35 +166,35 @@ func (s *Session) Stop(ctx context.Context) error {
 
 var errScanComplete = errors.New("service scan complete")
 
-func (s *Session) attachEngine(ctx context.Context, decode bool, serviceID uint16, service bool, dst io.Writer) error {
+func (s *Session) attachDemuxer(ctx context.Context, decode bool, serviceID uint16, service bool, dst io.Writer) error {
 	s.mu.Lock()
 	stopped := s.stopped
 	s.mu.Unlock()
 	if stopped {
 		return errors.New("channel session stopped")
 	}
-	engine := s.rawEngine
+	demuxer := s.rawDemuxer
 	if decode && s.descrambler != nil {
-		engine = s.decodedEngine
+		demuxer = s.decodedDemuxer
 	}
 	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
 		if service {
-			return engine.SubscribeService(ctx, serviceID, dst)
+			return demuxer.SubscribeService(ctx, serviceID, dst)
 		}
-		return engine.SubscribeChannel(ctx, dst)
+		return demuxer.SubscribeChannel(ctx, dst)
 	})
 }
 
 func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error {
 	if s.descrambler == nil {
-		return s.rawEngine.SubscribeChannel(ctx, dst)
+		return s.rawDemuxer.SubscribeChannel(ctx, dst)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	r, w := io.Pipe()
 	rawDone := make(chan error, 1)
 	go func() {
-		rawDone <- s.rawEngine.SubscribeChannel(tuner.WithoutStreamInfoReporter(ctx), w)
+		rawDone <- s.rawDemuxer.SubscribeChannel(tuner.WithoutStreamInfoReporter(ctx), w)
 		_ = w.Close()
 	}()
 	err := s.descrambler.Descramble(ctx, r, dst)
@@ -212,7 +212,7 @@ func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error 
 
 func (s *Session) observeEIT(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
 	var latestClock time.Time
-	return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
+	return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
 		return ts.IsEITS(section.TableID()) || ts.IsEITPF(section.TableID()) || section.TableID() == ts.TableIDTOT
 	}, func(section ts.Section) error {
 		if section.TableID() == ts.TableIDTOT {
