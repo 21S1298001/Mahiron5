@@ -1,4 +1,4 @@
-package stream
+package local
 
 import (
 	"context"
@@ -9,20 +9,39 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/stream/source"
+	"github.com/21S1298001/mahiron/internal/stream/tsengine"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/internal/util"
 	"github.com/21S1298001/mahiron/ts"
 )
 
-type ChannelSession struct {
-	broadcast     *Broadcast
+// sectionQueueSize bounds the queue between section observation and the
+// asynchronous EIT/logo updater pump.
+const sectionQueueSize = 64
+
+// EITSectionUpdater persists EIT sections observed on the stream.
+type EITSectionUpdater interface {
+	UpsertEIT(ctx context.Context, eit *ts.EIT) error
+}
+
+// LogoUpdater persists logo images and related announcements observed on the
+// stream.
+type LogoUpdater interface {
+	UpsertLogoImage(context.Context, *ts.LogoImage) error
+	UpsertCommonLogoImage(context.Context, ts.CommonLogoImage) error
+	UpsertCommonDataAnnouncement(context.Context, ts.CommonDataAnnouncement, string, string) error
+}
+
+type Session struct {
+	broadcast     *source.Broadcast
 	channel       string
-	descrambler   Descrambler
+	descrambler   source.Descrambler
 	mu            sync.Mutex
 	stopped       bool
 	typ           string
-	rawEngine     *packetEngine
-	decodedEngine *packetEngine
+	rawEngine     *tsengine.Engine
+	decodedEngine *tsengine.Engine
 	eitUpdater    EITSectionUpdater
 	logoUpdater   LogoUpdater
 	logoCarousel  *ts.DSMCCLogoCarousel
@@ -30,18 +49,18 @@ type ChannelSession struct {
 	sectionQueue  chan ts.Section
 }
 
-type ChannelSessionConfig struct {
+type Config struct {
 	Channel     string
-	Broadcast   *Broadcast
-	Descrambler Descrambler
+	Broadcast   *source.Broadcast
+	Descrambler source.Descrambler
 	EITUpdater  EITSectionUpdater
 	LogoUpdater LogoUpdater
 	OnStop      func()
 	Type        string
 }
 
-func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
-	session := &ChannelSession{
+func NewSession(config Config) *Session {
+	session := &Session{
 		broadcast:    config.Broadcast,
 		channel:      config.Channel,
 		descrambler:  config.Descrambler,
@@ -52,30 +71,40 @@ func NewChannelSession(config ChannelSessionConfig) *ChannelSession {
 	}
 	sectionCtx, sectionCancel := context.WithCancel(context.Background())
 	session.sectionCancel = sectionCancel
-	session.sectionQueue = make(chan ts.Section, sectionSubscriberBuffer)
+	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	go session.runSectionUpdates(sectionCtx)
-	session.rawEngine = newPacketEngine(config.Broadcast.SubscribeRaw, config.OnStop, session.observeSection).withMetricLabels(config.Type, config.Channel)
-	session.decodedEngine = newPacketEngine(session.subscribeDecodedMux, nil).withMetricLabels(config.Type, config.Channel)
+	session.rawEngine = tsengine.New(config.Broadcast.SubscribeRaw, config.OnStop, session.observeSection).WithMetricLabels(config.Type, config.Channel)
+	session.decodedEngine = tsengine.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
 }
 
-func (s *ChannelSession) RawStream(ctx context.Context, dst io.Writer) error {
+// Type reports the public channel type this session was created for.
+func (s *Session) Type() string {
+	return s.typ
+}
+
+// Channel reports the public channel ID this session was created for.
+func (s *Session) Channel() string {
+	return s.channel
+}
+
+func (s *Session) RawStream(ctx context.Context, dst io.Writer) error {
 	return s.ChannelStream(ctx, false, dst)
 }
 
-func (s *ChannelSession) ChannelStream(ctx context.Context, decode bool, dst io.Writer) error {
+func (s *Session) ChannelStream(ctx context.Context, decode bool, dst io.Writer) error {
 	return s.attachEngine(ctx, decode, 0, false, dst)
 }
 
-func (s *ChannelSession) ServiceStream(ctx context.Context, serviceID uint16, decode bool, dst io.Writer) error {
+func (s *Session) ServiceStream(ctx context.Context, serviceID uint16, decode bool, dst io.Writer) error {
 	return s.attachEngine(ctx, decode, serviceID, true, dst)
 }
 
-func (s *ChannelSession) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
+func (s *Session) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
 	return s.programStream(ctx, p, decode, dst)
 }
 
-func (s *ChannelSession) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
+func (s *Session) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
 	scan := ts.NewServiceScan()
 	err := s.broadcast.WithUser(ctx, func(ctx context.Context) error {
 		return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
@@ -99,17 +128,17 @@ func (s *ChannelSession) ScanServices(ctx context.Context) ([]ts.ServiceInfo, er
 	return scan.Services(), err
 }
 
-func (s *ChannelSession) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
+func (s *Session) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) error {
 	return s.CollectEITWithClock(ctx, func(eit *ts.EIT, _ time.Time) error {
 		return observe(eit)
 	})
 }
 
-func (s *ChannelSession) CollectEITWithClock(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
+func (s *Session) CollectEITWithClock(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
 	return s.broadcast.WithUser(ctx, func(ctx context.Context) error { return s.observeEIT(ctx, observe) })
 }
 
-func (s *ChannelSession) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
+func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
 	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
 		return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
 			return section.TableID() == ts.TableIDCDT
@@ -127,7 +156,7 @@ func (s *ChannelSession) ObserveLogos(ctx context.Context, observe func(*ts.Logo
 	})
 }
 
-func (s *ChannelSession) Stop(ctx context.Context) error {
+func (s *Session) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	if s.stopped {
 		s.mu.Unlock()
@@ -159,7 +188,7 @@ func (s *ChannelSession) Stop(ctx context.Context) error {
 
 var errScanComplete = errors.New("service scan complete")
 
-func (s *ChannelSession) attachEngine(ctx context.Context, decode bool, serviceID uint16, service bool, dst io.Writer) error {
+func (s *Session) attachEngine(ctx context.Context, decode bool, serviceID uint16, service bool, dst io.Writer) error {
 	s.mu.Lock()
 	stopped := s.stopped
 	s.mu.Unlock()
@@ -178,7 +207,7 @@ func (s *ChannelSession) attachEngine(ctx context.Context, decode bool, serviceI
 	})
 }
 
-func (s *ChannelSession) subscribeDecodedMux(ctx context.Context, dst io.Writer) error {
+func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error {
 	if s.descrambler == nil {
 		return s.rawEngine.SubscribeChannel(ctx, dst)
 	}
@@ -203,14 +232,14 @@ func (s *ChannelSession) subscribeDecodedMux(ctx context.Context, dst io.Writer)
 	return errors.Join(err, rawErr)
 }
 
-func (s *ChannelSession) programStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
+func (s *Session) programStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	gate := newProgramEventGate(p.NetworkID, p.ServiceID, p.EventID, programEventTimeout(p.StartAt, p.Duration), cancel)
 	observerAttached := make(chan struct{})
 	observeDone := make(chan error, 1)
 	go func() {
-		observeDone <- s.rawEngine.observeSectionsPassive(ctx, func(section ts.Section) bool {
+		observeDone <- s.rawEngine.ObserveSectionsPassive(ctx, func(section ts.Section) bool {
 			return ts.IsEITPF(section.TableID())
 		}, func(section ts.Section) error {
 			eit, err := ts.ParseEIT(section)
@@ -265,7 +294,7 @@ func runProgramGate(src io.Reader, dst io.Writer, gate *programEventGate) error 
 	return result
 }
 
-func (s *ChannelSession) observeEIT(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
+func (s *Session) observeEIT(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
 	var latestClock time.Time
 	return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
 		return ts.IsEITS(section.TableID()) || ts.IsEITPF(section.TableID()) || section.TableID() == ts.TableIDTOT
@@ -284,7 +313,7 @@ func (s *ChannelSession) observeEIT(ctx context.Context, observe func(*ts.EIT, t
 	})
 }
 
-func (s *ChannelSession) observeSection(section ts.Section) {
+func (s *Session) observeSection(section ts.Section) {
 	if !ts.IsEITPF(section.TableID()) && section.TableID() != ts.TableIDCDT {
 		return
 	}
@@ -295,7 +324,7 @@ func (s *ChannelSession) observeSection(section ts.Section) {
 	}
 }
 
-func (s *ChannelSession) runSectionUpdates(ctx context.Context) {
+func (s *Session) runSectionUpdates(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -306,7 +335,7 @@ func (s *ChannelSession) runSectionUpdates(ctx context.Context) {
 	}
 }
 
-func (s *ChannelSession) updateSection(ctx context.Context, section ts.Section) {
+func (s *Session) updateSection(ctx context.Context, section ts.Section) {
 	if ts.IsEITPF(section.TableID()) && s.eitUpdater != nil {
 		if eit, err := ts.ParseEIT(section); err == nil {
 			if err := s.eitUpdater.UpsertEIT(ctx, eit); err != nil {

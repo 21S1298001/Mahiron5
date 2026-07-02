@@ -1,4 +1,4 @@
-package stream
+package remote
 
 import (
 	"context"
@@ -6,7 +6,13 @@ import (
 	"sync"
 
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/service"
 )
+
+// ServiceLister loads the known services used to filter remote program events.
+type ServiceLister interface {
+	GetServices(context.Context) ([]*service.Service, error)
+}
 
 type knownServiceProgramUpdater struct {
 	inner  ProgramUpdater
@@ -22,7 +28,7 @@ type serviceKey struct {
 	serviceID uint16
 }
 
-func newKnownServiceProgramUpdater(inner ProgramUpdater, loader ServiceLister) ProgramUpdater {
+func NewKnownServiceProgramUpdater(inner ProgramUpdater, loader ServiceLister) ProgramUpdater {
 	return &knownServiceProgramUpdater{inner: inner, loader: loader}
 }
 

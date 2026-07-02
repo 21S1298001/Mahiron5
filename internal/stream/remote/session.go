@@ -1,4 +1,4 @@
-package stream
+package remote
 
 import (
 	"context"
@@ -9,51 +9,51 @@ import (
 	"github.com/21S1298001/mahiron/ts"
 )
 
-type RemoteSessionConfig struct {
-	Client       *RemoteClient
+type SessionConfig struct {
+	Client       *Client
 	Channel      *config.ChannelConfig
 	RouteChannel *config.ChannelConfig
 }
 
-type RemoteSession struct {
+type Session struct {
 	channel      *config.ChannelConfig
-	client       *RemoteClient
+	client       *Client
 	routeChannel *config.ChannelConfig
 }
 
-func NewRemoteSession(config RemoteSessionConfig) *RemoteSession {
-	return &RemoteSession{
+func NewSession(config SessionConfig) *Session {
+	return &Session{
 		channel:      config.Channel,
 		client:       config.Client,
 		routeChannel: config.RouteChannel,
 	}
 }
 
-func (s *RemoteSession) ChannelStream(ctx context.Context, decode bool, dst io.Writer) error {
+func (s *Session) ChannelStream(ctx context.Context, decode bool, dst io.Writer) error {
 	return s.client.ChannelStream(ctx, s.routeChannel.Type, s.routeChannel.Channel, decode, dst)
 }
 
-func (s *RemoteSession) ServiceStream(ctx context.Context, serviceID uint16, decode bool, dst io.Writer) error {
+func (s *Session) ServiceStream(ctx context.Context, serviceID uint16, decode bool, dst io.Writer) error {
 	return s.client.ServiceStream(ctx, s.routeChannel.Type, s.routeChannel.Channel, serviceID, decode, dst)
 }
 
-func (s *RemoteSession) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
+func (s *Session) ProgramStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
 	return s.client.ProgramStream(ctx, p.ID, decode, dst)
 }
 
-func (s *RemoteSession) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
+func (s *Session) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
 	return s.client.ScanServices(ctx, s.routeChannel.Type, s.routeChannel.Channel)
 }
 
-func (s *RemoteSession) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) ([]*program.Program, error) {
+func (s *Session) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) ([]*program.Program, error) {
 	return s.client.ListServicePrograms(ctx, networkID, serviceID)
 }
 
-func (s *RemoteSession) CollectEIT(context.Context, func(*ts.EIT) error) error {
+func (s *Session) CollectEIT(context.Context, func(*ts.EIT) error) error {
 	return ErrEITObservationUnsupported
 }
 
-func (s *RemoteSession) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
+func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
 	services, err := s.client.ListChannelServices(ctx, s.routeChannel.Type, s.routeChannel.Channel)
 	if err != nil {
 		return err
@@ -81,6 +81,6 @@ func (s *RemoteSession) ObserveLogos(ctx context.Context, observe func(*ts.LogoI
 	return nil
 }
 
-func (s *RemoteSession) Stop(context.Context) error {
+func (s *Session) Stop(context.Context) error {
 	return nil
 }

@@ -1,4 +1,4 @@
-package stream
+package source
 
 import (
 	"context"
@@ -41,7 +41,7 @@ func newRouteSourceKey(route config.ChannelRouteConfig) routeSourceKey {
 	return key
 }
 
-func (p *SourcePool) beginRouteSourceCreate(ctx context.Context, key routeSourceKey) (*sharedRouteSource, func(), error) {
+func (p *Pool) beginRouteSourceCreate(ctx context.Context, key routeSourceKey) (*sharedRouteSource, func(), error) {
 	for {
 		p.mu.Lock()
 		if shared := p.routeSources[key]; shared != nil {
@@ -75,7 +75,7 @@ func (p *SourcePool) beginRouteSourceCreate(ctx context.Context, key routeSource
 	}
 }
 
-func (p *SourcePool) commitRouteSource(key routeSourceKey, source LiveSource, decoderCommand string) *Broadcast {
+func (p *Pool) commitRouteSource(key routeSourceKey, source LiveSource, decoderCommand string) *Broadcast {
 	p.mu.Lock()
 	if shared := p.routeSources[key]; shared != nil {
 		p.mu.Unlock()
@@ -87,7 +87,7 @@ func (p *SourcePool) commitRouteSource(key routeSourceKey, source LiveSource, de
 	return broadcast
 }
 
-func (p *SourcePool) removeRouteSource(key routeSourceKey) {
+func (p *Pool) removeRouteSource(key routeSourceKey) {
 	p.mu.Lock()
 	delete(p.routeSources, key)
 	p.mu.Unlock()

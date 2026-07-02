@@ -5,15 +5,15 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
-	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
+	"github.com/21S1298001/mahiron/internal/stream/local"
+	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -77,30 +77,13 @@ func TestManagerSharesSessionsByTypeAndChannel(t *testing.T) {
 	}
 }
 
-func TestSessionSectionUpdaterIgnoresScheduleEIT(t *testing.T) {
-	session := &ChannelSession{
-		channel:      "BS01_0",
-		typ:          "BS",
-		sectionQueue: make(chan ts.Section, sectionSubscriberBuffer),
-	}
-
-	for range sectionSubscriberBuffer + 1 {
-		session.observeSection(ts.Section{ts.TableIDEITSStart})
-	}
-	if got := len(session.sectionQueue); got != 0 {
-		t.Fatalf("section updater queue length = %d, want 0 for schedule EIT", got)
-	}
-
-	session.observeSection(ts.Section{ts.TableIDEITPF0})
-	if got := len(session.sectionQueue); got != 1 {
-		t.Fatalf("section updater queue length = %d, want EIT p/f to be queued", got)
-	}
-}
-
 func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 	no := false
 	priorityDirect := 10
 	priorityCATV := 20
+	routeManager := &routeSelectingTunerManager{
+		availableType: "CATV_BS",
+	}
 	manager := NewStreamManager(StreamManagerConfig{
 		Channels: config.ChannelsConfig{
 			{
@@ -114,9 +97,7 @@ func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 				},
 			},
 		},
-		TunerManager: &routeSelectingTunerManager{
-			availableType: "CATV_BS",
-		},
+		TunerManager: routeManager,
 	})
 
 	session, err := manager.GetOrCreate(context.Background(), "BS", "101")
@@ -124,15 +105,14 @@ func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	routeManager := manager.sources.tunerManager.(*routeSelectingTunerManager)
 	if got, want := routeManager.channelType, "CATV_BS"; got != want {
 		t.Fatalf("device channel type = %q, want %q", got, want)
 	}
 	if got, want := routeManager.channelID, "C101"; got != want {
 		t.Fatalf("device channel = %q, want %q", got, want)
 	}
-	localSession := session.(*ChannelSession)
-	if got, want := localSession.typ, "BS"; got != want {
+	localSession := session.(*local.Session)
+	if got, want := localSession.Type(), "BS"; got != want {
 		t.Fatalf("session type = %q, want public type %q", got, want)
 	}
 }
@@ -500,19 +480,17 @@ func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
 	priorityRemote := 20
 	previousNewRemoteClient := newRemoteClient
 	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
-	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
-		client := NewRemoteClient(remote)
-		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
+		return remote.NewClient(cfg, remote.WithHTTPClient(&http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			switch r.URL.Path {
 			case "/api/tuners":
-				return stringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
+				return streamtest.StringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
 			case "/api/channels/GR/27/stream":
-				return stringResponse(http.StatusOK, "remote-ts"), nil
+				return streamtest.StringResponse(http.StatusOK, "remote-ts"), nil
 			default:
-				return stringResponse(http.StatusNotFound, ""), nil
+				return streamtest.StringResponse(http.StatusNotFound, ""), nil
 			}
-		})}
-		return client
+		})}))
 	}
 
 	manager := NewStreamManager(StreamManagerConfig{
@@ -535,8 +513,8 @@ func TestManagerSelectsRemoteRouteWhenLocalUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := session.(*RemoteSession); !ok {
-		t.Fatalf("session type = %T, want *RemoteSession", session)
+	if _, ok := session.(*remote.Session); !ok {
+		t.Fatalf("session type = %T, want *remote.Session", session)
 	}
 	var out bytes.Buffer
 	if err := session.ChannelStream(context.Background(), false, &out); err != nil {
@@ -551,12 +529,11 @@ func TestManagerSelectsRemoteRouteWhenRemoteAlreadyTunedToSameRoute(t *testing.T
 	no := false
 	previousNewRemoteClient := newRemoteClient
 	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
-	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
-		client := NewRemoteClient(remote)
-		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
+		return remote.NewClient(cfg, remote.WithHTTPClient(&http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			switch r.URL.Path {
 			case "/api/tuners":
-				return stringResponse(http.StatusOK, `[{
+				return streamtest.StringResponse(http.StatusOK, `[{
 					"types":["CATV"],
 					"isAvailable":true,
 					"isFree":false,
@@ -565,12 +542,11 @@ func TestManagerSelectsRemoteRouteWhenRemoteAlreadyTunedToSameRoute(t *testing.T
 					"tunedChannel":"C27"
 				}]`), nil
 			case "/api/channels/CATV/C27/stream":
-				return stringResponse(http.StatusOK, "remote-ts"), nil
+				return streamtest.StringResponse(http.StatusOK, "remote-ts"), nil
 			default:
-				return stringResponse(http.StatusNotFound, ""), nil
+				return streamtest.StringResponse(http.StatusNotFound, ""), nil
 			}
-		})}
-		return client
+		})}))
 	}
 
 	manager := NewStreamManager(StreamManagerConfig{
@@ -606,14 +582,13 @@ func TestManagerFallsBackWhenRemoteRouteUnavailable(t *testing.T) {
 	requests := make(chan string, 4)
 	previousNewRemoteClient := newRemoteClient
 	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
-	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
-		client := NewRemoteClient(remote)
-		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
+		return remote.NewClient(cfg, remote.WithHTTPClient(&http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			requests <- r.URL.Path
 			if r.URL.Path != "/tuners" {
-				return stringResponse(http.StatusNotFound, ""), nil
+				return streamtest.StringResponse(http.StatusNotFound, ""), nil
 			}
-			return stringResponse(http.StatusOK, `[{
+			return streamtest.StringResponse(http.StatusOK, `[{
 				"types":["GR"],
 				"isAvailable":true,
 				"isFree":false,
@@ -621,8 +596,7 @@ func TestManagerFallsBackWhenRemoteRouteUnavailable(t *testing.T) {
 				"tunedChannelType":"GR",
 				"tunedChannel":"28"
 			}]`), nil
-		})}
-		return client
+		})}))
 	}
 
 	manager := NewStreamManager(StreamManagerConfig{
@@ -645,8 +619,8 @@ func TestManagerFallsBackWhenRemoteRouteUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := session.(*ChannelSession); !ok {
-		t.Fatalf("session type = %T, want *ChannelSession", session)
+	if _, ok := session.(*local.Session); !ok {
+		t.Fatalf("session type = %T, want *local.Session", session)
 	}
 	select {
 	case request := <-requests:
@@ -663,17 +637,15 @@ func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T
 	requests := make(chan string, 2)
 	previousNewRemoteClient := newRemoteClient
 	t.Cleanup(func() { newRemoteClient = previousNewRemoteClient })
-	newRemoteClient = func(remote config.RemoteConfig) *RemoteClient {
-		client := NewRemoteClient(remote)
-		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
+		return remote.NewClient(cfg, remote.WithHTTPClient(&http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			if r.URL.Path == "/api/tuners" {
-				return stringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
+				return streamtest.StringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
 			}
 			requests <- r.URL.Path + "?" + r.URL.RawQuery
 			<-r.Context().Done()
 			return nil, r.Context().Err()
-		})}
-		return client
+		})}))
 	}
 
 	manager := NewStreamManager(StreamManagerConfig{
@@ -686,7 +658,7 @@ func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T
 				{Id: "remote", Remote: "living", Type: "GR", Channel: "27", IsDisabled: &no},
 			},
 		}},
-		ProgramUpdater: &recordingProgramUpdater{},
+		ProgramUpdater: &streamtest.RecordingProgramUpdater{},
 		Remotes:        config.RemotesConfig{{Name: "living", URL: "http://remote.local/api"}},
 	})
 
@@ -705,8 +677,8 @@ func TestManagerStartsRemoteProgramEventSyncOutsideSessionLifecycle(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := session.(*RemoteSession); !ok {
-		t.Fatalf("session type = %T, want *RemoteSession", session)
+	if _, ok := session.(*remote.Session); !ok {
+		t.Fatalf("session type = %T, want *remote.Session", session)
 	}
 	select {
 	case request := <-requests:
@@ -816,69 +788,6 @@ func TestDecodedStreamSharesOneTunerDevice(t *testing.T) {
 	}
 }
 
-func TestDetachRawDoesNotLogExpectedClosedFileStopError(t *testing.T) {
-	var logs bytes.Buffer
-	previousLogger := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-	t.Cleanup(func() {
-		slog.SetDefault(previousLogger)
-	})
-
-	done := make(chan struct{})
-	close(done)
-	session := NewChannelSession(ChannelSessionConfig{
-		Channel: "27",
-		Type:    "GR",
-		Broadcast: NewBroadcast(&tunerLiveSource{
-			channel: &config.ChannelConfig{Type: "GR", Channel: "27"},
-			device: fakeStopErrorDevice{
-				done:    done,
-				stopErr: &os.PathError{Op: "read", Path: "|0", Err: os.ErrClosed},
-			},
-		}, nil),
-	})
-
-	var dst bytes.Buffer
-	if err := session.broadcast.attach(&dst); err != nil {
-		t.Fatal(err)
-	}
-	session.broadcast.detach(&dst)
-
-	if strings.Contains(logs.String(), "failed to stop channel session") {
-		t.Fatalf("unexpected stop error log: %s", logs.String())
-	}
-}
-
-func TestChannelSessionCollectEITWithClockUsesLatestTOT(t *testing.T) {
-	clock := time.Date(2026, 6, 29, 12, 34, 56, 0, time.FixedZone("JST", 9*60*60))
-	key := epgClockTestKey{networkID: 4, serviceID: 101}
-	input := append(streamSectionPackets(ts.PIDTOT, streamBuildTOT(clock), 0), streamSectionPackets(ts.PIDEIT, streamBuildEIT(ts.TableIDEITSStart, key, 10), 1)...)
-	session := NewChannelSession(ChannelSessionConfig{
-		Broadcast: NewBroadcast(&finitePacketSource{data: input, start: closedStart(), done: make(chan struct{})}, nil),
-		Channel:   "27",
-		Type:      "GR",
-	})
-
-	var gotClock time.Time
-	var gotEventID uint16
-	err := session.CollectEITWithClock(t.Context(), func(eit *ts.EIT, observedClock time.Time) error {
-		gotClock = observedClock
-		if len(eit.Events) > 0 {
-			gotEventID = eit.Events[0].EventID
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !gotClock.Equal(clock) {
-		t.Fatalf("clock = %s, want %s", gotClock, clock)
-	}
-	if gotEventID != 10 {
-		t.Fatalf("event id = %d, want 10", gotEventID)
-	}
-}
-
 type fakeTunerDeviceRecorder struct {
 	mu      sync.Mutex
 	devices []*fakeTunerDevice
@@ -915,111 +824,32 @@ func eventually(timeout time.Duration, ok func() bool) bool {
 	return ok()
 }
 
-func closedStart() <-chan struct{} {
-	ch := make(chan struct{})
-	close(ch)
-	return ch
+type fakeDescramblerRecorder struct {
+	mu         sync.Mutex
+	startCount int
 }
 
-type epgClockTestKey struct {
-	networkID uint16
-	serviceID uint16
+func (r *fakeDescramblerRecorder) NewDescrambler(string) Descrambler {
+	return fakeDescrambler{recorder: r}
 }
 
-func streamBuildTOT(jstTime time.Time) ts.Section {
-	encodedTime := streamEncodeMJDTime(jstTime)
-	length := 5 + 2 + 4
-	s := make([]byte, 3+length)
-	s[0] = ts.TableIDTOT
-	s[1] = 0x70 | byte(length>>8)
-	s[2] = byte(length)
-	copy(s[3:8], encodedTime)
-	s[8] = 0xf0
-	s[9] = 0
-	streamWriteCRC(s)
-	return ts.Section(s)
+func (r *fakeDescramblerRecorder) starts() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.startCount
 }
 
-func streamBuildEIT(tableID byte, key epgClockTestKey, eventID uint16) ts.Section {
-	length := 11 + 12 + 4
-	s := make([]byte, 3+length)
-	s[0] = tableID
-	s[1] = 0xb0 | byte(length>>8)
-	s[2] = byte(length)
-	s[3] = byte(key.serviceID >> 8)
-	s[4] = byte(key.serviceID)
-	s[5] = 0xc1
-	s[8] = 0
-	s[9] = 1
-	s[10] = byte(key.networkID >> 8)
-	s[11] = byte(key.networkID)
-	s[12] = 0
-	s[13] = tableID
-	off := 14
-	s[off] = byte(eventID >> 8)
-	s[off+1] = byte(eventID)
-	copy(s[off+2:off+7], streamEncodeMJDTime(time.Date(2026, 6, 29, 13, 0, 0, 0, time.FixedZone("JST", 9*60*60))))
-	copy(s[off+7:off+10], []byte{0x00, 0x30, 0x00})
-	s[off+10] = 0x80
-	s[off+11] = 0
-	streamWriteCRC(s)
-	return ts.Section(s)
+type fakeDescrambler struct {
+	recorder *fakeDescramblerRecorder
 }
 
-func streamSectionPackets(pid uint16, section ts.Section, counter byte) []byte {
-	packet := bytes.Repeat([]byte{0xff}, ts.PacketSize)
-	packet[0] = ts.SyncByte
-	packet[1] = 0x40 | byte(pid>>8)
-	packet[2] = byte(pid)
-	packet[3] = 0x10 | counter&0x0f
-	packet[4] = 0
-	copy(packet[5:], section)
-	return packet
-}
+func (d fakeDescrambler) Descramble(_ context.Context, src io.Reader, dst io.Writer) error {
+	d.recorder.mu.Lock()
+	d.recorder.startCount++
+	d.recorder.mu.Unlock()
 
-func streamEncodeMJDTime(t time.Time) []byte {
-	jst := time.FixedZone("JST", 9*60*60)
-	t = t.In(jst)
-	mjd := streamMJDFromDate(t)
-	return []byte{byte(mjd >> 8), byte(mjd), streamEncodeBCD(t.Hour()), streamEncodeBCD(t.Minute()), streamEncodeBCD(t.Second())}
-}
-
-func streamMJDFromDate(t time.Time) int {
-	y := t.Year() - 1900
-	m := int(t.Month())
-	d := t.Day()
-	l := 0
-	if m == 1 || m == 2 {
-		l = 1
-	}
-	return 14956 + d + int(float64(y-l)*365.25) + int(float64(m+1+l*12)*30.6001)
-}
-
-func streamEncodeBCD(v int) byte {
-	return byte((v/10)<<4 | (v % 10))
-}
-
-func streamWriteCRC(s []byte) {
-	crc := streamCRC32MPEG2(s[:len(s)-4])
-	s[len(s)-4] = byte(crc >> 24)
-	s[len(s)-3] = byte(crc >> 16)
-	s[len(s)-2] = byte(crc >> 8)
-	s[len(s)-1] = byte(crc)
-}
-
-func streamCRC32MPEG2(data []byte) uint32 {
-	var crc uint32 = 0xffffffff
-	for _, b := range data {
-		crc ^= uint32(b) << 24
-		for range 8 {
-			if crc&0x80000000 != 0 {
-				crc = (crc << 1) ^ 0x04c11db7
-			} else {
-				crc <<= 1
-			}
-		}
-	}
-	return crc
+	_, err := io.Copy(dst, src)
+	return err
 }
 
 type fakeTunerDevice struct {
@@ -1161,10 +991,10 @@ func (d *fakeTunerDevice) Start(_ context.Context, dst io.Writer) error {
 	d.mu.Unlock()
 	go func() {
 		time.Sleep(10 * time.Millisecond)
-		_, err := dst.Write(engineTestPacket(0x0100, 0))
+		_, err := dst.Write(streamtest.TestPacket(0x0100, 0))
 		if err == nil {
 			time.Sleep(20 * time.Millisecond)
-			_, err = dst.Write(engineTestPacket(0x0100, 1))
+			_, err = dst.Write(streamtest.TestPacket(0x0100, 1))
 		}
 		d.mu.Lock()
 		d.err = err
@@ -1272,53 +1102,4 @@ func (d *fakeLiveTunerDevice) stopCount() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.stops
-}
-
-type fakeStopErrorDevice struct {
-	done    <-chan struct{}
-	stopErr error
-}
-
-func (d fakeStopErrorDevice) Start(context.Context, io.Writer) error {
-	return nil
-}
-
-func (d fakeStopErrorDevice) Stop(context.Context) error {
-	return d.stopErr
-}
-
-func (d fakeStopErrorDevice) Done() <-chan struct{} {
-	return d.done
-}
-
-func (d fakeStopErrorDevice) Err() error {
-	return nil
-}
-
-type fakeDescramblerRecorder struct {
-	mu         sync.Mutex
-	startCount int
-}
-
-func (r *fakeDescramblerRecorder) NewDescrambler(string) Descrambler {
-	return fakeDescrambler{recorder: r}
-}
-
-func (r *fakeDescramblerRecorder) starts() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.startCount
-}
-
-type fakeDescrambler struct {
-	recorder *fakeDescramblerRecorder
-}
-
-func (d fakeDescrambler) Descramble(_ context.Context, src io.Reader, dst io.Writer) error {
-	d.recorder.mu.Lock()
-	d.recorder.startCount++
-	d.recorder.mu.Unlock()
-
-	_, err := io.Copy(dst, src)
-	return err
 }

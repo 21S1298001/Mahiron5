@@ -1,4 +1,4 @@
-package stream
+package remote
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -19,17 +20,17 @@ import (
 func TestRemoteClientCheckAvailableAndBasicAuth(t *testing.T) {
 	var auth string
 	var hasDeadline bool
-	client := NewRemoteClient(config.RemoteConfig{
+	client := NewClient(config.RemoteConfig{
 		URL:       "http://remote.local/api",
 		BasicAuth: &config.BasicAuthConfig{Username: "user", Password: "pass"},
 	})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		auth = r.Header.Get("Authorization")
 		_, hasDeadline = r.Context().Deadline()
 		if r.URL.Path != "/api/tuners" {
 			t.Fatalf("path = %s, want /api/tuners", r.URL.Path)
 		}
-		return stringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
+		return streamtest.StringResponse(http.StatusOK, `[{"types":["GR"],"isAvailable":true,"isFree":true,"isFault":false}]`), nil
 	})}
 	if err := client.CheckAvailable(context.Background(), "GR"); err != nil {
 		t.Fatal(err)
@@ -95,7 +96,7 @@ func TestRemoteClientCheckAvailableForRoute(t *testing.T) {
 				"tunedChannelType":"GR",
 				"tunedChannel":"28"
 			}]`,
-			wantErr: ErrTunerUnavailable,
+			wantErr: tuner.ErrTunerUnavailable,
 		},
 		{
 			name:        "busy unknown route",
@@ -107,14 +108,14 @@ func TestRemoteClientCheckAvailableForRoute(t *testing.T) {
 				"isFree":false,
 				"isFault":false
 			}]`,
-			wantErr: ErrTunerUnavailable,
+			wantErr: tuner.ErrTunerUnavailable,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local"})
-			client.httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-				return stringResponse(http.StatusOK, tt.body), nil
+			client := NewClient(config.RemoteConfig{URL: "http://remote.local"})
+			client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+				return streamtest.StringResponse(http.StatusOK, tt.body), nil
 			})}
 			if err := client.CheckAvailableForRoute(context.Background(), tt.channelType, tt.channel); err != tt.wantErr {
 				t.Fatalf("CheckAvailableForRoute error = %v, want %v", err, tt.wantErr)
@@ -126,23 +127,23 @@ func TestRemoteClientCheckAvailableForRoute(t *testing.T) {
 func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 	paths := []string{}
 	queries := []string{}
-	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		paths = append(paths, r.URL.Path)
 		queries = append(queries, r.URL.RawQuery)
 		switch r.URL.Path {
 		case "/api/channels/GR/27/stream":
-			return stringResponse(http.StatusOK, "channel-ts"), nil
+			return streamtest.StringResponse(http.StatusOK, "channel-ts"), nil
 		case "/api/channels/GR/27/services/1024/stream":
-			return stringResponse(http.StatusOK, "service-ts"), nil
+			return streamtest.StringResponse(http.StatusOK, "service-ts"), nil
 		case "/api/programs/10100009/stream":
-			return stringResponse(http.StatusOK, "program-ts"), nil
+			return streamtest.StringResponse(http.StatusOK, "program-ts"), nil
 		default:
-			return stringResponse(http.StatusNotFound, ""), nil
+			return streamtest.StringResponse(http.StatusNotFound, ""), nil
 		}
 	})}
 
-	session := NewRemoteSession(RemoteSessionConfig{
+	session := NewSession(SessionConfig{
 		Client:       client,
 		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
 	})
@@ -175,37 +176,37 @@ func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 }
 
 func TestRemoteProgramStreamMapsStatusErrors(t *testing.T) {
-	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		return stringResponse(http.StatusNotFound, ""), nil
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return streamtest.StringResponse(http.StatusNotFound, ""), nil
 	})}
 	if err := client.ProgramStream(context.Background(), 1, false, io.Discard); err != ErrChannelNotFound {
 		t.Fatalf("ProgramStream 404 error = %v, want ErrChannelNotFound", err)
 	}
 
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		return stringResponse(http.StatusServiceUnavailable, ""), nil
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return streamtest.StringResponse(http.StatusServiceUnavailable, ""), nil
 	})}
-	if err := client.ProgramStream(context.Background(), 1, false, io.Discard); err != ErrTunerUnavailable {
-		t.Fatalf("ProgramStream 503 error = %v, want ErrTunerUnavailable", err)
+	if err := client.ProgramStream(context.Background(), 1, false, io.Discard); err != tuner.ErrTunerUnavailable {
+		t.Fatalf("ProgramStream 503 error = %v, want tuner.ErrTunerUnavailable", err)
 	}
 
 	for _, status := range []int{http.StatusConflict, http.StatusLocked} {
-		client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-			return stringResponse(status, ""), nil
+		client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return streamtest.StringResponse(status, ""), nil
 		})}
-		if err := client.ProgramStream(context.Background(), 1, false, io.Discard); err != ErrTunerUnavailable {
-			t.Fatalf("ProgramStream %d error = %v, want ErrTunerUnavailable", status, err)
+		if err := client.ProgramStream(context.Background(), 1, false, io.Discard); err != tuner.ErrTunerUnavailable {
+			t.Fatalf("ProgramStream %d error = %v, want tuner.ErrTunerUnavailable", status, err)
 		}
 	}
 }
 
 func TestRemoteStreamForwardsPriorityHeader(t *testing.T) {
 	var priority string
-	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		priority = r.Header.Get("X-Mirakurun-Priority")
-		return stringResponse(http.StatusOK, "ts"), nil
+		return streamtest.StringResponse(http.StatusOK, "ts"), nil
 	})}
 
 	ctx := tuner.WithUser(context.Background(), tuner.User{ID: "viewer", Priority: 7})
@@ -220,17 +221,17 @@ func TestRemoteStreamForwardsPriorityHeader(t *testing.T) {
 func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 	var auth string
 	var path string
-	client := NewRemoteClient(config.RemoteConfig{
+	client := NewClient(config.RemoteConfig{
 		URL:       "http://remote.local/api",
 		BasicAuth: &config.BasicAuthConfig{Username: "user", Password: "pass"},
 	})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		auth = r.Header.Get("Authorization")
 		path = r.URL.Path
 		if r.URL.Path != "/api/channels/GR/27/services" {
 			t.Fatalf("path = %s, want /api/channels/GR/27/services", r.URL.Path)
 		}
-		return stringResponse(http.StatusOK, `[{
+		return streamtest.StringResponse(http.StatusOK, `[{
 			"id": 327361024,
 			"serviceId": 1024,
 			"networkId": 32736,
@@ -242,7 +243,7 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 			"remoteControlKeyId": 5
 		}]`), nil
 	})}
-	session := NewRemoteSession(RemoteSessionConfig{
+	session := NewSession(SessionConfig{
 		Client:       client,
 		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
 	})
@@ -267,9 +268,9 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 }
 
 func TestRemoteClientScanServicesReturnsStatusError(t *testing.T) {
-	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		return stringResponse(http.StatusServiceUnavailable, ""), nil
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return streamtest.StringResponse(http.StatusServiceUnavailable, ""), nil
 	})}
 	if _, err := client.ScanServices(context.Background(), "GR", "27"); err == nil {
 		t.Fatal("ScanServices error = nil, want status error")
@@ -278,12 +279,12 @@ func TestRemoteClientScanServicesReturnsStatusError(t *testing.T) {
 
 func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 	var paths []string
-	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		paths = append(paths, r.URL.Path)
 		switch r.URL.Path {
 		case "/api/channels/GR/27/services":
-			return stringResponse(http.StatusOK, `[{
+			return streamtest.StringResponse(http.StatusOK, `[{
 				"serviceId": 101,
 				"networkId": 4,
 				"transportStreamId": 4,
@@ -301,12 +302,12 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 				"hasLogoData": false
 			}]`), nil
 		case "/api/services/400101/logo":
-			return stringResponse(http.StatusOK, "png"), nil
+			return streamtest.StringResponse(http.StatusOK, "png"), nil
 		default:
-			return stringResponse(http.StatusNotFound, ""), nil
+			return streamtest.StringResponse(http.StatusNotFound, ""), nil
 		}
 	})}
-	session := NewRemoteSession(RemoteSessionConfig{
+	session := NewSession(SessionConfig{
 		Client:       client,
 		RouteChannel: &config.ChannelConfig{Type: "GR", Channel: "27"},
 	})
@@ -333,14 +334,14 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 func TestRemoteClientListServicePrograms(t *testing.T) {
 	var path string
 	var query string
-	client := NewRemoteClient(config.RemoteConfig{URL: "http://remote.local/api"})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		path = r.URL.Path
 		query = r.URL.RawQuery
 		if r.URL.Path != "/api/programs" {
 			t.Fatalf("path = %s, want /api/programs", r.URL.Path)
 		}
-		return stringResponse(http.StatusOK, `[{
+		return streamtest.StringResponse(http.StatusOK, `[{
 			"id": 101001,
 			"eventId": 1,
 			"serviceId": 101,
@@ -397,15 +398,15 @@ func TestRemoteClientStreamProgramEventsUsesRemoteAPI(t *testing.T) {
 	var auth string
 	var path string
 	var query string
-	client := NewRemoteClient(config.RemoteConfig{
+	client := NewClient(config.RemoteConfig{
 		URL:       "http://remote.local/api",
 		BasicAuth: &config.BasicAuthConfig{Username: "user", Password: "pass"},
 	})
-	client.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		auth = r.Header.Get("Authorization")
 		path = r.URL.Path
 		query = r.URL.RawQuery
-		return stringResponse(http.StatusOK, "[\n"), nil
+		return streamtest.StringResponse(http.StatusOK, "[\n"), nil
 	})}
 
 	if err := client.StreamProgramEvents(context.Background(), &recordingProgramUpdater{}); err != nil {
@@ -483,7 +484,7 @@ func TestKnownServiceProgramUpdaterFiltersUnknownServicesAfterRefresh(t *testing
 	lister := &recordingServiceLister{
 		services: []*service.Service{{NetworkId: 4, ServiceId: 101}},
 	}
-	updater := newKnownServiceProgramUpdater(inner, lister)
+	updater := NewKnownServiceProgramUpdater(inner, lister)
 
 	err := updater.UpsertPrograms(context.Background(), []*program.Program{
 		{ID: 401010001, NetworkID: 4, ServiceID: 101, EventID: 1},
@@ -512,7 +513,7 @@ func TestKnownServiceProgramUpdaterRefreshesUnknownOnce(t *testing.T) {
 			{NetworkId: 4, ServiceId: 102},
 		},
 	}
-	updater := newKnownServiceProgramUpdater(inner, lister)
+	updater := NewKnownServiceProgramUpdater(inner, lister)
 
 	err := updater.UpsertPrograms(context.Background(), []*program.Program{
 		{ID: 401020001, NetworkID: 4, ServiceID: 102, EventID: 1},
@@ -552,19 +553,4 @@ func (l *recordingServiceLister) GetServices(context.Context) ([]*service.Servic
 		return l.refreshServices, nil
 	}
 	return l.services, nil
-}
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
-	return f(r)
-}
-
-func stringResponse(status int, body string) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Status:     http.StatusText(status),
-		Body:       io.NopCloser(strings.NewReader(body)),
-		Header:     make(http.Header),
-	}
 }

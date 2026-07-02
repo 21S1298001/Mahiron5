@@ -3,6 +3,16 @@ package stream
 import (
 	"context"
 	"errors"
+
+	"github.com/21S1298001/mahiron/internal/stream/local"
+	"github.com/21S1298001/mahiron/internal/stream/remote"
+	"github.com/21S1298001/mahiron/internal/stream/source"
+)
+
+// Both session implementations must satisfy the public Session interface.
+var (
+	_ Session = (*local.Session)(nil)
+	_ Session = (*remote.Session)(nil)
 )
 
 // createSession acquires a source for the requested channel and builds the
@@ -14,21 +24,21 @@ func (m *StreamManager) createSession(ctx context.Context, key sessionKey, chann
 	if err != nil {
 		return nil, "", "", err
 	}
-	source := streamSessionSource(lease)
-	if lease.Session != nil {
-		return lease.Session, lease.RouteType, source, nil
+	sourceLabel := streamSessionSource(lease)
+	if lease.Remote != nil {
+		return lease.Remote, lease.RouteType, sourceLabel, nil
 	}
 
 	broadcast := lease.Broadcast
 	if broadcast == nil {
-		broadcast = NewBroadcast(lease.Source, func() { m.remove(key) })
+		broadcast = source.NewBroadcast(lease.Source, func() { m.remove(key) })
 	} else {
 		if !broadcast.AddOnStop(func() { m.remove(key) }) {
 			return nil, "", "", errors.New("broadcast stopped")
 		}
 	}
 
-	session := NewChannelSession(ChannelSessionConfig{
+	session := local.NewSession(local.Config{
 		Channel:     channel,
 		Broadcast:   broadcast,
 		Descrambler: lease.Descrambler,
@@ -37,11 +47,11 @@ func (m *StreamManager) createSession(ctx context.Context, key sessionKey, chann
 		OnStop:      func() { m.remove(key) },
 		Type:        channelType,
 	})
-	return session, lease.RouteType, source, nil
+	return session, lease.RouteType, sourceLabel, nil
 }
 
-func streamSessionSource(lease *SourceLease) string {
-	if lease != nil && lease.Session != nil {
+func streamSessionSource(lease *source.Lease) string {
+	if lease != nil && lease.Remote != nil {
 		return "remote"
 	}
 	return "local"

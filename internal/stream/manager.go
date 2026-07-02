@@ -6,12 +6,12 @@ import (
 	"io"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
-	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/stream/remote"
+	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 	"github.com/google/uuid"
@@ -24,10 +24,10 @@ type StreamManager struct {
 	remoteEventSyncCancel context.CancelFunc
 	remoteEventSyncOnce   sync.Once
 	remoteEventSyncWG     sync.WaitGroup
-	remotes               map[string]*RemoteClient
+	remotes               map[string]*remote.Client
 	serviceLister         ServiceLister
 	registry              *sessionRegistry
-	sources               *SourcePool
+	sources               *source.Pool
 }
 
 type StreamManagerConfig struct {
@@ -40,11 +40,6 @@ type StreamManagerConfig struct {
 	ServiceLister      ServiceLister
 	TunerManager       TunerManager
 }
-
-const (
-	remoteProgramEventSyncInitialBackoff = time.Second
-	remoteProgramEventSyncMaxBackoff     = time.Minute
-)
 
 type Session interface {
 	ChannelStream(context.Context, bool, io.Writer) error
@@ -61,9 +56,9 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 	if descramblerFactory == nil {
 		descramblerFactory = NewCommandDescrambler
 	}
-	remotes := make(map[string]*RemoteClient, len(cfg.Remotes))
-	for _, remote := range cfg.Remotes {
-		remotes[remote.Name] = newRemoteClient(remote)
+	remotes := make(map[string]*remote.Client, len(cfg.Remotes))
+	for _, remoteConfig := range cfg.Remotes {
+		remotes[remoteConfig.Name] = newRemoteClient(remoteConfig)
 	}
 	return &StreamManager{
 		eitUpdater:     cfg.EITUpdater,
@@ -72,7 +67,7 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		remotes:        remotes,
 		serviceLister:  cfg.ServiceLister,
 		registry:       newSessionRegistry(),
-		sources:        NewSourcePool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
+		sources:        source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
 	}
 }
 
@@ -89,7 +84,7 @@ func (m *StreamManager) StartRemoteProgramEventSync(ctx context.Context) {
 			m.remoteEventSyncWG.Add(1)
 			go func() {
 				defer m.remoteEventSyncWG.Done()
-				m.runRemoteProgramEventSync(syncCtx, name, client, updater)
+				remote.RunProgramEventSync(syncCtx, name, client, updater)
 			}()
 		}
 	})
@@ -99,37 +94,7 @@ func (m *StreamManager) remoteProgramUpdater() ProgramUpdater {
 	if m.serviceLister == nil {
 		return m.programUpdater
 	}
-	return newKnownServiceProgramUpdater(m.programUpdater, m.serviceLister)
-}
-
-func (m *StreamManager) runRemoteProgramEventSync(ctx context.Context, name string, client *RemoteClient, updater ProgramUpdater) {
-	backoff := remoteProgramEventSyncInitialBackoff
-	for {
-		if err := ctx.Err(); err != nil {
-			return
-		}
-		slog.Debug("starting remote program event sync", "remote", name)
-		err := client.StreamProgramEvents(ctx, updater)
-		if err := ctx.Err(); err != nil {
-			return
-		}
-		slog.Warn("remote program event sync stopped", "remote", name, "err", err, "retryIn", backoff)
-		if !sleepContext(ctx, backoff) {
-			return
-		}
-		backoff = min(backoff*2, remoteProgramEventSyncMaxBackoff)
-	}
-}
-
-func sleepContext(ctx context.Context, duration time.Duration) bool {
-	timer := time.NewTimer(duration)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return true
-	case <-ctx.Done():
-		return false
-	}
+	return remote.NewKnownServiceProgramUpdater(m.programUpdater, m.serviceLister)
 }
 
 func (m *StreamManager) GetOrCreate(ctx context.Context, channelType, channel string) (Session, error) {
@@ -280,39 +245,21 @@ func streamSessionStartResult(err error) string {
 }
 
 var (
-	ErrChannelNotFound            = errors.New("channel not found")
-	ErrEITObservationUnsupported  = errors.New("EIT observation is not supported by remote sessions")
-	ErrLogoObservationUnsupported = errors.New("logo observation is not supported by remote sessions")
+	ErrChannelNotFound            = remote.ErrChannelNotFound
+	ErrEITObservationUnsupported  = remote.ErrEITObservationUnsupported
+	ErrLogoObservationUnsupported = remote.ErrLogoObservationUnsupported
 	ErrStreamManagerShutdown      = errors.New("stream manager is shut down")
 	ErrTunerNotFound              = tuner.ErrTunerNotFound
 	ErrUnsupportedTuner           = tuner.ErrUnsupportedTuner
 	ErrTunerUnavailable           = tuner.ErrTunerUnavailable
 )
 
-type TunerManager interface {
-	NewDeviceByType(string, *config.ChannelConfig) (TunerDevice, error)
+// newRemoteClient is a test seam allowing manager tests to stub the upstream
+// HTTP client of every remote.
+var newRemoteClient = func(cfg config.RemoteConfig) *remote.Client {
+	return remote.NewClient(cfg)
 }
 
-type ServiceLister interface {
-	GetServices(context.Context) ([]*service.Service, error)
-}
+type ServiceLister = remote.ServiceLister
 
-type TunerAllocator interface {
-	AcquireDevice(context.Context, string, *config.ChannelConfig, *config.ChannelConfig, bool) (TunerDevice, string, error)
-}
-
-type DecoderCommandProvider interface {
-	DecoderCommandByType(string) string
-}
-
-type TunerDevice = tuner.Device
-
-type EITSectionUpdater interface {
-	UpsertEIT(ctx context.Context, eit *ts.EIT) error
-}
-
-type LogoUpdater interface {
-	UpsertLogoImage(context.Context, *ts.LogoImage) error
-	UpsertCommonLogoImage(context.Context, ts.CommonLogoImage) error
-	UpsertCommonDataAnnouncement(context.Context, ts.CommonDataAnnouncement, string, string) error
-}
+type ProgramUpdater = remote.ProgramUpdater

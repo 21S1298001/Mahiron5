@@ -1,4 +1,4 @@
-package stream
+package tsengine
 
 import (
 	"context"
@@ -34,7 +34,7 @@ type sectionSubscription struct {
 	writerDone chan struct{}
 }
 
-func (e *packetEngine) writePackets(id uint64, sub *packetSubscription, dst io.Writer) {
+func (e *Engine) writePackets(id uint64, sub *packetSubscription, dst io.Writer) {
 	defer close(sub.writerDone)
 	for packet := range sub.queue {
 		n, err := dst.Write(packet)
@@ -54,7 +54,7 @@ func (e *packetEngine) writePackets(id uint64, sub *packetSubscription, dst io.W
 	}
 }
 
-func (e *packetEngine) streamInfoKey(serviceID *uint16) string {
+func (e *Engine) streamInfoKey(serviceID *uint16) string {
 	key := e.channelType
 	if e.channelID != "" {
 		if key != "" {
@@ -71,7 +71,7 @@ func (e *packetEngine) streamInfoKey(serviceID *uint16) string {
 	return key
 }
 
-func (e *packetEngine) writeSections(id uint64, sub *sectionSubscription) {
+func (e *Engine) writeSections(id uint64, sub *sectionSubscription) {
 	defer close(sub.writerDone)
 	for section := range sub.queue {
 		if err := sub.observe(section); err != nil {
@@ -82,13 +82,13 @@ func (e *packetEngine) writeSections(id uint64, sub *sectionSubscription) {
 	}
 }
 
-func (e *packetEngine) finishPacket(id uint64, err error) {
+func (e *Engine) finishPacket(id uint64, err error) {
 	e.mu.Lock()
 	e.finishPacketLocked(id, err)
 	e.mu.Unlock()
 }
 
-func (e *packetEngine) finishPacketLocked(id uint64, err error) {
+func (e *Engine) finishPacketLocked(id uint64, err error) {
 	sub := e.packets[id]
 	if sub == nil || sub.finished {
 		return
@@ -101,13 +101,13 @@ func (e *packetEngine) finishPacketLocked(id uint64, err error) {
 	e.cancelIfEmptyLocked()
 }
 
-func (e *packetEngine) finishSection(id uint64, err error) {
+func (e *Engine) finishSection(id uint64, err error) {
 	e.mu.Lock()
 	e.finishSectionLocked(id, err)
 	e.mu.Unlock()
 }
 
-func (e *packetEngine) finishSectionLocked(id uint64, err error) {
+func (e *Engine) finishSectionLocked(id uint64, err error) {
 	sub := e.sections[id]
 	if sub == nil || sub.finished {
 		return
@@ -120,7 +120,7 @@ func (e *packetEngine) finishSectionLocked(id uint64, err error) {
 	e.cancelIfEmptyLocked()
 }
 
-func (e *packetEngine) cancelIfEmptyLocked() {
+func (e *Engine) cancelIfEmptyLocked() {
 	if len(e.packets) != 0 || len(e.sections) != 0 {
 		return
 	}
@@ -132,7 +132,7 @@ func (e *packetEngine) cancelIfEmptyLocked() {
 	}
 }
 
-func (e *packetEngine) close(err error) {
+func (e *Engine) close(err error) {
 	e.stopOnce.Do(func() {
 		e.mu.Lock()
 		e.err = err

@@ -1,4 +1,4 @@
-package stream
+package source
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/google/uuid"
 )
@@ -23,26 +24,26 @@ type LiveSource interface {
 	WithUser(context.Context, func(context.Context) error) error
 }
 
-type SourceLease struct {
+type Lease struct {
 	Broadcast   *Broadcast
 	Descrambler Descrambler
 	RouteType   string
-	Session     Session
+	Remote      *remote.Session
 	Source      LiveSource
 }
 
-type SourcePool struct {
+type Pool struct {
 	channels           config.ChannelsConfig
 	descramblerFactory DescramblerFactory
 	mu                 sync.Mutex
-	remotes            map[string]*RemoteClient
+	remotes            map[string]*remote.Client
 	routeSourceCreates map[routeSourceKey]chan struct{}
 	routeSources       map[routeSourceKey]*sharedRouteSource
 	tunerManager       TunerManager
 }
 
-func NewSourcePool(channels config.ChannelsConfig, tunerManager TunerManager, descramblerFactory DescramblerFactory, remotes map[string]*RemoteClient) *SourcePool {
-	return &SourcePool{
+func NewPool(channels config.ChannelsConfig, tunerManager TunerManager, descramblerFactory DescramblerFactory, remotes map[string]*remote.Client) *Pool {
+	return &Pool{
 		channels:           channels,
 		descramblerFactory: descramblerFactory,
 		remotes:            remotes,
@@ -52,7 +53,7 @@ func NewSourcePool(channels config.ChannelsConfig, tunerManager TunerManager, de
 	}
 }
 
-func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, wait bool) (lease *SourceLease, err error) {
+func (p *Pool) Acquire(ctx context.Context, channelType, channel string, wait bool) (lease *Lease, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanStreamSourceAcquire,
 		observability.AttrChannelType.String(channelType),
 		observability.AttrChannelID.String(channel),
@@ -62,10 +63,10 @@ func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, w
 
 	channelConfig := p.findChannel(channelType, channel)
 	if channelConfig == nil {
-		return nil, ErrChannelNotFound
+		return nil, remote.ErrChannelNotFound
 	}
 	if channelConfig.IsDisabled != nil && *channelConfig.IsDisabled {
-		return nil, ErrChannelNotFound
+		return nil, remote.ErrChannelNotFound
 	}
 
 	selected, err := p.selectRoute(ctx, channelConfig, wait)
@@ -78,16 +79,16 @@ func (p *SourcePool) Acquire(ctx context.Context, channelType, channel string, w
 	return p.localLease(channelType, channel, selected), nil
 }
 
-func (p *SourcePool) remoteLease(channelType, channel string, selected routeSelection) (*SourceLease, error) {
-	remote := p.remotes[selected.route.Remote]
-	if remote == nil {
-		return nil, ErrTunerNotFound
+func (p *Pool) remoteLease(channelType, channel string, selected routeSelection) (*Lease, error) {
+	client := p.remotes[selected.route.Remote]
+	if client == nil {
+		return nil, tuner.ErrTunerNotFound
 	}
 	slog.Debug("selected remote stream route", "type", channelType, "channel", channel, "routeType", selected.route.Type, "remote", selected.route.Remote)
-	return &SourceLease{
+	return &Lease{
 		RouteType: selected.route.Type,
-		Session: NewRemoteSession(RemoteSessionConfig{
-			Client: remote,
+		Remote: remote.NewSession(remote.SessionConfig{
+			Client: client,
 			Channel: &config.ChannelConfig{
 				Type:    channelType,
 				Channel: channel,
@@ -97,7 +98,7 @@ func (p *SourcePool) remoteLease(channelType, channel string, selected routeSele
 	}, nil
 }
 
-func (p *SourcePool) localLease(channelType, channel string, selected routeSelection) *SourceLease {
+func (p *Pool) localLease(channelType, channel string, selected routeSelection) *Lease {
 	decoderCommand := selected.decoder
 	if decoderCommand == "" {
 		if provider, ok := p.tunerManager.(DecoderCommandProvider); ok {
@@ -111,7 +112,7 @@ func (p *SourcePool) localLease(channelType, channel string, selected routeSelec
 	}
 
 	slog.Debug("selected local stream route", "type", channelType, "channel", channel, "routeType", selected.route.Type, "decoder", decoderCommand != "")
-	return &SourceLease{
+	return &Lease{
 		Broadcast:   selected.broadcast,
 		Descrambler: descrambler,
 		RouteType:   selected.route.Type,
@@ -122,7 +123,7 @@ func (p *SourcePool) localLease(channelType, channel string, selected routeSelec
 	}
 }
 
-func (p *SourcePool) findChannel(channelType, channel string) *config.ChannelConfig {
+func (p *Pool) findChannel(channelType, channel string) *config.ChannelConfig {
 	for i := range p.channels {
 		if p.channels[i].Type == channelType && p.channels[i].Channel == channel {
 			return &p.channels[i]
@@ -131,7 +132,7 @@ func (p *SourcePool) findChannel(channelType, channel string) *config.ChannelCon
 	return nil
 }
 
-func (p *SourcePool) selectRoute(ctx context.Context, channel *config.ChannelConfig, wait bool) (selected routeSelection, err error) {
+func (p *Pool) selectRoute(ctx context.Context, channel *config.ChannelConfig, wait bool) (selected routeSelection, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanStreamSourceSelectRoute,
 		observability.AttrChannelType.String(channel.Type),
 		observability.AttrChannelID.String(channel.Channel),
@@ -159,7 +160,7 @@ func (p *SourcePool) selectRoute(ctx context.Context, channel *config.ChannelCon
 			if lastErr != nil {
 				return routeSelection{}, lastErr
 			}
-			return routeSelection{}, ErrChannelNotFound
+			return routeSelection{}, remote.ErrChannelNotFound
 		}
 		if err := waitForRouteRetry(ctx, channel); err != nil {
 			return routeSelection{}, err
@@ -175,7 +176,7 @@ type routeSelection struct {
 	broadcast *Broadcast
 }
 
-func (p *SourcePool) tryRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, wait bool) (selected routeSelection, err error) {
+func (p *Pool) tryRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, wait bool) (selected routeSelection, err error) {
 	routeChannel := channel.RouteChannelConfig(route)
 	routeCtx, routeSpan := observability.StartSpan(ctx, observability.SpanStreamSourceTryRoute,
 		observability.AttrChannelType.String(channel.Type),
@@ -199,18 +200,18 @@ func (p *SourcePool) tryRoute(ctx context.Context, channel *config.ChannelConfig
 	return selected, nil
 }
 
-func (p *SourcePool) tryRemoteRoute(ctx context.Context, route config.ChannelRouteConfig, routeChannel config.ChannelConfig) (routeSelection, error) {
-	remote := p.remotes[route.Remote]
-	if remote == nil {
+func (p *Pool) tryRemoteRoute(ctx context.Context, route config.ChannelRouteConfig, routeChannel config.ChannelConfig) (routeSelection, error) {
+	client := p.remotes[route.Remote]
+	if client == nil {
 		return routeSelection{}, tuner.ErrTunerNotFound
 	}
-	if err := remote.CheckAvailableForRoute(ctx, route.Type, route.Channel); err != nil {
+	if err := client.CheckAvailableForRoute(ctx, route.Type, route.Channel); err != nil {
 		return routeSelection{}, err
 	}
 	return routeSelection{route: route, channel: routeChannel}, nil
 }
 
-func (p *SourcePool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, routeChannel config.ChannelConfig, wait bool) (routeSelection, error) {
+func (p *Pool) tryLocalRoute(ctx context.Context, channel *config.ChannelConfig, route config.ChannelRouteConfig, routeChannel config.ChannelConfig, wait bool) (routeSelection, error) {
 	key := newRouteSourceKey(route)
 	source, finishCreate, err := p.beginRouteSourceCreate(ctx, key)
 	if err != nil {

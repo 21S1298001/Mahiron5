@@ -1,12 +1,17 @@
-package stream
+package source
 
 import (
 	"bytes"
 	"context"
 	"io"
+	"log/slog"
+	"os"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
+
+	"github.com/21S1298001/mahiron/internal/config"
 )
 
 func TestBroadcastStopsSourceAfterLastSubscriberDetaches(t *testing.T) {
@@ -121,4 +126,54 @@ func (s *fakeLiveSourceForBroadcast) stops() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.stopsN
+}
+
+func TestDetachDoesNotLogExpectedClosedFileStopError(t *testing.T) {
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	done := make(chan struct{})
+	close(done)
+	broadcast := NewBroadcast(&tunerLiveSource{
+		channel: &config.ChannelConfig{Type: "GR", Channel: "27"},
+		device: fakeStopErrorDevice{
+			done:    done,
+			stopErr: &os.PathError{Op: "read", Path: "|0", Err: os.ErrClosed},
+		},
+	}, nil)
+
+	var dst bytes.Buffer
+	if err := broadcast.attach(&dst); err != nil {
+		t.Fatal(err)
+	}
+	broadcast.detach(&dst)
+
+	if strings.Contains(logs.String(), "failed to stop broadcast") {
+		t.Fatalf("unexpected stop error log: %s", logs.String())
+	}
+}
+
+type fakeStopErrorDevice struct {
+	done    <-chan struct{}
+	stopErr error
+}
+
+func (d fakeStopErrorDevice) Start(context.Context, io.Writer) error {
+	return nil
+}
+
+func (d fakeStopErrorDevice) Stop(context.Context) error {
+	return d.stopErr
+}
+
+func (d fakeStopErrorDevice) Done() <-chan struct{} {
+	return d.done
+}
+
+func (d fakeStopErrorDevice) Err() error {
+	return nil
 }

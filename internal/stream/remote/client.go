@@ -1,4 +1,4 @@
-package stream
+package remote
 
 import (
 	"context"
@@ -35,7 +35,7 @@ const (
 	remoteOperationGetLogoImage        = "remote.get_logo_image"
 )
 
-type RemoteClient struct {
+type Client struct {
 	baseURL    string
 	basicAuth  *config.BasicAuthConfig
 	httpClient *http.Client
@@ -45,21 +45,34 @@ type ProgramUpdater interface {
 	UpsertPrograms(context.Context, []*program.Program) error
 }
 
-var newRemoteClient = NewRemoteClient
+// ClientOption customizes a Client created by NewClient.
+type ClientOption func(*Client)
 
-func NewRemoteClient(config config.RemoteConfig) *RemoteClient {
-	return &RemoteClient{
+// WithHTTPClient replaces the HTTP client used for upstream requests.
+// It exists mainly so tests can inject a stub transport.
+func WithHTTPClient(httpClient *http.Client) ClientOption {
+	return func(c *Client) {
+		c.httpClient = httpClient
+	}
+}
+
+func NewClient(config config.RemoteConfig, opts ...ClientOption) *Client {
+	client := &Client{
 		baseURL:    strings.TrimRight(config.URL, "/"),
 		basicAuth:  config.BasicAuth,
 		httpClient: http.DefaultClient,
 	}
+	for _, opt := range opts {
+		opt(client)
+	}
+	return client
 }
 
-func (c *RemoteClient) CheckAvailable(ctx context.Context, channelType string) error {
+func (c *Client) CheckAvailable(ctx context.Context, channelType string) error {
 	return c.CheckAvailableForRoute(ctx, channelType, "")
 }
 
-func (c *RemoteClient) CheckAvailableForRoute(ctx context.Context, channelType, channel string) (err error) {
+func (c *Client) CheckAvailableForRoute(ctx context.Context, channelType, channel string) (err error) {
 	start := time.Now()
 	defer func() {
 		observability.RecordRemoteOperation(ctx, remoteOperationCheckAvailable, remoteOperationResult(err), time.Since(start).Milliseconds())
@@ -93,22 +106,22 @@ func (c *RemoteClient) CheckAvailableForRoute(ctx context.Context, channelType, 
 			return nil
 		}
 	}
-	return ErrTunerUnavailable
+	return tuner.ErrTunerUnavailable
 }
 
-func (c *RemoteClient) ChannelStream(ctx context.Context, channelType, channel string, decode bool, dst io.Writer) error {
+func (c *Client) ChannelStream(ctx context.Context, channelType, channel string, decode bool, dst io.Writer) error {
 	return c.stream(ctx, remoteOperationChannelStream, decode, dst, "channels", channelType, channel, "stream")
 }
 
-func (c *RemoteClient) ServiceStream(ctx context.Context, channelType, channel string, serviceID uint16, decode bool, dst io.Writer) error {
+func (c *Client) ServiceStream(ctx context.Context, channelType, channel string, serviceID uint16, decode bool, dst io.Writer) error {
 	return c.stream(ctx, remoteOperationServiceStream, decode, dst, "channels", channelType, channel, "services", fmt.Sprint(serviceID), "stream")
 }
 
-func (c *RemoteClient) ProgramStream(ctx context.Context, programID int64, decode bool, dst io.Writer) error {
+func (c *Client) ProgramStream(ctx context.Context, programID int64, decode bool, dst io.Writer) error {
 	return c.stream(ctx, remoteOperationProgramStream, decode, dst, "programs", fmt.Sprint(programID), "stream")
 }
 
-func (c *RemoteClient) GetLogoImage(ctx context.Context, serviceItemID int64) (data []byte, err error) {
+func (c *Client) GetLogoImage(ctx context.Context, serviceItemID int64) (data []byte, err error) {
 	start := time.Now()
 	defer func() {
 		observability.RecordRemoteOperation(ctx, remoteOperationGetLogoImage, remoteOperationResult(err), time.Since(start).Milliseconds())
@@ -129,7 +142,7 @@ func (c *RemoteClient) GetLogoImage(ctx context.Context, serviceItemID int64) (d
 	return io.ReadAll(resp.Body)
 }
 
-func (c *RemoteClient) ScanServices(ctx context.Context, channelType, channel string) (scanned []ts.ServiceInfo, err error) {
+func (c *Client) ScanServices(ctx context.Context, channelType, channel string) (scanned []ts.ServiceInfo, err error) {
 	start := time.Now()
 	defer func() {
 		observability.RecordRemoteOperation(ctx, remoteOperationScanServices, remoteOperationResult(err), time.Since(start).Milliseconds())
@@ -180,7 +193,7 @@ func remoteBoolDefault(value *bool, fallback bool) bool {
 	return *value
 }
 
-func (c *RemoteClient) ListChannelServices(ctx context.Context, channelType, channel string) ([]remoteService, error) {
+func (c *Client) ListChannelServices(ctx context.Context, channelType, channel string) ([]remoteService, error) {
 	var services []remoteService
 	if err := c.getJSON(ctx, &services, "channels", channelType, channel, "services"); err != nil {
 		return nil, err
@@ -202,7 +215,7 @@ func remoteLogoDownloadDataID(svc remoteService) *uint16 {
 	return &downloadDataID
 }
 
-func (c *RemoteClient) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) (programs []*program.Program, err error) {
+func (c *Client) ListServicePrograms(ctx context.Context, networkID, serviceID uint16) (programs []*program.Program, err error) {
 	start := time.Now()
 	defer func() {
 		observability.RecordRemoteOperation(ctx, remoteOperationListServicePrograms, remoteOperationResult(err), time.Since(start).Milliseconds())
@@ -235,7 +248,7 @@ func (c *RemoteClient) ListServicePrograms(ctx context.Context, networkID, servi
 	return programs, nil
 }
 
-func (c *RemoteClient) StreamProgramEvents(ctx context.Context, updater ProgramUpdater) (err error) {
+func (c *Client) StreamProgramEvents(ctx context.Context, updater ProgramUpdater) (err error) {
 	start := time.Now()
 	defer func() {
 		observability.RecordRemoteOperation(ctx, remoteOperationStreamProgramEvents, remoteOperationResult(err), time.Since(start).Milliseconds())
@@ -269,7 +282,7 @@ func (c *RemoteClient) StreamProgramEvents(ctx context.Context, updater ProgramU
 	return readRemoteProgramEvents(ctx, resp.Body, updater)
 }
 
-func (c *RemoteClient) stream(ctx context.Context, operation string, decode bool, dst io.Writer, elems ...string) (err error) {
+func (c *Client) stream(ctx context.Context, operation string, decode bool, dst io.Writer, elems ...string) (err error) {
 	start := time.Now()
 	defer func() {
 		observability.RecordRemoteOperation(ctx, operation, remoteOperationResult(err), time.Since(start).Milliseconds())
@@ -310,7 +323,7 @@ func remoteStatusError(statusCode int, status string) error {
 	case http.StatusNotFound:
 		return ErrChannelNotFound
 	case http.StatusConflict, http.StatusLocked, http.StatusServiceUnavailable:
-		return ErrTunerUnavailable
+		return tuner.ErrTunerUnavailable
 	default:
 		return fmt.Errorf("remote API status: %s", status)
 	}
@@ -322,7 +335,7 @@ func remoteOperationResult(err error) string {
 		return "success"
 	case errors.Is(err, ErrChannelNotFound):
 		return "not_found"
-	case errors.Is(err, ErrTunerUnavailable):
+	case errors.Is(err, tuner.ErrTunerUnavailable):
 		return "unavailable"
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return "canceled"
@@ -331,7 +344,7 @@ func remoteOperationResult(err error) string {
 	}
 }
 
-func (c *RemoteClient) getJSON(ctx context.Context, dst any, elems ...string) error {
+func (c *Client) getJSON(ctx context.Context, dst any, elems ...string) error {
 	req, err := c.newRequest(ctx, http.MethodGet, elems...)
 	if err != nil {
 		return err
@@ -339,7 +352,7 @@ func (c *RemoteClient) getJSON(ctx context.Context, dst any, elems ...string) er
 	return c.doJSON(req, dst)
 }
 
-func (c *RemoteClient) doJSON(req *http.Request, dst any) error {
+func (c *Client) doJSON(req *http.Request, dst any) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -351,7 +364,7 @@ func (c *RemoteClient) doJSON(req *http.Request, dst any) error {
 	return json.NewDecoder(resp.Body).Decode(dst)
 }
 
-func (c *RemoteClient) newRequest(ctx context.Context, method string, elems ...string) (*http.Request, error) {
+func (c *Client) newRequest(ctx context.Context, method string, elems ...string) (*http.Request, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
 		return nil, err
