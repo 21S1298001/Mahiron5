@@ -65,7 +65,7 @@ func TestRecordJobRunMetrics(t *testing.T) {
 	RecordDBOperation(t.Context(), "db.program.upsert_all", 56, context.Canceled)
 	RecordEventPublished(t.Context(), "program", "update")
 	RecordEventDropped(t.Context())
-	RecordLogDropped(t.Context())
+	RecordLogsDropped(t.Context(), 1)
 	RecordEPGProgramsUpserted(t.Context(), "eits", "success", 2)
 	RecordEPGProgramsDeleted(t.Context(), "cleanup", "success", 3)
 	RecordEPGServiceUpdateError(t.Context(), "remote", "attempt")

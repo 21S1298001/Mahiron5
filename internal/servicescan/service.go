@@ -14,7 +14,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type Store interface {
@@ -159,9 +158,9 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 	jobreport.Set(ctx, result)
 	span.SetAttributes(
 		observability.AttrServiceCount.Int(len(scanned)),
-		attribute.Int("service.added", result.Counts["addedServices"]),
-		attribute.Int("service.removed", result.Counts["removedServices"]),
-		attribute.Int("service.new_networks", len(newNIDs)),
+		observability.AttrServiceAdded.Int(result.Counts["addedServices"]),
+		observability.AttrServiceRemoved.Int(result.Counts["removedServices"]),
+		observability.AttrServiceNewNetworks.Int(len(newNIDs)),
 	)
 	slog.Info("service scan completed",
 		"type", channelType,

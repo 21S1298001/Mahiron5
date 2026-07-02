@@ -1,3 +1,10 @@
+// Record* functions in this file are called from many packages, including
+// sites with no request or operation context available (e.g. background
+// workers in job/manager.go, event/hub.go, tuner/device.go, and stream
+// session teardown paths). Passing context.Background() at those call sites
+// is an intentional, accepted convention rather than an oversight — do not
+// add context plumbing there solely to satisfy these functions.
+
 package observability
 
 import (
@@ -23,16 +30,16 @@ func EPGMetricSource(ctx context.Context) string {
 
 func RecordJobRun(ctx context.Context, key, result string, durationMS int64) {
 	attrs := metric.WithAttributes(AttrJobKey.String(key), AttrJobResult.String(result))
-	if jobMetrics.runs != nil {
-		jobMetrics.runs.Add(ctx, 1, attrs)
+	if instruments.jobRuns != nil {
+		instruments.jobRuns.Add(ctx, 1, attrs)
 	}
-	if jobMetrics.duration != nil && durationMS >= 0 {
-		jobMetrics.duration.Record(ctx, durationMS, attrs)
+	if instruments.jobDuration != nil && durationMS >= 0 {
+		instruments.jobDuration.Record(ctx, durationMS, attrs)
 	}
 }
 
 func RecordJobItems(ctx context.Context, key string, result jobreport.Result) {
-	if jobMetrics.items == nil || key == "" {
+	if instruments.jobItems == nil || key == "" {
 		return
 	}
 	status := result.Kind
@@ -43,7 +50,7 @@ func RecordJobItems(ctx context.Context, key string, result jobreport.Result) {
 		if count <= 0 {
 			continue
 		}
-		jobMetrics.items.Add(ctx, int64(count), metric.WithAttributes(
+		instruments.jobItems.Add(ctx, int64(count), metric.WithAttributes(
 			AttrJobKey.String(key),
 			AttrJobResult.String(status),
 			AttrJobItemKind.String(countKey),
@@ -58,14 +65,14 @@ func RecordJobItems(ctx context.Context, key string, result jobreport.Result) {
 		byKind[kind]++
 	}
 	for kind, count := range byKind {
-		jobMetrics.items.Add(ctx, count, metric.WithAttributes(
+		instruments.jobItems.Add(ctx, count, metric.WithAttributes(
 			AttrJobKey.String(key),
 			AttrJobResult.String(status),
 			AttrJobItemKind.String(kind),
 		))
 	}
 	if len(result.Warnings) > 0 {
-		jobMetrics.items.Add(ctx, int64(len(result.Warnings)), metric.WithAttributes(
+		instruments.jobItems.Add(ctx, int64(len(result.Warnings)), metric.WithAttributes(
 			AttrJobKey.String(key),
 			AttrJobResult.String(status),
 			AttrJobItemKind.String("warnings"),
@@ -74,10 +81,10 @@ func RecordJobItems(ctx context.Context, key string, result jobreport.Result) {
 }
 
 func RecordStreamSessionStart(ctx context.Context, channelType, routeType, source, result string) {
-	if jobMetrics.streamSessionStarts == nil {
+	if instruments.streamSessionStarts == nil {
 		return
 	}
-	jobMetrics.streamSessionStarts.Add(ctx, 1, metric.WithAttributes(
+	instruments.streamSessionStarts.Add(ctx, 1, metric.WithAttributes(
 		AttrChannelType.String(channelType),
 		AttrRouteType.String(routeType),
 		AttrSource.String(source),
@@ -86,10 +93,10 @@ func RecordStreamSessionStart(ctx context.Context, channelType, routeType, sourc
 }
 
 func RecordStreamSessionDuration(ctx context.Context, channelType, routeType, source string, durationMS int64) {
-	if jobMetrics.streamSessionDuration == nil || durationMS < 0 {
+	if instruments.streamSessionDuration == nil || durationMS < 0 {
 		return
 	}
-	jobMetrics.streamSessionDuration.Record(ctx, durationMS, metric.WithAttributes(
+	instruments.streamSessionDuration.Record(ctx, durationMS, metric.WithAttributes(
 		AttrChannelType.String(channelType),
 		AttrRouteType.String(routeType),
 		AttrSource.String(source),
@@ -102,29 +109,29 @@ func RecordTunerAcquire(ctx context.Context, channelType, result string, wait bo
 		AttrResult.String(result),
 		AttrWait.Bool(wait),
 	)
-	if jobMetrics.tunerAcquireRequests != nil {
-		jobMetrics.tunerAcquireRequests.Add(ctx, 1, attrs)
+	if instruments.tunerAcquireRequests != nil {
+		instruments.tunerAcquireRequests.Add(ctx, 1, attrs)
 	}
-	if jobMetrics.tunerAcquireDuration != nil && durationMS >= 0 {
-		jobMetrics.tunerAcquireDuration.Record(ctx, durationMS, attrs)
+	if instruments.tunerAcquireDuration != nil && durationMS >= 0 {
+		instruments.tunerAcquireDuration.Record(ctx, durationMS, attrs)
 	}
 }
 
 func RecordStreamPacket(ctx context.Context, channelType, channelID string, bytes int64) {
 	attrs := metric.WithAttributes(AttrChannelType.String(channelType), AttrChannelID.String(channelID))
-	if jobMetrics.streamPackets != nil {
-		jobMetrics.streamPackets.Add(ctx, 1, attrs)
+	if instruments.streamPackets != nil {
+		instruments.streamPackets.Add(ctx, 1, attrs)
 	}
-	if jobMetrics.streamBytes != nil && bytes > 0 {
-		jobMetrics.streamBytes.Add(ctx, bytes, attrs)
+	if instruments.streamBytes != nil && bytes > 0 {
+		instruments.streamBytes.Add(ctx, bytes, attrs)
 	}
 }
 
 func RecordStreamPacketError(ctx context.Context, channelType, channelID, result string) {
-	if jobMetrics.streamPacketErrors == nil {
+	if instruments.streamPacketErrors == nil {
 		return
 	}
-	jobMetrics.streamPacketErrors.Add(ctx, 1, metric.WithAttributes(
+	instruments.streamPacketErrors.Add(ctx, 1, metric.WithAttributes(
 		AttrChannelType.String(channelType),
 		AttrChannelID.String(channelID),
 		AttrResult.String(result),
@@ -132,20 +139,20 @@ func RecordStreamPacketError(ctx context.Context, channelType, channelID, result
 }
 
 func RecordStreamContinuityCounterError(ctx context.Context, channelType, channelID string) {
-	if jobMetrics.streamContinuityErrors == nil {
+	if instruments.streamContinuityErrors == nil {
 		return
 	}
-	jobMetrics.streamContinuityErrors.Add(ctx, 1, metric.WithAttributes(
+	instruments.streamContinuityErrors.Add(ctx, 1, metric.WithAttributes(
 		AttrChannelType.String(channelType),
 		AttrChannelID.String(channelID),
 	))
 }
 
 func RecordStreamSubscriberError(ctx context.Context, channelType, result string) {
-	if jobMetrics.streamSubscriberErrors == nil {
+	if instruments.streamSubscriberErrors == nil {
 		return
 	}
-	jobMetrics.streamSubscriberErrors.Add(ctx, 1, metric.WithAttributes(
+	instruments.streamSubscriberErrors.Add(ctx, 1, metric.WithAttributes(
 		AttrChannelType.String(channelType),
 		AttrResult.String(result),
 	))
@@ -153,20 +160,20 @@ func RecordStreamSubscriberError(ctx context.Context, channelType, result string
 
 func RecordStreamSubscriberOverflow(ctx context.Context, channelType, result string) {
 	RecordStreamSubscriberError(ctx, channelType, result)
-	if jobMetrics.streamSubscriberOverflow == nil {
+	if instruments.streamSubscriberOverflow == nil {
 		return
 	}
-	jobMetrics.streamSubscriberOverflow.Add(ctx, 1, metric.WithAttributes(
+	instruments.streamSubscriberOverflow.Add(ctx, 1, metric.WithAttributes(
 		AttrChannelType.String(channelType),
 		AttrResult.String(result),
 	))
 }
 
 func RecordTunerProcessStart(ctx context.Context, channelType, channelID, result string) {
-	if jobMetrics.tunerProcessStarts == nil {
+	if instruments.tunerProcessStarts == nil {
 		return
 	}
-	jobMetrics.tunerProcessStarts.Add(ctx, 1, metric.WithAttributes(
+	instruments.tunerProcessStarts.Add(ctx, 1, metric.WithAttributes(
 		AttrChannelType.String(channelType),
 		AttrChannelID.String(channelID),
 		AttrResult.String(result),
@@ -174,10 +181,10 @@ func RecordTunerProcessStart(ctx context.Context, channelType, channelID, result
 }
 
 func RecordTunerProcessExit(ctx context.Context, channelType, channelID, result string) {
-	if jobMetrics.tunerProcessExits == nil {
+	if instruments.tunerProcessExits == nil {
 		return
 	}
-	jobMetrics.tunerProcessExits.Add(ctx, 1, metric.WithAttributes(
+	instruments.tunerProcessExits.Add(ctx, 1, metric.WithAttributes(
 		AttrChannelType.String(channelType),
 		AttrChannelID.String(channelID),
 		AttrResult.String(result),
@@ -185,10 +192,10 @@ func RecordTunerProcessExit(ctx context.Context, channelType, channelID, result 
 }
 
 func RecordTunerProcessRestartAttempt(ctx context.Context, channelType, channelID string) {
-	if jobMetrics.tunerProcessRestarts == nil {
+	if instruments.tunerProcessRestarts == nil {
 		return
 	}
-	jobMetrics.tunerProcessRestarts.Add(ctx, 1, metric.WithAttributes(
+	instruments.tunerProcessRestarts.Add(ctx, 1, metric.WithAttributes(
 		AttrChannelType.String(channelType),
 		AttrChannelID.String(channelID),
 	))
@@ -196,76 +203,76 @@ func RecordTunerProcessRestartAttempt(ctx context.Context, channelType, channelI
 
 func RecordRemoteOperation(ctx context.Context, operation, result string, durationMS int64) {
 	attrs := metric.WithAttributes(AttrOperation.String(operation), AttrResult.String(result))
-	if jobMetrics.remoteRequests != nil {
-		jobMetrics.remoteRequests.Add(ctx, 1, attrs)
+	if instruments.remoteRequests != nil {
+		instruments.remoteRequests.Add(ctx, 1, attrs)
 	}
-	if jobMetrics.remoteDuration != nil && durationMS >= 0 {
-		jobMetrics.remoteDuration.Record(ctx, durationMS, attrs)
+	if instruments.remoteDuration != nil && durationMS >= 0 {
+		instruments.remoteDuration.Record(ctx, durationMS, attrs)
 	}
-	if jobMetrics.remoteErrors != nil && result != "success" {
-		jobMetrics.remoteErrors.Add(ctx, 1, attrs)
+	if instruments.remoteErrors != nil && result != "success" {
+		instruments.remoteErrors.Add(ctx, 1, attrs)
 	}
 }
 
 func RecordDBOperation(ctx context.Context, operation string, durationMS int64, err error) {
 	attrs := metric.WithAttributes(AttrOperation.String(operation))
-	if jobMetrics.dbOperationDuration != nil && durationMS >= 0 {
-		jobMetrics.dbOperationDuration.Record(ctx, durationMS, attrs)
+	if instruments.dbOperationDuration != nil && durationMS >= 0 {
+		instruments.dbOperationDuration.Record(ctx, durationMS, attrs)
 	}
-	if jobMetrics.dbOperationErrors != nil && err != nil {
-		jobMetrics.dbOperationErrors.Add(ctx, 1, attrs)
+	if instruments.dbOperationErrors != nil && err != nil {
+		instruments.dbOperationErrors.Add(ctx, 1, attrs)
 	}
 }
 
 func RecordEventPublished(ctx context.Context, resource, typ string) {
-	if jobMetrics.eventsPublished == nil {
+	if instruments.eventsPublished == nil {
 		return
 	}
-	jobMetrics.eventsPublished.Add(ctx, 1, metric.WithAttributes(
+	instruments.eventsPublished.Add(ctx, 1, metric.WithAttributes(
 		AttrEventResource.String(resource),
 		AttrEventType.String(typ),
 	))
 }
 
 func RecordEventDropped(ctx context.Context) {
-	if jobMetrics.eventsDropped == nil {
+	if instruments.eventsDropped == nil {
 		return
 	}
-	jobMetrics.eventsDropped.Add(ctx, 1)
+	instruments.eventsDropped.Add(ctx, 1)
 }
 
-func RecordLogDropped(ctx context.Context) {
-	if jobMetrics.logsDropped == nil {
+func RecordLogsDropped(ctx context.Context, count int64) {
+	if instruments.logsDropped == nil || count <= 0 {
 		return
 	}
-	jobMetrics.logsDropped.Add(ctx, 1)
+	instruments.logsDropped.Add(ctx, count)
 }
 
 func RecordEPGProgramsUpserted(ctx context.Context, source, result string, count int64) {
-	if jobMetrics.epgProgramsUpserted == nil || source == "" || count <= 0 {
+	if instruments.epgProgramsUpserted == nil || source == "" || count <= 0 {
 		return
 	}
-	jobMetrics.epgProgramsUpserted.Add(ctx, count, metric.WithAttributes(
+	instruments.epgProgramsUpserted.Add(ctx, count, metric.WithAttributes(
 		AttrSource.String(source),
 		AttrResult.String(result),
 	))
 }
 
 func RecordEPGProgramsDeleted(ctx context.Context, source, result string, count int64) {
-	if jobMetrics.epgProgramsDeleted == nil || source == "" || count <= 0 {
+	if instruments.epgProgramsDeleted == nil || source == "" || count <= 0 {
 		return
 	}
-	jobMetrics.epgProgramsDeleted.Add(ctx, count, metric.WithAttributes(
+	instruments.epgProgramsDeleted.Add(ctx, count, metric.WithAttributes(
 		AttrSource.String(source),
 		AttrResult.String(result),
 	))
 }
 
 func RecordEPGServiceUpdateError(ctx context.Context, source, result string) {
-	if jobMetrics.epgServiceUpdateErrors == nil || source == "" {
+	if instruments.epgServiceUpdateErrors == nil || source == "" {
 		return
 	}
-	jobMetrics.epgServiceUpdateErrors.Add(ctx, 1, metric.WithAttributes(
+	instruments.epgServiceUpdateErrors.Add(ctx, 1, metric.WithAttributes(
 		AttrSource.String(source),
 		AttrResult.String(result),
 	))

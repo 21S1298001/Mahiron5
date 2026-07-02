@@ -12,7 +12,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/tuner"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -30,59 +29,29 @@ func registerRuntimeMetrics(
 	if provider == nil {
 		return
 	}
-	meter := provider.Meter("github.com/21S1298001/mahiron")
-	streamSessions, err := meter.Int64ObservableGauge(observability.MetricStreamSessionsActive)
-	if err != nil {
-		slog.Warn("failed to create stream sessions metric", "err", err)
-		return
-	}
-	tunerDevices, err := meter.Int64ObservableGauge(observability.MetricTunerDevices)
-	if err != nil {
-		slog.Warn("failed to create tuner devices metric", "err", err)
-		return
-	}
-	tunerUsers, err := meter.Int64ObservableGauge(observability.MetricTunerUsers)
-	if err != nil {
-		slog.Warn("failed to create tuner users metric", "err", err)
-		return
-	}
-	jobCount, err := meter.Int64ObservableGauge(observability.MetricJobs)
-	if err != nil {
-		slog.Warn("failed to create jobs metric", "err", err)
-		return
-	}
-	epgPrograms, err := meter.Int64ObservableGauge(observability.MetricEPGProgramsStored)
-	if err != nil {
-		slog.Warn("failed to create EPG programs metric", "err", err)
-		return
-	}
-	epgStale, err := meter.Int64ObservableGauge(observability.MetricEPGServicesStale)
-	if err != nil {
-		slog.Warn("failed to create stale EPG services metric", "err", err)
-		return
-	}
-	epgFailed, err := meter.Int64ObservableGauge(observability.MetricEPGServicesFailed)
-	if err != nil {
-		slog.Warn("failed to create failed EPG services metric", "err", err)
-		return
-	}
-	tunerProcessUptime, err := meter.Int64ObservableGauge(observability.MetricTunerProcessUptime, metric.WithUnit("s"))
-	if err != nil {
-		slog.Warn("failed to create tuner process uptime metric", "err", err)
-		return
-	}
-	eventSubscribers, err := meter.Int64ObservableGauge(observability.MetricEventsSubscribers)
-	if err != nil {
-		slog.Warn("failed to create events subscribers metric", "err", err)
-		return
-	}
-	logSubscribers, err := meter.Int64ObservableGauge(observability.MetricLogsSubscribers)
-	if err != nil {
-		slog.Warn("failed to create logs subscribers metric", "err", err)
-		return
+	meter := observability.Meter(provider)
+
+	streamSessions := observability.NewInt64ObservableGauge(meter, observability.MetricStreamSessionsActive)
+	tunerDevices := observability.NewInt64ObservableGauge(meter, observability.MetricTunerDevices)
+	tunerUsers := observability.NewInt64ObservableGauge(meter, observability.MetricTunerUsers)
+	jobCount := observability.NewInt64ObservableGauge(meter, observability.MetricJobCount)
+	epgPrograms := observability.NewInt64ObservableGauge(meter, observability.MetricEPGProgramsStored)
+	epgStale := observability.NewInt64ObservableGauge(meter, observability.MetricEPGServicesStale)
+	epgFailed := observability.NewInt64ObservableGauge(meter, observability.MetricEPGServicesFailed)
+	tunerProcessUptime := observability.NewInt64ObservableGauge(meter, observability.MetricTunerProcessUptime, metric.WithUnit("s"))
+	eventSubscribers := observability.NewInt64ObservableGauge(meter, observability.MetricEventsSubscribers)
+	logSubscribers := observability.NewInt64ObservableGauge(meter, observability.MetricLogsSubscribers)
+
+	for _, instrument := range []metric.Int64ObservableGauge{
+		streamSessions, tunerDevices, tunerUsers, jobCount, epgPrograms,
+		epgStale, epgFailed, tunerProcessUptime, eventSubscribers, logSubscribers,
+	} {
+		if instrument == nil {
+			return
+		}
 	}
 
-	_, err = meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
+	_, err := meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
 		observer.ObserveInt64(streamSessions, int64(streams.ActiveSessionCount()))
 		observeTunerMetrics(observer, tunerDevices, tunerUsers, tuners.Statuses())
 		observeTunerProcessUptime(observer, tunerProcessUptime, tuners.ProcessUptimes())
@@ -162,7 +131,7 @@ func observeJobMetrics(observer metric.Observer, instrument metric.Int64Observab
 	for key, count := range counts {
 		observer.ObserveInt64(instrument, count, metric.WithAttributes(
 			observability.AttrJobKey.String(key.key),
-			attribute.String("job.status", key.status),
+			observability.AttrJobStatus.String(key.status),
 		))
 	}
 }

@@ -41,8 +41,8 @@ func NewLogStore(capacity int) *LogStore {
 
 func (s *LogStore) Write(p []byte) (int, error) {
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
 
+	var dropped int64
 	chunks := splitLogChunks(&s.partial, p)
 	for _, chunk := range chunks {
 		copied := append([]byte(nil), chunk...)
@@ -54,10 +54,14 @@ func (s *LogStore) Write(p []byte) (int, error) {
 			select {
 			case sub.ch <- copied:
 			default:
-				RecordLogDropped(context.Background())
+				dropped++
 			}
 		}
 	}
+
+	s.mutex.Unlock()
+
+	RecordLogsDropped(context.Background(), dropped)
 
 	return len(p), nil
 }

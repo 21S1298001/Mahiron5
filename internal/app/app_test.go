@@ -139,7 +139,7 @@ func TestBuildRuntimeRegistersRuntimeMetrics(t *testing.T) {
 		observability.MetricStreamSessionsActive,
 		observability.MetricTunerDevices,
 		observability.MetricTunerUsers,
-		observability.MetricJobs,
+		observability.MetricJobCount,
 		observability.MetricEPGProgramsStored,
 		observability.MetricEPGServicesStale,
 		observability.MetricEPGServicesFailed,

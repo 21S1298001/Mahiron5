@@ -1,6 +1,13 @@
 package observability
 
-import "go.opentelemetry.io/otel/attribute"
+import (
+	"context"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+)
 
 const (
 	SpanDBProgramDeleteEndedBefore        = "db.program.delete_ended_before"
@@ -30,33 +37,14 @@ const (
 	SpanTunerProcessStartWithRetry        = "tuner.process.start_with_retry"
 )
 
-const (
-	AttrChannelID             attribute.Key = "channel.id"
-	AttrChannelType           attribute.Key = "channel.type"
-	AttrEPGCandidates         attribute.Key = "epg.candidates"
-	AttrEPGNetworkID          attribute.Key = "epg.network_id"
-	AttrEPGRetrievalTimeMS    attribute.Key = "epg.retrieval_time_ms"
-	AttrEPGServiceID          attribute.Key = "epg.service_id"
-	AttrEPGServices           attribute.Key = "epg.services"
-	AttrEPGStaleAfter         attribute.Key = "epg.stale_after"
-	AttrJobID                 attribute.Key = "job.id"
-	AttrJobKey                attribute.Key = "job.key"
-	AttrJobName               attribute.Key = "job.name"
-	AttrJobRetryCount         attribute.Key = "job.retry_count"
-	AttrProgramCount          attribute.Key = "program.count"
-	AttrProgramCutoff         attribute.Key = "program.cutoff"
-	AttrProgramFrom           attribute.Key = "program.from"
-	AttrRemoteURL             attribute.Key = "remote.url"
-	AttrRouteChannel          attribute.Key = "route.channel"
-	AttrRouteCount            attribute.Key = "route.count"
-	AttrRouteRemote           attribute.Key = "route.remote"
-	AttrRouteType             attribute.Key = "route.type"
-	AttrServiceCount          attribute.Key = "service.count"
-	AttrStartupRetry          attribute.Key = "startup_retry"
-	AttrStartupRetryMax       attribute.Key = "startup_retry.max"
-	AttrStartupRetryTimeoutMS attribute.Key = "startup_retry.timeout_ms"
-	AttrStreamActiveSession   attribute.Key = "stream.active_session"
-	AttrTunedChannelID        attribute.Key = "tuned.channel.id"
-	AttrTunedChannelType      attribute.Key = "tuned.channel.type"
-	AttrWait                  attribute.Key = "wait"
-)
+func StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	return otel.Tracer(instrumentationName).Start(ctx, name, trace.WithAttributes(attrs...))
+}
+
+func EndSpan(span trace.Span, err error) {
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
+}

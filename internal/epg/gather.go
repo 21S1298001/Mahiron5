@@ -161,8 +161,8 @@ func epgGatherAttributes(result jobreport.Result) []attribute.KeyValue {
 	return []attribute.KeyValue{
 		observability.AttrEPGCandidates.Int(result.Counts["candidates"]),
 		observability.AttrEPGServices.Int(result.Counts["services"]),
-		attribute.Int("epg.services.observed", result.Counts["observedServices"]),
-		attribute.Int("epg.services.remaining", result.Counts["remainingServices"]),
+		observability.AttrEPGServicesObserved.Int(result.Counts["observedServices"]),
+		observability.AttrEPGServicesRemaining.Int(result.Counts["remainingServices"]),
 		observability.AttrProgramCount.Int(result.Counts["programs"]),
 	}
 }

@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -187,14 +186,19 @@ func shutdownAll(shutdowns ...func(context.Context) error) func(context.Context)
 	}
 }
 
-func StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
-	return otel.Tracer(instrumentationName).Start(ctx, name, trace.WithAttributes(attrs...))
+// Meter returns the mahiron instrumentation-scoped meter for provider, so
+// callers outside this package (e.g. internal/app) can create instruments
+// without duplicating the instrumentation name.
+func Meter(provider otelmetric.MeterProvider) otelmetric.Meter {
+	return provider.Meter(instrumentationName)
 }
 
-func EndSpan(span trace.Span, err error) {
+// NewInt64ObservableGauge creates an Int64ObservableGauge, logging and
+// returning a nil instrument on failure rather than propagating the error.
+func NewInt64ObservableGauge(meter otelmetric.Meter, name string, opts ...otelmetric.Int64ObservableGaugeOption) otelmetric.Int64ObservableGauge {
+	instrument, err := meter.Int64ObservableGauge(name, opts...)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		slog.Warn("failed to create metric instrument", "metric", name, "err", err)
 	}
-	span.End()
+	return instrument
 }
