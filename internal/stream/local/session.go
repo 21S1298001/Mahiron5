@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -15,23 +14,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/util"
 	"github.com/21S1298001/mahiron/ts"
 )
-
-// sectionQueueSize bounds the queue between section observation and the
-// asynchronous EIT/logo updater pump.
-const sectionQueueSize = 64
-
-// EITSectionUpdater persists EIT sections observed on the stream.
-type EITSectionUpdater interface {
-	UpsertEIT(ctx context.Context, eit *ts.EIT) error
-}
-
-// LogoUpdater persists logo images and related announcements observed on the
-// stream.
-type LogoUpdater interface {
-	UpsertLogoImage(context.Context, *ts.LogoImage) error
-	UpsertCommonLogoImage(context.Context, ts.CommonLogoImage) error
-	UpsertCommonDataAnnouncement(context.Context, ts.CommonDataAnnouncement, string, string) error
-}
 
 type Session struct {
 	broadcast     *source.Broadcast
@@ -232,68 +214,6 @@ func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error 
 	return errors.Join(err, rawErr)
 }
 
-func (s *Session) programStream(ctx context.Context, p *program.Program, decode bool, dst io.Writer) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	gate := newProgramEventGate(p.NetworkID, p.ServiceID, p.EventID, programEventTimeout(p.StartAt, p.Duration), cancel)
-	observerAttached := make(chan struct{})
-	observeDone := make(chan error, 1)
-	go func() {
-		observeDone <- s.rawEngine.ObserveSectionsPassive(ctx, func(section ts.Section) bool {
-			return ts.IsEITPF(section.TableID())
-		}, func(section ts.Section) error {
-			eit, err := ts.ParseEIT(section)
-			if err == nil {
-				gate.observe(eit)
-			}
-			return nil
-		}, observerAttached)
-	}()
-	select {
-	case <-observerAttached:
-	case err := <-observeDone:
-		return expectedNil(err)
-	case <-ctx.Done():
-		return expectedNil(ctx.Err())
-	}
-
-	r, w := io.Pipe()
-	sourceDone := make(chan error, 1)
-	go func() {
-		sourceDone <- s.attachEngine(ctx, decode, p.ServiceID, true, w)
-		_ = w.Close()
-	}()
-	err := runProgramGate(r, dst, gate)
-	_ = r.Close()
-	cancel()
-	sourceErr := <-sourceDone
-	observeErr := <-observeDone
-	return errors.Join(expectedNil(err), expectedNil(sourceErr), expectedNil(observeErr))
-}
-
-func runProgramGate(src io.Reader, dst io.Writer, gate *programEventGate) error {
-	packet := make([]byte, ts.PacketSize)
-	var result error
-	for {
-		_, err := io.ReadFull(src, packet)
-		if err != nil {
-			result = expectedNil(err)
-			break
-		}
-		if gate.isReady() {
-			n, err := dst.Write(packet)
-			if err == nil && n != len(packet) {
-				err = io.ErrShortWrite
-			}
-			if err != nil {
-				result = err
-				break
-			}
-		}
-	}
-	return result
-}
-
 func (s *Session) observeEIT(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
 	var latestClock time.Time
 	return s.rawEngine.ObserveSections(ctx, func(section ts.Section) bool {
@@ -311,86 +231,4 @@ func (s *Session) observeEIT(ctx context.Context, observe func(*ts.EIT, time.Tim
 		}
 		return observe(eit, latestClock)
 	})
-}
-
-func (s *Session) observeSection(section ts.Section) {
-	if !ts.IsEITPF(section.TableID()) && section.TableID() != ts.TableIDCDT {
-		return
-	}
-	select {
-	case s.sectionQueue <- section:
-	default:
-		slog.Warn("TS section updater overflow", "type", s.typ, "channel", s.channel)
-	}
-}
-
-func (s *Session) runSectionUpdates(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case section := <-s.sectionQueue:
-			s.updateSection(ctx, section)
-		}
-	}
-}
-
-func (s *Session) updateSection(ctx context.Context, section ts.Section) {
-	if ts.IsEITPF(section.TableID()) && s.eitUpdater != nil {
-		if eit, err := ts.ParseEIT(section); err == nil {
-			if err := s.eitUpdater.UpsertEIT(ctx, eit); err != nil {
-				slog.Error("failed to update EITPF", "type", s.typ, "channel", s.channel, "err", err)
-			}
-		}
-	}
-	if section.TableID() == ts.TableIDCDT && s.logoUpdater != nil {
-		if cdt, err := ts.ParseCDT(section); err == nil {
-			if image, err := ts.ParseCDTLogoImage(cdt); err == nil {
-				if err := s.logoUpdater.UpsertLogoImage(ctx, image); err != nil {
-					slog.Error("failed to update logo", "type", s.typ, "channel", s.channel, "err", err)
-				}
-			}
-		}
-	}
-	if section.TableID() == ts.TableIDSDTT && s.logoUpdater != nil {
-		announcements, err := ts.ParseSDTTCommonDataAnnouncements(section)
-		if err != nil {
-			slog.Error("failed to parse SDTT common data announcement", "type", s.typ, "channel", s.channel, "err", err)
-		}
-		for _, announcement := range announcements {
-			if err := s.logoUpdater.UpsertCommonDataAnnouncement(ctx, announcement, s.typ, s.channel); err != nil {
-				slog.Error("failed to update SDTT common data announcement", "type", s.typ, "channel", s.channel, "err", err)
-			}
-		}
-	}
-	if section.TableID() == ts.TableIDDSMCCDII && s.logoUpdater != nil {
-		if dii, err := ts.ParseDSMCCDII(section); err == nil {
-			s.logoCarousel.ObserveDII(dii)
-		}
-	}
-	if section.TableID() == ts.TableIDDSMCCDDB && s.logoUpdater != nil {
-		if ddb, err := ts.ParseDSMCCDDB(section); err == nil {
-			images, err := s.logoCarousel.ObserveDDB(ddb)
-			if err != nil {
-				slog.Error("failed to parse common logo", "type", s.typ, "channel", s.channel, "err", err)
-				return
-			}
-			for _, image := range images {
-				if err := s.logoUpdater.UpsertCommonLogoImage(ctx, image); err != nil {
-					slog.Error("failed to update common logo", "type", s.typ, "channel", s.channel, "err", err)
-				}
-			}
-		}
-	}
-}
-
-func programEventTimeout(startAt int64, duration int) time.Duration {
-	timeout := time.Until(time.UnixMilli(startAt + int64(duration)))
-	if duration == 1 {
-		timeout += programEventMissingFallback
-	}
-	if timeout < 0 {
-		return programEventMissingFallback
-	}
-	return timeout
 }
