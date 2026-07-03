@@ -2,14 +2,9 @@
 
 FROM node:24-bookworm-slim AS web
 WORKDIR /src/web
-RUN --mount=type=bind,source=web/package.json,target=package.json \
-    --mount=type=bind,source=web/package-lock.json,target=package-lock.json \
-    --mount=type=cache,target=/root/.npm \
-    --mount=type=cache,target=/src/web/node_modules,sharing=locked \
-    npm ci
 RUN --mount=type=bind,source=web,target=/src/web,rw \
-    --mount=type=cache,target=/src/web/node_modules,sharing=locked \
-    npm run build
+    --mount=type=cache,target=/root/.npm \
+    npm ci && npm run build
 
 FROM golang:1.26-bookworm AS build
 WORKDIR /src
