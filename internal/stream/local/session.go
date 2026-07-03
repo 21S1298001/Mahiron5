@@ -29,6 +29,7 @@ type Session struct {
 	logoCarousel  *ts.DSMCCLogoCarousel
 	sectionCancel context.CancelFunc
 	sectionQueue  chan ts.Section
+	carouselQueue chan ts.Section
 }
 
 type Config struct {
@@ -54,6 +55,7 @@ func NewSession(config Config) *Session {
 	sectionCtx, sectionCancel := context.WithCancel(context.Background())
 	session.sectionCancel = sectionCancel
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
+	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
 	go session.runSectionUpdates(sectionCtx)
 	session.rawDemuxer = demux.New(config.Broadcast.SubscribeRaw, config.OnStop, session.observeSection).WithMetricLabels(config.Type, config.Channel)
 	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)

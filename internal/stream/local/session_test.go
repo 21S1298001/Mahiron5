@@ -15,9 +15,10 @@ import (
 
 func TestSessionSectionUpdaterIgnoresScheduleEIT(t *testing.T) {
 	session := &Session{
-		channel:      "BS01_0",
-		typ:          "BS",
-		sectionQueue: make(chan ts.Section, sectionQueueSize),
+		channel:       "BS01_0",
+		typ:           "BS",
+		sectionQueue:  make(chan ts.Section, sectionQueueSize),
+		carouselQueue: make(chan ts.Section, carouselQueueSize),
 	}
 
 	for range sectionQueueSize + 1 {
@@ -30,6 +31,54 @@ func TestSessionSectionUpdaterIgnoresScheduleEIT(t *testing.T) {
 	session.observeSection(ts.Section{ts.TableIDEITPF0})
 	if got := len(session.sectionQueue); got != 1 {
 		t.Fatalf("section updater queue length = %d, want EIT p/f to be queued", got)
+	}
+}
+
+func TestSessionSectionUpdaterRoutesCommonLogoSections(t *testing.T) {
+	session := &Session{
+		channel:       "BS01_0",
+		typ:           "BS",
+		sectionQueue:  make(chan ts.Section, sectionQueueSize),
+		carouselQueue: make(chan ts.Section, carouselQueueSize),
+	}
+
+	session.observeSection(ts.Section{ts.TableIDCDT})
+	session.observeSection(ts.Section{ts.TableIDSDTT})
+	if got := len(session.sectionQueue); got != 2 {
+		t.Fatalf("section updater queue length = %d, want CDT and SDTT to be queued", got)
+	}
+	if got := len(session.carouselQueue); got != 0 {
+		t.Fatalf("carousel updater queue length = %d, want 0 before carousel sections", got)
+	}
+
+	session.observeSection(ts.Section{ts.TableIDDSMCCDII})
+	session.observeSection(ts.Section{ts.TableIDDSMCCDDB})
+	if got := len(session.carouselQueue); got != 2 {
+		t.Fatalf("carousel updater queue length = %d, want DII and DDB to be queued", got)
+	}
+	if got := len(session.sectionQueue); got != 2 {
+		t.Fatalf("section updater queue length = %d, want unchanged after carousel sections", got)
+	}
+}
+
+func TestSessionSectionUpdaterCarouselOverflowDoesNotBlockSections(t *testing.T) {
+	session := &Session{
+		channel:       "BS01_0",
+		typ:           "BS",
+		sectionQueue:  make(chan ts.Section, sectionQueueSize),
+		carouselQueue: make(chan ts.Section, carouselQueueSize),
+	}
+
+	for range carouselQueueSize + 1 {
+		session.observeSection(ts.Section{ts.TableIDDSMCCDDB})
+	}
+	if got := len(session.carouselQueue); got != carouselQueueSize {
+		t.Fatalf("carousel updater queue length = %d, want capped at %d", got, carouselQueueSize)
+	}
+
+	session.observeSection(ts.Section{ts.TableIDEITPF0})
+	if got := len(session.sectionQueue); got != 1 {
+		t.Fatalf("section updater queue length = %d, want EIT p/f unaffected by carousel overflow", got)
 	}
 }
 

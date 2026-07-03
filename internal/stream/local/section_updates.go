@@ -11,6 +11,12 @@ import (
 // asynchronous EIT/logo updater pump.
 const sectionQueueSize = 64
 
+// carouselQueueSize bounds the queue for DSM-CC data carousel sections
+// (BS common logo download). It is sized separately from sectionQueue
+// because a data carousel can emit far more sections per second than
+// EIT/CDT/SDTT, and must not be allowed to starve them.
+const carouselQueueSize = 256
+
 // EITSectionUpdater persists EIT sections observed on the stream.
 type EITSectionUpdater interface {
 	UpsertEIT(ctx context.Context, eit *ts.EIT) error
@@ -25,7 +31,16 @@ type LogoUpdater interface {
 }
 
 func (s *Session) observeSection(section ts.Section) {
-	if !ts.IsEITPF(section.TableID()) && section.TableID() != ts.TableIDCDT {
+	switch section.TableID() {
+	case ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB:
+		select {
+		case s.carouselQueue <- section:
+		default:
+			slog.Warn("TS carousel updater overflow", "type", s.typ, "channel", s.channel)
+		}
+		return
+	}
+	if !ts.IsEITPF(section.TableID()) && section.TableID() != ts.TableIDCDT && section.TableID() != ts.TableIDSDTT {
 		return
 	}
 	select {
@@ -41,6 +56,8 @@ func (s *Session) runSectionUpdates(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case section := <-s.sectionQueue:
+			s.updateSection(ctx, section)
+		case section := <-s.carouselQueue:
 			s.updateSection(ctx, section)
 		}
 	}
