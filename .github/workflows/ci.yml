@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # go:embed dist が空だとビルド不可になるためダミーを設置(dist/app 配下ではないので配信ロジックには影響しない)
+      - run: echo "placeholder for go:embed, not served" > internal/web/ui/dist/ci-placeholder
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -28,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: echo "placeholder for go:embed, not served" > internal/web/ui/dist/ci-placeholder
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
