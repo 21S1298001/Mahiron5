@@ -31,7 +31,7 @@
 .stream-state::before {
   width: 8px;
   height: 8px;
-  content: "";
+  content: '';
   background: #c78521;
   border-radius: 999px;
 }
@@ -62,7 +62,7 @@
   cursor: pointer;
 }
 
-.follow-button[data-visible="false"] {
+.follow-button[data-visible='false'] {
   visibility: hidden;
   pointer-events: none;
 }
