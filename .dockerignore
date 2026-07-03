@@ -1,0 +1,17 @@
+.git
+.env
+Dockerfile
+.dockerignore
+mahiron
+mahiron5
+*.db
+*.db-wal
+*.db-shm
+*.exe
+*.test
+*.out
+*.tsbuildinfo
+web/node_modules
+internal/web/ui/dist/*
+!internal/web/ui/dist/.gitkeep
+ts/docs
