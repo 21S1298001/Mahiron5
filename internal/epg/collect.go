@@ -185,28 +185,31 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 	defer flushTicker.Stop()
 	dirtyServices := make(map[ServiceKey]struct{})
 	observedServices := make(map[ServiceKey]struct{})
+	handleSection := func(section *EITSection) {
+		if section == nil || !index.matchesCollectionNetwork(section) {
+			return
+		}
+		if ts.IsEITPF(section.TableID) {
+			if !index.matchesExpected(section) {
+				return
+			}
+			slog.Debug("upserting EIT section", "source", "eitpf", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
+			pfUpserts.enqueue(section.Programs())
+			return
+		}
+		slog.Debug("observed EIT section", "source", "eits", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
+		snapshot.Observe(section, clock.now())
+		key := ServiceKey{NetworkID: section.OriginalNetworkID, ServiceID: section.ServiceID, TransportStreamID: section.TransportStreamID}
+		dirtyServices[key] = struct{}{}
+		observedServices[key] = struct{}{}
+	}
 	finished := false
 	var collectorResult collectionResult
 	collectorDone := false
 	for !finished {
 		select {
 		case section := <-sectionCh:
-			if section == nil || !index.matchesCollectionNetwork(section) {
-				continue
-			}
-			if ts.IsEITPF(section.TableID) {
-				if !index.matchesExpected(section) {
-					continue
-				}
-				slog.Debug("upserting EIT section", "source", "eitpf", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
-				pfUpserts.enqueue(section.Programs())
-				continue
-			}
-			slog.Debug("observed EIT section", "source", "eits", "networkId", section.OriginalNetworkID, "serviceId", section.ServiceID, "tableId", section.TableID, "sectionNumber", section.SectionNumber, "lastSectionNumber", section.LastSectionNumber, "version", section.VersionNumber, "events", len(section.Events))
-			snapshot.Observe(section, clock.now())
-			key := ServiceKey{NetworkID: section.OriginalNetworkID, ServiceID: section.ServiceID, TransportStreamID: section.TransportStreamID}
-			dirtyServices[key] = struct{}{}
-			observedServices[key] = struct{}{}
+			handleSection(section)
 			if shouldStopEITSCollection(snapshot, expected) && snapshot.StableFor(clock.now(), eitsStableStopDuration) {
 				cancel()
 			}
@@ -226,6 +229,17 @@ func CollectServiceSnapshots(ctx context.Context, programStore ProgramStore, ser
 		}
 	}
 	cancel()
+	// The collector may have buffered sections in sectionCh that the loop never
+	// got to before collectDone or the deadline won the select. Drain them so
+	// already-observed sections are not dropped from the snapshot.
+	for drained := false; !drained; {
+		select {
+		case section := <-sectionCh:
+			handleSection(section)
+		default:
+			drained = true
+		}
+	}
 	pfUpserts.stop()
 	pfUpserts.wait()
 	partialFlushes.stop()
