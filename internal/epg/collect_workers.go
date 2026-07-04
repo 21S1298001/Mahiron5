@@ -64,7 +64,6 @@ func (f *partialEITSFlusher) wait() {
 func (f *partialEITSFlusher) run() {
 	defer close(f.done)
 	for programs := range f.requests {
-		slog.Debug("upserting partial EITS snapshot", "programs", len(programs))
 		if err := f.program.UpsertPrograms(f.ctx, programs); err != nil {
 			slog.Debug("partial EITS upsert finished with error", "err", err)
 		}
