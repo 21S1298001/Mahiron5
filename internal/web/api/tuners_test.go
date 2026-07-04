@@ -255,7 +255,7 @@ func TestTunerUserContextIncludesRequestMetadata(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/channels/GR/27/stream?decode=0", nil)
 	request.Header.Set("User-Agent", "test-agent")
 	handler.ServeHTTP(httptest.NewRecorder(), request)
-	if tracked.Agent != "test-agent" || tracked.URL != "/api/channels/GR/27/stream?decode=0" {
+	if tracked.Agent != "192.0.2.1 test-agent" || tracked.URL != "/api/channels/GR/27/stream?decode=0" {
 		t.Fatalf("request metadata = %+v", tracked)
 	}
 	if tracked.Priority != 2 || !tracked.DisableDecoder {

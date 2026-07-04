@@ -131,7 +131,7 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
           value={formatNumber(status.data?.streamCount?.tunerDevice)}
         />
       </section>
-      <div className="overview-grid">
+      <div className="overview-summary">
         <Panel title="番組表">
           <Definition
             label="取得状態"
@@ -156,48 +156,41 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
             value={formatNumber(status.data?.epg?.storedEvents)}
           />
         </Panel>
-        <Panel
-          title={`サービス (${visibleServices.length})`}
-          action={
-            <span className="section-note">{openServiceCount} 使用中</span>
-          }
-        >
-          <div className="overview-service-list">
-            {visibleServices.map((service) => {
-              const users = openServiceUsers(openServices, service)
-              return (
-                <div
-                  className={`overview-service ${users.length > 0 ? 'open' : ''}`}
-                  key={service.id}
-                  title={`${service.name} ${users.length > 0 ? `${users.map((user) => user.agent || user.id).join(', ')} が使用中` : '未使用'}`}
-                >
-                  <Logo service={service} />
-                  <div className="overview-service-main">
-                    <strong>{service.name}</strong>
-                    <span>
-                      {service.channel
-                        ? `${service.channel.type} ${service.channel.channel}`
-                        : `${service.networkId}/${service.serviceId}`}
-                    </span>
-                  </div>
-                  <span
-                    className={`service-dot ${users.length > 0 ? 'open' : ''}`}
-                    aria-label={users.length > 0 ? '使用中' : '未使用'}
-                  />
-                  <span
-                    className={`service-epg ${service.epgReady ? 'ready' : ''}`}
-                  >
-                    {service.epgReady ? '番組' : '...'}
+      </div>
+      <Panel
+        title={`サービス (${visibleServices.length})`}
+        action={<span className="section-note">{openServiceCount} 使用中</span>}
+      >
+        <div className="overview-service-list">
+          {visibleServices.map((service) => {
+            const users = openServiceUsers(openServices, service)
+            return (
+              <div
+                className={`overview-service ${users.length > 0 ? 'open' : ''}`}
+                key={service.id}
+                title={`${service.name} ${users.length > 0 ? `${users.map((user) => user.agent || user.id).join(', ')} が使用中` : '未使用'}`}
+              >
+                <Logo service={service} />
+                <div className="overview-service-main">
+                  <strong>{service.name}</strong>
+                  <span>
+                    {service.channel
+                      ? `${service.channel.type} ${service.channel.channel}`
+                      : `${service.networkId}/${service.serviceId}`}
                   </span>
                 </div>
-              )
-            })}
-            {!services.loading && visibleServices.length === 0 && (
-              <Empty message="表示対象のテレビサービスがありません。" />
-            )}
-          </div>
-        </Panel>
-      </div>
+                <span
+                  className={`service-epg ${service.epgReady ? 'ready' : ''}`}
+                  aria-label={service.epgReady ? '番組表あり' : '番組表なし'}
+                />
+              </div>
+            )
+          })}
+          {!services.loading && visibleServices.length === 0 && (
+            <Empty message="表示対象のテレビサービスがありません。" />
+          )}
+        </div>
+      </Panel>
       <div className="overview-tuners">
         <Panel title={`チューナー (${tuners.data?.length ?? 0})`}>
           <div className="overview-tuner-list">

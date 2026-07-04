@@ -95,15 +95,14 @@
 }
 
 .service-epg {
-  min-width: 22px;
-  color: #8b98a5;
-  font-size: 10px;
-  font-weight: 700;
-  text-align: right;
+  width: 8px;
+  height: 8px;
+  background: #c8d0d7;
+  border-radius: 999px;
 }
 
 .service-epg.ready {
-  color: #2b9e68;
+  background: #2b9e68;
 }
 
 .section-note {
@@ -113,12 +112,17 @@
 }
 .service-logo,
 .logo-fallback {
+  display: block;
   width: 42px;
   height: 42px;
   flex: 0 0 auto;
   object-fit: contain;
-  border: 1px solid #d9e0e6;
-  border-radius: 6px;
+}
+
+.service-logo {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 
 .logo-fallback {
@@ -127,7 +131,9 @@
   color: #52606c;
   font-size: 12px;
   font-weight: 700;
-  background: #f3f6f8;
+  background: #ffffff;
+  border: 1px solid #d9e0e6;
+  border-radius: 6px;
 }
 .icon-button {
   display: inline-grid;
