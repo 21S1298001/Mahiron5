@@ -218,6 +218,28 @@ func TestTunerManagerDefaultPriorityGrabsNegativeReservation(t *testing.T) {
 	_ = viewer.Stop(context.Background())
 }
 
+func TestTunerManagerDefaultPriorityGrabsTunerHeldByNegativePriorityUser(t *testing.T) {
+	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "only", Types: []string{"GR"}, Command: "true"},
+	}})
+	channel := &config.ChannelConfig{Type: "GR", Channel: "27"}
+	epgCtx := WithUser(context.Background(), User{ID: "epg", Priority: -1})
+	epg, _, err := mgr.AcquireDevice(epgCtx, "GR", channel, channel, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epg.(interface{ AddUser(User) }).AddUser(User{ID: "epg", Priority: -1})
+
+	viewer, _, err := mgr.AcquireDevice(context.Background(), "GR", channel, channel, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if epg == viewer {
+		t.Fatal("default-priority request should grab a tuner held only by priority -1 users")
+	}
+	_ = viewer.Stop(context.Background())
+}
+
 func TestTunerManagerHighestActiveUserPriorityProtectsTuner(t *testing.T) {
 	mgr := NewTunerManager(&TunerManagerConfig{TunersConfig: config.TunersConfig{
 		{Name: "only", Types: []string{"GR"}, Command: "true"},

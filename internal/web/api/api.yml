@@ -539,7 +539,7 @@ paths:
         - name: X-Mirakurun-Priority
           in: header
           schema:
-            minimum: 0
+            minimum: -1
             type: integer
         - name: decode
           in: query
@@ -583,7 +583,7 @@ paths:
         - name: X-Mirakurun-Priority
           in: header
           schema:
-            minimum: 0
+            minimum: -1
             type: integer
         - name: decode
           in: query
@@ -717,7 +717,7 @@ paths:
         - name: X-Mirakurun-Priority
           in: header
           schema:
-            minimum: 0
+            minimum: -1
             type: integer
         - name: decode
           in: query
@@ -762,7 +762,7 @@ paths:
         - name: X-Mirakurun-Priority
           in: header
           schema:
-            minimum: 0
+            minimum: -1
             type: integer
         - name: decode
           in: query
@@ -924,7 +924,7 @@ paths:
         - name: X-Mirakurun-Priority
           in: header
           schema:
-            minimum: 0
+            minimum: -1
             type: integer
         - name: decode
           in: query
@@ -971,7 +971,7 @@ paths:
         - name: X-Mirakurun-Priority
           in: header
           schema:
-            minimum: 0
+            minimum: -1
             type: integer
         - name: decode
           in: query
@@ -1024,7 +1024,7 @@ paths:
         - name: X-Mirakurun-Priority
           in: header
           schema:
-            minimum: 0
+            minimum: -1
             type: integer
         - name: decode
           in: query
@@ -1079,7 +1079,7 @@ paths:
         - name: X-Mirakurun-Priority
           in: header
           schema:
-            minimum: 0
+            minimum: -1
             type: integer
         - name: decode
           in: query

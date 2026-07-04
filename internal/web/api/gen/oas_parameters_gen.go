@@ -322,7 +322,7 @@ func decodeChannelsTypeChannelServicesIDStreamHeadParams(args [3]string, argsEsc
 					if err := func() error {
 						if err := (validate.Int{
 							MinSet:        true,
-							Min:           0,
+							Min:           -1,
 							MaxSet:        false,
 							Max:           0,
 							MinExclusive:  false,
@@ -592,7 +592,7 @@ func decodeChannelsTypeChannelStreamHeadParams(args [2]string, argsEscaped bool,
 					if err := func() error {
 						if err := (validate.Int{
 							MinSet:        true,
-							Min:           0,
+							Min:           -1,
 							MaxSet:        false,
 							Max:           0,
 							MinExclusive:  false,
@@ -980,7 +980,7 @@ func decodeGetChannelStreamParams(args [2]string, argsEscaped bool, r *http.Requ
 					if err := func() error {
 						if err := (validate.Int{
 							MinSet:        true,
-							Min:           0,
+							Min:           -1,
 							MaxSet:        false,
 							Max:           0,
 							MinExclusive:  false,
@@ -1860,7 +1860,7 @@ func decodeGetProgramStreamParams(args [1]string, argsEscaped bool, r *http.Requ
 					if err := func() error {
 						if err := (validate.Int{
 							MinSet:        true,
-							Min:           0,
+							Min:           -1,
 							MaxSet:        false,
 							Max:           0,
 							MinExclusive:  false,
@@ -2616,7 +2616,7 @@ func decodeGetServiceStreamParams(args [1]string, argsEscaped bool, r *http.Requ
 					if err := func() error {
 						if err := (validate.Int{
 							MinSet:        true,
-							Min:           0,
+							Min:           -1,
 							MaxSet:        false,
 							Max:           0,
 							MinExclusive:  false,
@@ -2957,7 +2957,7 @@ func decodeGetServiceStreamByChannelParams(args [3]string, argsEscaped bool, r *
 					if err := func() error {
 						if err := (validate.Int{
 							MinSet:        true,
-							Min:           0,
+							Min:           -1,
 							MaxSet:        false,
 							Max:           0,
 							MinExclusive:  false,
@@ -3878,7 +3878,7 @@ func decodeProgramsIDStreamHeadParams(args [1]string, argsEscaped bool, r *http.
 					if err := func() error {
 						if err := (validate.Int{
 							MinSet:        true,
-							Min:           0,
+							Min:           -1,
 							MaxSet:        false,
 							Max:           0,
 							MinExclusive:  false,
@@ -4243,7 +4243,7 @@ func decodeServicesIDStreamHeadParams(args [1]string, argsEscaped bool, r *http.
 					if err := func() error {
 						if err := (validate.Int{
 							MinSet:        true,
-							Min:           0,
+							Min:           -1,
 							MaxSet:        false,
 							Max:           0,
 							MinExclusive:  false,

@@ -2,7 +2,6 @@ package stream
 
 import (
 	"context"
-	"errors"
 
 	"github.com/21S1298001/mahiron/internal/stream/local"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
@@ -34,7 +33,7 @@ func (m *StreamManager) createSession(ctx context.Context, key sessionKey, chann
 		broadcast = source.NewBroadcast(lease.Source, func() { m.remove(key) })
 	} else {
 		if !broadcast.AddOnStop(func() { m.remove(key) }) {
-			return nil, "", "", errors.New("broadcast stopped")
+			return nil, "", "", source.ErrBroadcastStopped
 		}
 	}
 

@@ -34,21 +34,41 @@ type sectionSubscription struct {
 	writerDone chan struct{}
 }
 
+const packetWriteBatchBytes = 64 * ts.PacketSize
+
 func (e *Demuxer) writePackets(id uint64, sub *packetSubscription, dst io.Writer) {
 	defer close(sub.writerDone)
+	buf := make([]byte, 0, packetWriteBatchBytes)
 	for packet := range sub.queue {
-		n, err := dst.Write(packet)
-		if err == nil && n != len(packet) {
+		buf = append(buf[:0], packet...)
+		sub.stats.Packet++
+		if sub.continuity.observe(packet) {
+			sub.stats.Drop++
+		}
+	drain:
+		for len(buf)+ts.PacketSize <= packetWriteBatchBytes {
+			select {
+			case p, ok := <-sub.queue:
+				if !ok {
+					break drain
+				}
+				buf = append(buf, p...)
+				sub.stats.Packet++
+				if sub.continuity.observe(p) {
+					sub.stats.Drop++
+				}
+			default:
+				break drain
+			}
+		}
+		n, err := dst.Write(buf)
+		if err == nil && n != len(buf) {
 			err = io.ErrShortWrite
 		}
 		if err != nil {
 			observability.RecordStreamSubscriberError(context.Background(), e.channelType, "write")
 			e.finishPacket(id, err)
 			return
-		}
-		sub.stats.Packet++
-		if sub.continuity.observe(packet) {
-			sub.stats.Drop++
 		}
 		tuner.ReportStreamInfo(sub.ctx, sub.statsKey, sub.stats)
 	}

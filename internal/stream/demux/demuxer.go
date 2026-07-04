@@ -11,11 +11,14 @@ import (
 )
 
 const (
-	packetSubscriberBuffer  = 512
-	sectionSubscriberBuffer = 64
+	packetSubscriberBuffer  = 16384 // ~3 MB / ~1.4 s of a 17 Mbps TS
+	sectionSubscriberBuffer = 512
 )
 
-var ErrSubscriberOverflow = errors.New("ts subscriber buffer overflow")
+var (
+	ErrSubscriberOverflow = errors.New("ts subscriber buffer overflow")
+	ErrDemuxerStopped     = errors.New("ts demuxer stopped")
+)
 
 type SourceSubscriber func(context.Context, io.Writer) error
 
@@ -149,6 +152,14 @@ func (e *Demuxer) PacketSubscriberCount() int {
 	return len(e.packets)
 }
 
+// Stopped reports whether the demuxer has permanently stopped and will
+// reject any new subscription attempts.
+func (e *Demuxer) Stopped() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.stopped
+}
+
 func (e *Demuxer) subscribePackets(ctx context.Context, serviceID *uint16, dst io.Writer) error {
 	sub := &packetSubscription{
 		ctx:        ctx,
@@ -168,6 +179,7 @@ func (e *Demuxer) subscribePackets(ctx context.Context, serviceID *uint16, dst i
 	case <-ctx.Done():
 		e.finishPacket(id, ctx.Err())
 		<-sub.done
+		<-sub.writerDone
 		return nil
 	case <-sub.done:
 		if sub.err == nil {
@@ -188,7 +200,7 @@ func (e *Demuxer) attachPacket(sub *packetSubscription) (uint64, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.stopped {
-		return 0, errors.New("ts demuxer stopped")
+		return 0, ErrDemuxerStopped
 	}
 	id := e.nextID
 	e.nextID++
@@ -204,7 +216,7 @@ func (e *Demuxer) attachSection(sub *sectionSubscription, start bool) (uint64, e
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.stopped {
-		return 0, errors.New("ts demuxer stopped")
+		return 0, ErrDemuxerStopped
 	}
 	id := e.nextID
 	e.nextID++

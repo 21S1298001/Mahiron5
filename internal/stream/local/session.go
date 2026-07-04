@@ -166,19 +166,34 @@ func (s *Session) Stop(ctx context.Context) error {
 	return result
 }
 
-var errScanComplete = errors.New("service scan complete")
+var (
+	errScanComplete   = errors.New("service scan complete")
+	ErrSessionStopped = errors.New("channel session stopped")
+)
+
+// Alive reports whether the session can still accept new subscribers. It is
+// used by the stream manager to detect a session that has finished shutting
+// down but has not yet been evicted from the session registry.
+func (s *Session) Alive() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.stopped && !s.rawDemuxer.Stopped()
+}
 
 func (s *Session) attachDemuxer(ctx context.Context, decode bool, serviceID uint16, service bool, dst io.Writer) error {
 	s.mu.Lock()
-	stopped := s.stopped
-	s.mu.Unlock()
-	if stopped {
-		return errors.New("channel session stopped")
+	if s.stopped {
+		s.mu.Unlock()
+		return ErrSessionStopped
 	}
 	demuxer := s.rawDemuxer
 	if decode && s.descrambler != nil {
+		if s.decodedDemuxer.Stopped() {
+			s.decodedDemuxer = demux.New(s.subscribeDecodedMux, nil).WithMetricLabels(s.typ, s.channel)
+		}
 		demuxer = s.decodedDemuxer
 	}
+	s.mu.Unlock()
 	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
 		if service {
 			return demuxer.SubscribeService(ctx, serviceID, dst)

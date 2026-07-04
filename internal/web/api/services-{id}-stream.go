@@ -29,7 +29,7 @@ func GetServiceStream(ctx context.Context, h *Handler, params apigen.GetServiceS
 		if errors.Is(err, stream.ErrChannelNotFound) {
 			return &apigen.GetServiceStreamNotFound{}, nil
 		}
-		if errors.Is(err, stream.ErrTunerNotFound) || errors.Is(err, stream.ErrUnsupportedTuner) {
+		if errors.Is(err, stream.ErrTunerNotFound) || errors.Is(err, stream.ErrUnsupportedTuner) || errors.Is(err, stream.ErrTunerUnavailable) {
 			return &apigen.GetServiceStreamServiceUnavailable{}, nil
 		}
 		return nil, err

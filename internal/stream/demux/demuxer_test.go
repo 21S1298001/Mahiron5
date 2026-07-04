@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -145,6 +146,86 @@ func TestPacketDemuxerDisconnectsOverflowingSubscriberOnly(t *testing.T) {
 	if fast.Len() == 0 {
 		t.Fatal("fast subscriber received no packets")
 	}
+}
+
+func TestPacketDemuxerToleratesStalledSubscriberWithinBuffer(t *testing.T) {
+	const count = 2000 // well beyond the old 512-packet buffer, within the new one
+	start := make(chan struct{})
+	engine := New(func(_ context.Context, dst io.Writer) error {
+		<-start
+		for i := range count {
+			if _, err := dst.Write(streamtest.TestPacket(0x0100, byte(i))); err != nil {
+				return err
+			}
+		}
+		return nil
+	}, nil)
+
+	stall := &stallingWriter{release: make(chan struct{})}
+	errCh := make(chan error, 1)
+	go func() { errCh <- engine.SubscribeChannel(t.Context(), stall) }()
+	waitForDemuxerSubscribers(t, engine, 1)
+	close(start)
+
+	time.Sleep(200 * time.Millisecond)
+	close(stall.release)
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("SubscribeChannel returned error = %v, want nil", err)
+	}
+	if got, want := stall.Len(), count*ts.PacketSize; got != want {
+		t.Fatalf("subscriber received %d bytes, want %d", got, want)
+	}
+}
+
+func TestPacketDemuxerWaitsForWriterOnContextCancel(t *testing.T) {
+	packet := streamtest.TestPacket(0x0100, 1)
+	start := make(chan struct{})
+	engine := New(func(_ context.Context, dst io.Writer) error {
+		<-start
+		_, err := dst.Write(packet)
+		return err
+	}, nil)
+
+	blocked := &blockingWriter{entered: make(chan struct{}), release: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	returned := make(chan error, 1)
+	go func() { returned <- engine.SubscribeChannel(ctx, blocked) }()
+	waitForDemuxerSubscribers(t, engine, 1)
+	close(start)
+	<-blocked.entered
+
+	cancel()
+	select {
+	case err := <-returned:
+		t.Fatalf("SubscribeChannel returned before writer finished: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(blocked.release)
+	if err := <-returned; err != nil {
+		t.Fatalf("SubscribeChannel error = %v, want nil", err)
+	}
+}
+
+type stallingWriter struct {
+	mu      sync.Mutex
+	buf     bytes.Buffer
+	once    sync.Once
+	release chan struct{}
+}
+
+func (w *stallingWriter) Write(p []byte) (int, error) {
+	w.once.Do(func() { <-w.release })
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.Write(p)
+}
+
+func (w *stallingWriter) Len() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.Len()
 }
 
 func TestPacketDemuxerObserveSectionsWaitsForObserverOnCancel(t *testing.T) {

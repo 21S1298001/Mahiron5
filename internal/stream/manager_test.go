@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/runtimecontext"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/local"
@@ -338,6 +339,68 @@ func TestManagerPassesBackgroundWaitToAllocator(t *testing.T) {
 	}
 	if !tuners.wait {
 		t.Fatal("allocator wait = false, want true for background acquisition")
+	}
+}
+
+// fakeDeadSession is a Session with a distinguishing id field so two
+// instances compare unequal, letting tests verify identity-guarded eviction.
+type fakeDeadSession struct{ id string }
+
+func (fakeDeadSession) ChannelStream(context.Context, bool, io.Writer) error { return nil }
+func (fakeDeadSession) ProgramStream(context.Context, *program.Program, bool, io.Writer) error {
+	return nil
+}
+func (fakeDeadSession) ServiceStream(context.Context, uint16, bool, io.Writer) error { return nil }
+func (fakeDeadSession) ScanServices(context.Context) ([]ts.ServiceInfo, error)       { return nil, nil }
+func (fakeDeadSession) CollectEIT(context.Context, func(*ts.EIT) error) error        { return nil }
+func (fakeDeadSession) ObserveLogos(context.Context, func(*ts.LogoImage) error) error {
+	return nil
+}
+func (fakeDeadSession) Stop(context.Context) error { return nil }
+func (fakeDeadSession) Alive() bool                { return false }
+
+func TestManagerGetOrCreateRetriesDeadRegistryEntry(t *testing.T) {
+	devices := &fakeTunerDeviceRecorder{}
+	manager := testManager(t, devices)
+	key := sessionKey{typ: "GR", channel: "27"}
+	stale := fakeDeadSession{id: "stale"}
+	manager.registry.mu.Lock()
+	manager.registry.sessions[key] = sessionEntry{session: stale}
+	manager.registry.mu.Unlock()
+
+	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session == Session(stale) {
+		t.Fatal("expected a fresh session, got the stale dead one")
+	}
+
+	manager.registry.mu.Lock()
+	entry, stillPresent := manager.registry.sessions[key]
+	manager.registry.mu.Unlock()
+	if stillPresent && entry.session == Session(stale) {
+		t.Fatal("stale session entry was not evicted from the registry")
+	}
+}
+
+func TestSessionRegistryRemoveIfSameKeepsNewerSession(t *testing.T) {
+	registry := newSessionRegistry()
+	key := sessionKey{typ: "GR", channel: "27"}
+	oldSession := fakeDeadSession{id: "old"}
+	newSession := fakeDeadSession{id: "new"}
+
+	registry.mu.Lock()
+	registry.sessions[key] = sessionEntry{session: newSession}
+	registry.mu.Unlock()
+
+	registry.removeIfSame(key, oldSession)
+
+	registry.mu.Lock()
+	entry, ok := registry.sessions[key]
+	registry.mu.Unlock()
+	if !ok || entry.session != Session(newSession) {
+		t.Fatal("removeIfSame evicted a session that did not match the stale reference")
 	}
 }
 
@@ -737,6 +800,29 @@ func TestChannelStreamRawTS(t *testing.T) {
 	}
 }
 
+func TestChannelStreamWithoutUserContextGetsLowestPriority(t *testing.T) {
+	devices := &fakeTunerDeviceRecorder{}
+	manager := testManager(t, devices)
+	session, err := manager.GetOrCreate(context.Background(), "GR", "27")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := runtimecontext.WithJob(context.Background(), runtimecontext.JobInfo{Name: "EPG Gather NID 6"})
+	var out bytes.Buffer
+	if err := session.ChannelStream(ctx, false, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	user := devices.lastDevice().lastUser()
+	if user.Priority != -1 {
+		t.Fatalf("tracked tuner user priority = %d, want -1", user.Priority)
+	}
+	if user.Agent != "EPG Gather NID 6" {
+		t.Fatalf("tracked tuner user agent = %q, want %q", user.Agent, "EPG Gather NID 6")
+	}
+}
+
 func TestConcurrentChannelStreamsStartOneTunerDevice(t *testing.T) {
 	devices := &fakeTunerDeviceRecorder{}
 	manager := testManager(t, devices)
@@ -837,6 +923,12 @@ func (r *fakeTunerDeviceRecorder) starts() int {
 	return count
 }
 
+func (r *fakeTunerDeviceRecorder) lastDevice() *fakeTunerDevice {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.devices[len(r.devices)-1]
+}
+
 func eventually(timeout time.Duration, ok func() bool) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -881,6 +973,21 @@ type fakeTunerDevice struct {
 	err    error
 	mu     sync.Mutex
 	starts int
+	users  []tuner.User
+}
+
+func (d *fakeTunerDevice) AddUser(user tuner.User) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.users = append(d.users, user)
+}
+
+func (d *fakeTunerDevice) RemoveUser(string) {}
+
+func (d *fakeTunerDevice) lastUser() tuner.User {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.users[len(d.users)-1]
 }
 
 type routeSelectingTunerManager struct {

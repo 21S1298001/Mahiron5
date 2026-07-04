@@ -11,6 +11,8 @@ import (
 	"github.com/21S1298001/mahiron/internal/util"
 )
 
+var ErrBroadcastStopped = errors.New("broadcast stopped")
+
 type Broadcast struct {
 	cancel  context.CancelFunc
 	done    <-chan struct{}
@@ -104,7 +106,7 @@ func (b *Broadcast) attach(dst io.Writer) error {
 	b.mu.Lock()
 	if b.stopped {
 		b.mu.Unlock()
-		return errors.New("broadcast stopped")
+		return ErrBroadcastStopped
 	}
 	b.refs++
 	refs := b.refs

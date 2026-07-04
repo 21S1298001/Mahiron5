@@ -18,7 +18,7 @@ func GetChannelStream(ctx context.Context, h *Handler, params apigen.GetChannelS
 		if errors.Is(err, stream.ErrChannelNotFound) {
 			return &apigen.GetChannelStreamNotFound{}, nil
 		}
-		if errors.Is(err, stream.ErrTunerNotFound) || errors.Is(err, stream.ErrUnsupportedTuner) {
+		if errors.Is(err, stream.ErrTunerNotFound) || errors.Is(err, stream.ErrUnsupportedTuner) || errors.Is(err, stream.ErrTunerUnavailable) {
 			return &apigen.GetChannelStreamServiceUnavailable{}, nil
 		}
 		return nil, err
@@ -51,7 +51,7 @@ func GetServiceStreamByChannel(ctx context.Context, h *Handler, params apigen.Ge
 		if errors.Is(err, stream.ErrChannelNotFound) {
 			return &apigen.GetServiceStreamByChannelNotFound{}, nil
 		}
-		if errors.Is(err, stream.ErrTunerNotFound) || errors.Is(err, stream.ErrUnsupportedTuner) {
+		if errors.Is(err, stream.ErrTunerNotFound) || errors.Is(err, stream.ErrUnsupportedTuner) || errors.Is(err, stream.ErrTunerUnavailable) {
 			return &apigen.GetServiceStreamByChannelServiceUnavailable{}, nil
 		}
 		return nil, err

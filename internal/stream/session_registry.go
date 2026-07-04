@@ -107,6 +107,17 @@ func (r *sessionRegistry) remove(key sessionKey) {
 	r.removeLocked(key)
 }
 
+// removeIfSame evicts the registry entry for key only if it still holds the
+// given session, so a caller that observed a stale/dead session never evicts
+// a newer one that has since replaced it.
+func (r *sessionRegistry) removeIfSame(key sessionKey, session Session) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if entry, ok := r.sessions[key]; ok && entry.session == session {
+		r.removeLocked(key)
+	}
+}
+
 // beginShutdown marks the registry as shutting down and returns a snapshot of
 // the in-flight creates so callers can wait for them to settle.
 func (r *sessionRegistry) beginShutdown() []*sessionCreate {

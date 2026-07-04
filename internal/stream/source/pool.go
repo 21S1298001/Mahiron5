@@ -316,6 +316,7 @@ func (s *tunerLiveSource) WithUser(ctx context.Context, run func(context.Context
 		}
 		user = tuner.User{
 			ID:            uuid.NewString(),
+			Priority:      -1,
 			Agent:         agent,
 			StreamSetting: tuner.StreamSetting{Channel: s.channel},
 		}

@@ -141,44 +141,71 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 
 	key := sessionKey{typ: channelType, channel: channel}
 
-	res := m.registry.acquire(key)
-	switch {
-	case res.hasEntry:
-		recordStart = false
-		slog.Debug("reusing stream session", "type", channelType, "channel", channel)
-		return res.entry.session, nil
-	case res.shuttingDown:
-		return nil, ErrStreamManagerShutdown
-	case res.pending != nil:
-		select {
-		case <-res.pending.done:
-			if res.pending.err != nil {
-				return nil, res.pending.err
+	const maxAttempts = 3
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		res := m.registry.acquire(key)
+		switch {
+		case res.hasEntry:
+			if !sessionAlive(res.entry.session) {
+				m.registry.removeIfSame(key, res.entry.session)
+				continue
 			}
 			recordStart = false
 			slog.Debug("reusing stream session", "type", channelType, "channel", channel)
-			return res.pending.session, nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
+			return res.entry.session, nil
+		case res.shuttingDown:
+			return nil, ErrStreamManagerShutdown
+		case res.pending != nil:
+			select {
+			case <-res.pending.done:
+				if res.pending.err != nil {
+					return nil, res.pending.err
+				}
+				recordStart = false
+				slog.Debug("reusing stream session", "type", channelType, "channel", channel)
+				return res.pending.session, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		default:
+			create := res.create
+
+			slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
+			session, routeType, source, err := m.createSession(ctx, key, channelType, channel, wait)
+			if err != nil {
+				slog.Debug("failed to acquire stream source", "type", channelType, "channel", channel, "wait", wait, "err", err)
+			}
+
+			m.registry.completeCreate(key, create, session, routeType, source, err)
+
+			if err != nil {
+				if errors.Is(err, errBroadcastStopped) && attempt < maxAttempts-1 {
+					continue
+				}
+				return nil, err
+			}
+			observability.RecordStreamSessionStart(ctx, channelType, routeType, source, "success")
+			recordStart = false
+			slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", routeType, "source", source)
+			return session, nil
 		}
 	}
-	create := res.create
+	return nil, ErrSessionAcquireFailed
+}
 
-	slog.Debug("creating stream session", "type", channelType, "channel", channel, "wait", wait)
-	session, routeType, source, err := m.createSession(ctx, key, channelType, channel, wait)
-	if err != nil {
-		slog.Debug("failed to acquire stream source", "type", channelType, "channel", channel, "wait", wait, "err", err)
+// aliveChecker is implemented by session types that can outlive their
+// underlying resources and go dead before being evicted from the session
+// registry (see local.Session.Alive). Sessions without a lifecycle race
+// (e.g. remote sessions) are treated as always alive.
+type aliveChecker interface {
+	Alive() bool
+}
+
+func sessionAlive(session Session) bool {
+	if checker, ok := session.(aliveChecker); ok {
+		return checker.Alive()
 	}
-
-	m.registry.completeCreate(key, create, session, routeType, source, err)
-
-	if err != nil {
-		return nil, err
-	}
-	observability.RecordStreamSessionStart(ctx, channelType, routeType, source, "success")
-	recordStart = false
-	slog.Info("stream session created", "type", channelType, "channel", channel, "routeType", routeType, "source", source)
-	return session, nil
+	return true
 }
 
 func (m *StreamManager) HasSession(channelType, channel string) bool {
@@ -250,9 +277,11 @@ var (
 	ErrEITObservationUnsupported  = remote.ErrEITObservationUnsupported
 	ErrLogoObservationUnsupported = remote.ErrLogoObservationUnsupported
 	ErrStreamManagerShutdown      = errors.New("stream manager is shut down")
+	ErrSessionAcquireFailed       = errors.New("failed to acquire a stable stream session")
 	ErrTunerNotFound              = tuner.ErrTunerNotFound
 	ErrUnsupportedTuner           = tuner.ErrUnsupportedTuner
 	ErrTunerUnavailable           = tuner.ErrTunerUnavailable
+	errBroadcastStopped           = source.ErrBroadcastStopped
 )
 
 // newRemoteClient is a test seam allowing manager tests to stub the upstream

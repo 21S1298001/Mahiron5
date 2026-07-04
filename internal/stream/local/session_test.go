@@ -247,6 +247,113 @@ func TestSharedSessionUsesOneDescramblerForDecodedSubscribers(t *testing.T) {
 	}
 }
 
+// decodedSubscriberCount and decodedDemuxerStopped read session.decodedDemuxer
+// under the session mutex, since attachDemuxer may concurrently replace that
+// field with a freshly recreated demuxer (see the decoded-demuxer revival
+// logic in attachDemuxer).
+func decodedSubscriberCount(s *Session) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.decodedDemuxer.PacketSubscriberCount()
+}
+
+func decodedDemuxerStopped(s *Session) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.decodedDemuxer.Stopped()
+}
+
+func TestSessionRecreatesDecodedDemuxerAfterAllDecodedSubscribersDetach(t *testing.T) {
+	packetSource := newInfiniteRepeatingSource(streamtest.TestPacket(0x0100, 1))
+	descrambler := &passthroughDescrambler{}
+	session := NewSession(Config{
+		Broadcast:   source.NewBroadcast(packetSource, nil),
+		Channel:     "27",
+		Descrambler: descrambler,
+		OnStop:      func() {},
+		Type:        "GR",
+	})
+	t.Cleanup(func() { _ = session.Stop(context.Background()) })
+
+	// Keep a raw subscriber attached throughout so only the decoded demuxer,
+	// not the whole session, goes through a stop/empty cycle below.
+	rawCtx, rawCancel := context.WithCancel(context.Background())
+	t.Cleanup(rawCancel)
+	rawDone := make(chan error, 1)
+	go func() { rawDone <- session.ChannelStream(rawCtx, false, io.Discard) }()
+	if !streamtest.Eventually(time.Second, func() bool { return session.rawDemuxer.PacketSubscriberCount() >= 1 }) {
+		t.Fatal("raw subscriber did not attach")
+	}
+
+	firstCtx, firstCancel := context.WithCancel(context.Background())
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- session.ChannelStream(firstCtx, true, io.Discard) }()
+	if !streamtest.Eventually(time.Second, func() bool { return decodedSubscriberCount(session) == 1 }) {
+		t.Fatal("first decoded subscriber did not attach")
+	}
+
+	firstCancel()
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first decoded stream error = %v, want nil", err)
+	}
+	if !streamtest.Eventually(time.Second, func() bool { return decodedDemuxerStopped(session) }) {
+		t.Fatal("decoded demuxer did not stop after its last subscriber detached")
+	}
+
+	secondCtx, secondCancel := context.WithCancel(context.Background())
+	secondDone := make(chan error, 1)
+	go func() { secondDone <- session.ChannelStream(secondCtx, true, io.Discard) }()
+	if !streamtest.Eventually(time.Second, func() bool { return decodedSubscriberCount(session) == 1 }) {
+		t.Fatal("second decoded subscriber did not attach to a fresh demuxer")
+	}
+	secondCancel()
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second decoded stream error = %v, want nil", err)
+	}
+
+	rawCancel()
+	if err := <-rawDone; err != nil {
+		t.Fatalf("raw stream error = %v, want nil", err)
+	}
+}
+
+// infiniteRepeatingSource is a LiveSource that keeps writing the same packet
+// until its context is canceled, used to keep a broadcast alive across
+// attach/detach cycles in tests.
+type infiniteRepeatingSource struct {
+	packet []byte
+	done   chan struct{}
+}
+
+func newInfiniteRepeatingSource(packet []byte) *infiniteRepeatingSource {
+	return &infiniteRepeatingSource{packet: packet, done: make(chan struct{})}
+}
+
+func (s *infiniteRepeatingSource) Start(ctx context.Context, dst io.Writer) error {
+	go func() {
+		defer close(s.done)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			if _, err := dst.Write(s.packet); err != nil {
+				return
+			}
+			time.Sleep(50 * time.Microsecond)
+		}
+	}()
+	return nil
+}
+
+func (*infiniteRepeatingSource) Stop(context.Context) error { return nil }
+func (s *infiniteRepeatingSource) Done() <-chan struct{}    { return s.done }
+func (*infiniteRepeatingSource) Err() error                 { return nil }
+func (*infiniteRepeatingSource) WithUser(ctx context.Context, run func(context.Context) error) error {
+	return run(ctx)
+}
+
 type passthroughDescrambler struct {
 	starts atomic.Int32
 }
