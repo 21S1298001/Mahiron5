@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { DashboardState } from '../dashboard'
-import { isVisibleService, sortServicesForDisplay } from '../domain/service'
+import { isVisibleService } from '../domain/service'
 import { CopyRow } from '../ui/actions'
 import { PageFrame } from '../ui/layout'
 
@@ -9,14 +9,10 @@ export default function Integrations({
 }: {
   dashboard: DashboardState
 }) {
-  const { services, channels } = dashboard
+  const { services } = dashboard
   const visibleServices = useMemo(
-    () =>
-      sortServicesForDisplay(
-        (services.data ?? []).filter(isVisibleService),
-        channels.data ?? [],
-      ),
-    [channels.data, services.data],
+    () => (services.data ?? []).filter(isVisibleService),
+    [services.data],
   )
   const origin = window.location.origin
   const links = [

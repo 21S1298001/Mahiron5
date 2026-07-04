@@ -161,6 +161,92 @@ func TestGetServicesReturnsServicesWithChannelsAndFilters(t *testing.T) {
 	}
 }
 
+func TestServiceListEndpointsReturnServerOrder(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	store := service.NewSQLiteStore(database)
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
+		{
+			Id:                 "0000100103",
+			ServiceId:          103,
+			NetworkId:          1,
+			TransportStreamId:  1,
+			Name:               "GR 3",
+			Type:               1,
+			RemoteControlKeyId: 3,
+		},
+		{
+			Id:                "0000100101",
+			ServiceId:         101,
+			NetworkId:         1,
+			TransportStreamId: 1,
+			Name:              "GR no key",
+			Type:              1,
+		},
+		{
+			Id:                 "0000100102",
+			ServiceId:          102,
+			NetworkId:          1,
+			TransportStreamId:  1,
+			Name:               "GR 1",
+			Type:               1,
+			RemoteControlKeyId: 1,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReplaceChannelServices(ctx, "BS", "101", []*service.Service{
+		{
+			Id:                "0000200201",
+			ServiceId:         201,
+			NetworkId:         2,
+			TransportStreamId: 1,
+			Name:              "BS",
+			Type:              1,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(HandlerConfig{
+		ProgramManager: program.NewProgramManager(program.NewSQLiteStore(database)),
+		ServiceManager: service.NewServiceManager(store, config.ChannelsConfig{
+			{Name: "BS", Type: "BS", Channel: "101"},
+			{Name: "GR", Type: "GR", Channel: "27"},
+		}),
+	})
+
+	res, err := handler.GetServices(ctx, apigen.GetServicesParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	services, ok := res.(*apigen.GetServicesOKApplicationJSON)
+	if !ok {
+		t.Fatalf("response type = %T, want *GetServicesOKApplicationJSON", res)
+	}
+	if got, want := apiServiceNames(*services), []string{"BS", "GR 1", "GR 3", "GR no key"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("services = %v, want %v", got, want)
+	}
+
+	channelRes, err := handler.GetServicesByChannel(ctx, apigen.GetServicesByChannelParams{
+		Type:    "GR",
+		Channel: "27",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	channelServices, ok := channelRes.(*apigen.GetServicesByChannelOKApplicationJSON)
+	if !ok {
+		t.Fatalf("response type = %T, want *GetServicesByChannelOKApplicationJSON", channelRes)
+	}
+	if got, want := apiServiceNames(*channelServices), []string{"GR 1", "GR 3", "GR no key"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("channel services = %v, want %v", got, want)
+	}
+}
+
 func TestGetServicesByChannelAndGetServiceByChannel(t *testing.T) {
 	handler := testListHandler(t)
 
@@ -385,4 +471,12 @@ func TestGetLogoImageReturnsNotFound(t *testing.T) {
 	if _, ok := res.(*apigen.GetLogoImageNotFound); !ok {
 		t.Fatalf("response = %T, want not found", res)
 	}
+}
+
+func apiServiceNames(services []apigen.Service) []string {
+	names := make([]string, len(services))
+	for i, service := range services {
+		names[i] = service.Name
+	}
+	return names
 }

@@ -44,7 +44,11 @@ func (s *ServiceManager) CountServices(ctx context.Context) (int, error) {
 }
 
 func (s *ServiceManager) GetServices(ctx context.Context) ([]*Service, error) {
-	return s.store.List(ctx)
+	services, err := s.store.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.orderServices(services), nil
 }
 
 func (s *ServiceManager) SetEPGAttempt(ctx context.Context, networkID, serviceID uint16, attemptedAt int64, lastError string) error {
@@ -131,7 +135,11 @@ func (s *ServiceManager) GetChannel(channelType string, channelId string) *confi
 }
 
 func (s *ServiceManager) GetServicesByChannel(ctx context.Context, channelType string, channelId string) ([]*Service, error) {
-	return s.store.GetByChannel(ctx, channelType, channelId)
+	services, err := s.store.GetByChannel(ctx, channelType, channelId)
+	if err != nil {
+		return nil, err
+	}
+	return s.orderServices(services), nil
 }
 
 func (s *ServiceManager) ReplaceChannelServices(ctx context.Context, channelType, channelId string, services []*Service) error {
