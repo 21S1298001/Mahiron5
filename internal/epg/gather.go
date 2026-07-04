@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -38,14 +38,14 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 	}
 	remaining := append([]ServiceKey(nil), serviceKeys...)
 	var result error
-	items := make([]jobreport.Item, 0, len(ordered)+len(serviceKeys))
+	items := make([]run.Item, 0, len(ordered)+len(serviceKeys))
 	warnings := []string{}
 	observedTotal := 0
 	programTotal := 0
 	for _, candidate := range ordered {
 		if len(remaining) == 0 {
 			report := epgGatherResult(networkID, len(candidates), len(serviceKeys), observedTotal, len(remaining), programTotal, items, warnings)
-			jobreport.Set(ctx, report)
+			run.Set(ctx, report)
 			span.SetAttributes(epgGatherAttributes(report)...)
 			return nil
 		}
@@ -73,7 +73,7 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 			observedInRemaining = previousRemaining - len(remaining)
 			observedTotal += observedInRemaining
 		}
-		item := jobreport.Item{
+		item := run.Item{
 			Kind:    "candidate",
 			Summary: fmt.Sprintf("%s/%s", candidate.Type, candidate.Channel),
 			Data: map[string]any{
@@ -99,7 +99,7 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 		if candidateErr == nil && len(remaining) == 0 {
 			slog.Debug("finished network EPG collection", "networkId", networkID, "type", candidate.Type, "channel", candidate.Channel)
 			report := epgGatherResult(networkID, len(candidates), len(serviceKeys), observedTotal, len(remaining), programTotal, items, warnings)
-			jobreport.Set(ctx, report)
+			run.Set(ctx, report)
 			span.SetAttributes(epgGatherAttributes(report)...)
 			return nil
 		}
@@ -122,7 +122,7 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 	report := epgGatherResult(networkID, len(candidates), len(serviceKeys), observedTotal, len(remaining), programTotal, items, warnings)
 	if len(remaining) > 0 {
 		for _, key := range remaining {
-			report.Items = append(report.Items, jobreport.Item{
+			report.Items = append(report.Items, run.Item{
 				Kind:    "service",
 				Summary: fmt.Sprintf("service %d", key.ServiceID),
 				Data: map[string]any{
@@ -134,18 +134,18 @@ func gatherNetwork(ctx context.Context, programStore ProgramStore, serviceStore 
 			})
 		}
 	}
-	jobreport.Set(ctx, report)
+	run.Set(ctx, report)
 	span.SetAttributes(epgGatherAttributes(report)...)
 	return result
 }
 
-func epgGatherResult(networkID uint16, candidateCount, serviceCount, observed, remaining, programs int, items []jobreport.Item, warnings []string) jobreport.Result {
+func epgGatherResult(networkID uint16, candidateCount, serviceCount, observed, remaining, programs int, items []run.Item, warnings []string) run.Result {
 	kind := "epg_gather"
 	summary := fmt.Sprintf("network %d: %d/%d services observed", networkID, observed, serviceCount)
 	if remaining > 0 {
 		summary = fmt.Sprintf("%s, %d remaining", summary, remaining)
 	}
-	return jobreport.Result{
+	return run.Result{
 		Kind:    kind,
 		Summary: summary,
 		Counts: map[string]int{
@@ -155,12 +155,12 @@ func epgGatherResult(networkID uint16, candidateCount, serviceCount, observed, r
 			"remainingServices": remaining,
 			"programs":          programs,
 		},
-		Items:    append([]jobreport.Item(nil), items...),
+		Items:    append([]run.Item(nil), items...),
 		Warnings: append([]string(nil), warnings...),
 	}
 }
 
-func epgGatherAttributes(result jobreport.Result) []attribute.KeyValue {
+func epgGatherAttributes(result run.Result) []attribute.KeyValue {
 	return []attribute.KeyValue{
 		observability.AttrEPGCandidates.Int(result.Counts["candidates"]),
 		observability.AttrEPGServices.Int(result.Counts["services"]),

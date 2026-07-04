@@ -8,9 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/observability"
-	"github.com/21S1298001/mahiron/internal/runtimecontext"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/google/uuid"
 )
@@ -188,8 +187,8 @@ func (m *JobManager) run(ctx context.Context, item *Job) {
 		observability.AttrJobName.String(item.Name),
 		observability.AttrJobRetryCount.Int(item.RetryCount),
 	)
-	ctx = jobreport.ContextWithReporter(ctx, jobResultReporter{manager: m, item: item})
-	ctx = runtimecontext.WithJob(ctx, runtimecontext.JobInfo{ID: item.ID, Key: item.Key, Name: item.Name})
+	ctx = run.WithReporter(ctx, jobResultReporter{manager: m, item: item})
+	ctx = run.WithJob(ctx, run.JobInfo{ID: item.ID, Key: item.Key, Name: item.Name})
 	err := item.definition.Handler(ctx)
 	observability.EndSpan(span, err)
 	m.mu.Lock()
@@ -397,7 +396,7 @@ func (m *JobManager) Wait(ctx context.Context, id string) (*Job, error) {
 	copy := *item
 	copy.definition = nil
 	copy.done = nil
-	copy.Result = jobreport.Clone(item.Result)
+	copy.Result = run.Clone(item.Result)
 	return &copy, nil
 }
 
@@ -507,7 +506,7 @@ func (m *JobManager) GetJobs() []*Job {
 		copy := *item
 		copy.definition = nil
 		copy.done = nil
-		copy.Result = jobreport.Clone(item.Result)
+		copy.Result = run.Clone(item.Result)
 		result[i] = &copy
 	}
 	return result
@@ -565,20 +564,20 @@ type jobResultReporter struct {
 	item    *Job
 }
 
-func (r jobResultReporter) SetJobResult(result jobreport.Result) {
+func (r jobResultReporter) SetJobResult(result run.Result) {
 	if r.manager == nil || r.item == nil {
 		return
 	}
 	r.manager.setJobResult(r.item, result)
 }
 
-func (m *JobManager) setJobResult(item *Job, result jobreport.Result) {
+func (m *JobManager) setJobResult(item *Job, result run.Result) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if item.Status == StatusFinished {
 		return
 	}
-	item.Result = jobreport.Clone(&result)
+	item.Result = run.Clone(&result)
 	item.UpdatedAt = time.Now()
 	m.publishJobChangeLocked("update", item)
 	observability.RecordJobItems(context.Background(), item.Key, result)

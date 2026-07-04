@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 )
 
 type JobStatus string
@@ -27,7 +27,7 @@ type Job struct {
 	HasSkipped bool
 	HasFailed  bool
 	Error      string
-	Result     *jobreport.Result
+	Result     *run.Result
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	StartedAt  *time.Time
@@ -77,7 +77,7 @@ func (j *Job) EventData() map[string]any {
 		data["error"] = j.Error
 	}
 	if j.Result != nil {
-		data["result"] = jobreport.Clone(j.Result)
+		data["result"] = run.Clone(j.Result)
 	}
 	if j.StartedAt != nil {
 		data["startedAt"] = j.StartedAt.UnixMilli()

@@ -8,9 +8,9 @@ import (
 	"sync"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/program"
-	"github.com/21S1298001/mahiron/internal/runtimecontext"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 	"github.com/21S1298001/mahiron/internal/tuner"
@@ -111,7 +111,7 @@ func ensureUserContext(ctx context.Context, channelType, channel string) context
 		return ctx
 	}
 	agent := "Mahiron Internal"
-	if info, ok := runtimecontext.JobFromContext(ctx); ok && info.Name != "" {
+	if info, ok := run.JobInfoFromContext(ctx); ok && info.Name != "" {
 		agent = info.Name
 	}
 	return tuner.WithUser(ctx, tuner.User{

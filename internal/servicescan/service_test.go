@@ -9,7 +9,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -103,7 +103,7 @@ func TestServiceScanReportsNamedServiceResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	reporter := &captureReporter{}
-	ctx = jobreport.ContextWithReporter(ctx, reporter)
+	ctx = run.WithReporter(ctx, reporter)
 	scanner := &staticScanner{services: []ts.ServiceInfo{
 		{Nid: 4, Tsid: 1, Sid: 101, Name: "Known", Type: 1},
 		{Nid: 4, Tsid: 1, Sid: 102, Name: "New Service", Type: 1, RemoteControlKeyId: uint8Ptr(2)},
@@ -407,11 +407,11 @@ type contextCapturingScanner struct {
 }
 
 type captureReporter struct {
-	result *jobreport.Result
+	result *run.Result
 }
 
-func (r *captureReporter) SetJobResult(result jobreport.Result) {
-	r.result = jobreport.Clone(&result)
+func (r *captureReporter) SetJobResult(result run.Result) {
+	r.result = run.Clone(&result)
 }
 
 func (blockingScanner) ScanServices(ctx context.Context, _, _ string, _ bool) ([]ts.ServiceInfo, error) {

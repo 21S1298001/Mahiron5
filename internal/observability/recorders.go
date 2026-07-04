@@ -11,7 +11,7 @@ import (
 	"context"
 
 	"github.com/21S1298001/mahiron/internal/contextvalue"
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -39,7 +39,7 @@ func RecordJobRun(ctx context.Context, key, result string, durationMS int64) {
 	}
 }
 
-func RecordJobItems(ctx context.Context, key string, result jobreport.Result) {
+func RecordJobItems(ctx context.Context, key string, result run.Result) {
 	if instruments.jobItems == nil || key == "" {
 		return
 	}

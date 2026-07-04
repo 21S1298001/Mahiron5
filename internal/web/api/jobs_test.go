@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/job"
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -20,11 +20,11 @@ func TestAPIJobItemIncludesStandbyAndNextRunAt(t *testing.T) {
 		UpdatedAt:  time.UnixMilli(2000),
 		NextRunAt:  &nextRunAt,
 		IsAborting: false,
-		Result: &jobreport.Result{
+		Result: &run.Result{
 			Kind:    "service_scan",
 			Summary: "GR/27: 1 services",
 			Counts:  map[string]int{"services": 1},
-			Items: []jobreport.Item{{
+			Items: []run.Item{{
 				Kind:    "service",
 				Summary: "NHK",
 				Data: map[string]any{

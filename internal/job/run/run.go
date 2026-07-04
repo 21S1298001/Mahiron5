@@ -1,4 +1,4 @@
-package jobreport
+package run
 
 import (
 	"context"
@@ -6,6 +6,12 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/contextvalue"
 )
+
+type JobInfo struct {
+	ID   string
+	Key  string
+	Name string
+}
 
 type Result struct {
 	Kind     string         `json:"kind"`
@@ -25,9 +31,19 @@ type Reporter interface {
 	SetJobResult(Result)
 }
 
+var jobContextKey contextvalue.Key[JobInfo]
+
 var reporterContextKey contextvalue.Key[Reporter]
 
-func ContextWithReporter(ctx context.Context, reporter Reporter) context.Context {
+func WithJob(ctx context.Context, info JobInfo) context.Context {
+	return contextvalue.With(ctx, jobContextKey, info)
+}
+
+func JobInfoFromContext(ctx context.Context) (JobInfo, bool) {
+	return contextvalue.Get(ctx, jobContextKey)
+}
+
+func WithReporter(ctx context.Context, reporter Reporter) context.Context {
 	if reporter == nil {
 		return ctx
 	}

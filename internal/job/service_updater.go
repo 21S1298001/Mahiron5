@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/servicescan"
 	"github.com/21S1298001/mahiron/internal/tuner"
 )
@@ -27,7 +27,7 @@ func RegisterServiceUpdater(registry Registry, scanner ServiceScanner, epgServic
 			if err != nil {
 				return err
 			}
-			jobreport.Set(ctx, jobreport.Result{
+			run.Set(ctx, run.Result{
 				Kind:    "service_updater",
 				Summary: fmt.Sprintf("%d/%d channel scans queued", queued, len(channels)),
 				Counts: map[string]int{

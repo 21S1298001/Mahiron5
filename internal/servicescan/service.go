@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/tuner"
@@ -207,7 +207,7 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 
 	newNIDs = newNetworkIDsFromDiff(before, scanned)
 	result := serviceScanResult(channelType, channelID, scanned, beforeServices, newNIDs)
-	jobreport.Set(ctx, result)
+	run.Set(ctx, result)
 	span.SetAttributes(
 		observability.AttrServiceCount.Int(len(scanned)),
 		observability.AttrServiceAdded.Int(result.Counts["addedServices"]),
@@ -226,9 +226,9 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 	return newNIDs, nil
 }
 
-func serviceScanResult(channelType, channelID string, scanned []*service.Service, before map[string]*service.Service, newNIDs []uint16) jobreport.Result {
+func serviceScanResult(channelType, channelID string, scanned []*service.Service, before map[string]*service.Service, newNIDs []uint16) run.Result {
 	after := make(map[string]*service.Service, len(scanned))
-	items := make([]jobreport.Item, 0, len(scanned)+len(before))
+	items := make([]run.Item, 0, len(scanned)+len(before))
 	added := 0
 	unchanged := 0
 	for _, svc := range scanned {
@@ -240,7 +240,7 @@ func serviceScanResult(channelType, channelID string, scanned []*service.Service
 		} else {
 			unchanged++
 		}
-		items = append(items, jobreport.Item{
+		items = append(items, run.Item{
 			Kind:    "service",
 			Summary: svc.Name,
 			Data: map[string]any{
@@ -261,7 +261,7 @@ func serviceScanResult(channelType, channelID string, scanned []*service.Service
 			continue
 		}
 		removed++
-		items = append(items, jobreport.Item{
+		items = append(items, run.Item{
 			Kind:    "service",
 			Summary: svc.Name,
 			Data: map[string]any{
@@ -276,7 +276,7 @@ func serviceScanResult(channelType, channelID string, scanned []*service.Service
 			},
 		})
 	}
-	return jobreport.Result{
+	return run.Result{
 		Kind:    "service_scan",
 		Summary: fmt.Sprintf("%s/%s: %d services (%d added, %d removed)", channelType, channelID, len(scanned), added, removed),
 		Counts: map[string]int{

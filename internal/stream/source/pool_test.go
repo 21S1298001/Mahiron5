@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
-	"github.com/21S1298001/mahiron/internal/runtimecontext"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/tuner"
 )
@@ -41,7 +41,7 @@ func TestTunerLiveSourceWithUserDefaultsFallbackUserToLowestPriority(t *testing.
 		device:  device,
 	}
 
-	ctx := runtimecontext.WithJob(context.Background(), runtimecontext.JobInfo{Name: "EPG Gather NID 6"})
+	ctx := run.WithJob(context.Background(), run.JobInfo{Name: "EPG Gather NID 6"})
 	if err := src.WithUser(ctx, func(context.Context) error { return nil }); err != nil {
 		t.Fatal(err)
 	}

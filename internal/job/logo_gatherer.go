@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/ts"
 )
@@ -35,7 +35,7 @@ func RegisterLogoGatherer(registry Registry, collector LogoCollector, store Logo
 			if err != nil {
 				return err
 			}
-			jobreport.Set(ctx, jobreport.Result{
+			run.Set(ctx, run.Result{
 				Kind:    "logo_gatherer",
 				Summary: fmt.Sprintf("%d channels queued for %d targets", queued, len(targets)),
 				Counts: map[string]int{
@@ -109,7 +109,7 @@ func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector 
 						return err
 					}
 				}
-				jobreport.Set(childCtx, logoGatherResult(channelType, channelID, channelTargets, count, len(remaining), timedOut))
+				run.Set(childCtx, logoGatherResult(channelType, channelID, channelTargets, count, len(remaining), timedOut))
 				slog.Info("logo gather completed", "channel", fmt.Sprintf("%s/%s", channelType, channelID), "logos", count, "remaining", len(remaining), "timeout", timeout)
 				return nil
 			},
@@ -125,10 +125,10 @@ func enqueueLogoGatherTargets(ctx context.Context, registry Registry, collector 
 	return queued, nil
 }
 
-func logoGatherResult(channelType, channelID string, targets []service.LogoTarget, logos, remaining int, timedOut bool) jobreport.Result {
-	items := make([]jobreport.Item, 0, len(targets))
+func logoGatherResult(channelType, channelID string, targets []service.LogoTarget, logos, remaining int, timedOut bool) run.Result {
+	items := make([]run.Item, 0, len(targets))
 	for _, target := range targets {
-		items = append(items, jobreport.Item{
+		items = append(items, run.Item{
 			Kind:    "logo_target",
 			Summary: fmt.Sprintf("service %d logo %d", target.ServiceId, target.LogoId),
 			Data: map[string]any{
@@ -146,7 +146,7 @@ func logoGatherResult(channelType, channelID string, targets []service.LogoTarge
 	if timedOut && remaining > 0 {
 		warnings = append(warnings, "logo gathering reached timeout before all targets were observed")
 	}
-	return jobreport.Result{
+	return run.Result{
 		Kind:    "logo_gather",
 		Summary: fmt.Sprintf("%s/%s: %d logos observed, %d remaining", channelType, channelID, logos, remaining),
 		Counts: map[string]int{

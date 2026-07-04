@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/21S1298001/mahiron/internal/job"
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -95,7 +95,7 @@ func apiJobItem(j *job.Job) *apigen.JobItem {
 	return item
 }
 
-func apiJobResult(result *jobreport.Result) apigen.JobResult {
+func apiJobResult(result *run.Result) apigen.JobResult {
 	out := apigen.JobResult{Kind: result.Kind}
 	if result.Summary != "" {
 		out.Summary = apigen.NewOptString(result.Summary)

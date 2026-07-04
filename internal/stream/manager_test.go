@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/program"
-	"github.com/21S1298001/mahiron/internal/runtimecontext"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
 	"github.com/21S1298001/mahiron/internal/stream/local"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
@@ -56,7 +56,7 @@ func testManagerWithDescrambler(t *testing.T, devices *fakeTunerDeviceRecorder, 
 }
 
 func TestEnsureUserContextUsesJobNameForInternalAgent(t *testing.T) {
-	ctx := runtimecontext.WithJob(context.Background(), runtimecontext.JobInfo{Name: "EPG Gather NID 6"})
+	ctx := run.WithJob(context.Background(), run.JobInfo{Name: "EPG Gather NID 6"})
 	user, ok := tuner.UserFromContext(ensureUserContext(ctx, "GR", "27"))
 	if !ok {
 		t.Fatal("user context not set")
@@ -67,7 +67,7 @@ func TestEnsureUserContextUsesJobNameForInternalAgent(t *testing.T) {
 }
 
 func TestEnsureUserContextKeepsExplicitUser(t *testing.T) {
-	ctx := runtimecontext.WithJob(context.Background(), runtimecontext.JobInfo{Name: "EPG Gather NID 6"})
+	ctx := run.WithJob(context.Background(), run.JobInfo{Name: "EPG Gather NID 6"})
 	ctx = tuner.WithUser(ctx, tuner.User{ID: "viewer", Agent: "Viewer"})
 	user, ok := tuner.UserFromContext(ensureUserContext(ctx, "GR", "27"))
 	if !ok {
@@ -808,7 +808,7 @@ func TestChannelStreamWithoutUserContextGetsLowestPriority(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := runtimecontext.WithJob(context.Background(), runtimecontext.JobInfo{Name: "EPG Gather NID 6"})
+	ctx := run.WithJob(context.Background(), run.JobInfo{Name: "EPG Gather NID 6"})
 	var out bytes.Buffer
 	if err := session.ChannelStream(ctx, false, &out); err != nil {
 		t.Fatal(err)

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -229,11 +229,11 @@ func TestJobResultReportedInHistoryAndEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reported := jobreport.Result{
+	reported := run.Result{
 		Kind:    "service_scan",
 		Summary: "GR/27: 1 services",
 		Counts:  map[string]int{"services": 1},
-		Items: []jobreport.Item{{
+		Items: []run.Item{{
 			Kind:    "service",
 			Summary: "NHK",
 			Data:    map[string]any{"name": "NHK"},
@@ -243,7 +243,7 @@ func TestJobResultReportedInHistoryAndEvents(t *testing.T) {
 		Key:  "report-job",
 		Name: "Report Job",
 		Handler: func(ctx context.Context) error {
-			jobreport.Set(ctx, reported)
+			run.Set(ctx, reported)
 			return nil
 		},
 	})
@@ -261,7 +261,7 @@ func TestJobResultReportedInHistoryAndEvents(t *testing.T) {
 	}
 	found := false
 	for _, event := range publisher.events {
-		result, ok := event.data["result"].(*jobreport.Result)
+		result, ok := event.data["result"].(*run.Result)
 		if ok && result.Summary == reported.Summary {
 			found = true
 			break

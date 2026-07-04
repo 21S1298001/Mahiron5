@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/21S1298001/mahiron/internal/jobreport"
+	"github.com/21S1298001/mahiron/internal/job/run"
 )
 
 type publishedEvent struct {
@@ -40,7 +40,7 @@ func TestJobEventDataIncludesMirakurunCompatibleFields(t *testing.T) {
 		RetryCount: 1,
 		HasFailed:  true,
 		Error:      "failed",
-		Result:     &jobreport.Result{Kind: "service_scan", Summary: "scan completed"},
+		Result:     &run.Result{Kind: "service_scan", Summary: "scan completed"},
 		CreatedAt:  createdAt,
 		UpdatedAt:  finishedAt,
 		StartedAt:  &startedAt,
@@ -60,7 +60,7 @@ func TestJobEventDataIncludesMirakurunCompatibleFields(t *testing.T) {
 	if data["isRerunnable"] != true || data["retryOnAbort"] != false || data["retryOnFail"] != true || data["retryMax"] != 1 || data["retryDelay"] != 2000 {
 		t.Fatalf("job event retry data = %#v", data)
 	}
-	result, ok := data["result"].(*jobreport.Result)
+	result, ok := data["result"].(*run.Result)
 	if !ok || result.Kind != "service_scan" || result.Summary != "scan completed" {
 		t.Fatalf("job event result data = %#v", data["result"])
 	}
