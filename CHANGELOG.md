@@ -1,5 +1,9 @@
 # Changelog
 
+## [v5.0.2](https://github.com/21S1298001/Mahiron5/compare/v5.0.1...v5.0.2) - 2026-07-04
+
+- Fix DSM-CC DDB parsing so BS/CS common logos are assembled by @rokoucha in https://github.com/21S1298001/Mahiron5/pull/11
+
 ## [v5.0.1](https://github.com/21S1298001/Mahiron5/compare/v5.0.0...v5.0.1) - 2026-07-04
 
 - Update dependency typescript to v6 by @renovate[bot] in https://github.com/21S1298001/Mahiron5/pull/6
