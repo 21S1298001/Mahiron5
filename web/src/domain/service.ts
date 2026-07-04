@@ -65,7 +65,10 @@ function channelTypeSortNumber(
   return channelTypeOrder.get(service.channel?.type ?? '') ?? Number.MAX_VALUE
 }
 
-function channelSortNumber(service: Service, channelOrder: Map<string, number>) {
+function channelSortNumber(
+  service: Service,
+  channelOrder: Map<string, number>,
+) {
   return channelOrder.get(channelKey(service.channel)) ?? Number.MAX_VALUE
 }
 

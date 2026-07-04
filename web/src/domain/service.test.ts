@@ -64,11 +64,7 @@ describe('sortServicesForDisplay', () => {
 
     expect(
       sortServicesForDisplay(services, channels).map((item) => item.name),
-    ).toEqual([
-      'c',
-      'b',
-      'a',
-    ])
+    ).toEqual(['c', 'b', 'a'])
   })
 
   it('groups scattered configured channel types and keeps channel order within each type', () => {
