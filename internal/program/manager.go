@@ -46,12 +46,16 @@ func NewProgramManager(store ProgramStore, events ...eventPublisher) *ProgramMan
 func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program) error {
 	source := observability.EPGMetricSource(ctx)
 	attempted := nonNilProgramCount(programs)
+	pending := make(map[int64]*Program, len(programs))
 	ids := make([]int64, 0, len(programs))
 	for _, p := range programs {
 		if p == nil {
 			continue
 		}
-		ids = append(ids, p.ID)
+		if _, ok := pending[p.ID]; !ok {
+			ids = append(ids, p.ID)
+		}
+		pending[p.ID] = p
 	}
 	existingPrograms, err := m.store.ListByIDs(ctx, ids)
 	if err != nil {
@@ -65,24 +69,20 @@ func (m *ProgramManager) UpsertPrograms(ctx context.Context, programs []*Program
 		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
 		return err
 	}
-	afterPrograms, err := m.store.ListByIDs(ctx, ids)
-	if err != nil {
-		observability.RecordEPGProgramsUpserted(ctx, source, "error", int64(attempted))
-		return err
-	}
 	changed := 0
-	for _, p := range afterPrograms {
+	for _, p := range pending {
 		if p == nil {
 			continue
 		}
 		existing, ok := before[p.ID]
+		after := mergeUpsertProgram(existing, p)
 		switch {
 		case !ok:
 			changed++
-			m.enqueueProgramEvent(eventTypeCreate, p)
-		case !reflect.DeepEqual(existing, p):
+			m.enqueueProgramEvent(eventTypeCreate, after)
+		case !reflect.DeepEqual(existing, after):
 			changed++
-			m.enqueueProgramEvent(eventTypeUpdate, p)
+			m.enqueueProgramEvent(eventTypeUpdate, after)
 		}
 	}
 	observability.RecordEPGProgramsUpserted(ctx, source, "success", int64(changed))
@@ -164,6 +164,142 @@ func nonNilProgramCount(programs []*Program) int {
 		}
 	}
 	return count
+}
+
+func mergeUpsertProgram(existing, incoming *Program) *Program {
+	if incoming == nil {
+		return nil
+	}
+	merged := cloneProgram(incoming)
+	if existing == nil {
+		return merged
+	}
+	if merged.Name == "" {
+		merged.Name = existing.Name
+	}
+	if merged.Description == "" {
+		merged.Description = existing.Description
+	}
+	if len(merged.Genres) == 0 {
+		merged.Genres = cloneGenres(existing.Genres)
+	}
+	if merged.Video == nil {
+		merged.Video = cloneVideo(existing.Video)
+	}
+	if len(merged.Audios) == 0 {
+		merged.Audios = cloneAudios(existing.Audios)
+	}
+	if len(merged.Extended) == 0 {
+		merged.Extended = cloneStringMap(existing.Extended)
+	}
+	if len(merged.RelatedItems) == 0 {
+		merged.RelatedItems = cloneRelatedItems(existing.RelatedItems)
+	}
+	if merged.Series == nil {
+		merged.Series = cloneSeries(existing.Series)
+	}
+	return merged
+}
+
+func cloneProgram(p *Program) *Program {
+	if p == nil {
+		return nil
+	}
+	clone := *p
+	clone.Genres = cloneGenres(p.Genres)
+	clone.Video = cloneVideo(p.Video)
+	clone.Audios = cloneAudios(p.Audios)
+	clone.Extended = cloneStringMap(p.Extended)
+	clone.RelatedItems = cloneRelatedItems(p.RelatedItems)
+	clone.Series = cloneSeries(p.Series)
+	return &clone
+}
+
+func cloneGenres(items []Genre) []Genre {
+	return append([]Genre(nil), items...)
+}
+
+func cloneVideo(video *Video) *Video {
+	if video == nil {
+		return nil
+	}
+	clone := *video
+	return &clone
+}
+
+func cloneAudios(items []Audio) []Audio {
+	if len(items) == 0 {
+		return nil
+	}
+	clones := make([]Audio, len(items))
+	for i := range items {
+		clones[i] = items[i]
+		clones[i].ComponentTag = cloneInt(items[i].ComponentTag)
+		clones[i].IsMain = cloneBool(items[i].IsMain)
+		clones[i].SamplingRate = cloneInt(items[i].SamplingRate)
+		clones[i].Langs = append([]string(nil), items[i].Langs...)
+	}
+	return clones
+}
+
+func cloneInt(v *int) *int {
+	if v == nil {
+		return nil
+	}
+	clone := *v
+	return &clone
+}
+
+func cloneBool(v *bool) *bool {
+	if v == nil {
+		return nil
+	}
+	clone := *v
+	return &clone
+}
+
+func cloneStringMap(items map[string]string) map[string]string {
+	if len(items) == 0 {
+		return nil
+	}
+	clone := make(map[string]string, len(items))
+	for k, v := range items {
+		clone[k] = v
+	}
+	return clone
+}
+
+func cloneRelatedItems(items []RelatedItem) []RelatedItem {
+	if len(items) == 0 {
+		return nil
+	}
+	clones := make([]RelatedItem, len(items))
+	for i := range items {
+		clones[i] = items[i]
+		clones[i].NetworkID = cloneUint16(items[i].NetworkID)
+		clones[i].TransportStreamID = cloneUint16(items[i].TransportStreamID)
+	}
+	return clones
+}
+
+func cloneUint16(v *uint16) *uint16 {
+	if v == nil {
+		return nil
+	}
+	clone := *v
+	return &clone
+}
+
+func cloneSeries(series *Series) *Series {
+	if series == nil {
+		return nil
+	}
+	clone := *series
+	if series.ExpiresAt != nil {
+		expiresAt := *series.ExpiresAt
+		clone.ExpiresAt = &expiresAt
+	}
+	return &clone
 }
 
 func (m *ProgramManager) enqueueProgramEvent(typ string, p *Program) {
