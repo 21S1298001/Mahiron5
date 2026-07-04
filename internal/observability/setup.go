@@ -11,9 +11,9 @@ import (
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/sdk/log"
@@ -88,15 +88,15 @@ func Setup(ctx context.Context, cfg config.ObservabilityConfig, level slog.Level
 }
 
 func newOTelLogHandler(ctx context.Context, cfg config.ObservabilityConfig) (slog.Handler, func(context.Context) error, error) {
-	options := []otlploggrpc.Option{otlploggrpc.WithEndpoint(cfg.Endpoint)}
+	options := []otlploghttp.Option{otlploghttp.WithEndpoint(cfg.Endpoint)}
 	if cfg.Insecure {
-		options = append(options, otlploggrpc.WithInsecure())
+		options = append(options, otlploghttp.WithInsecure())
 	}
 	if len(cfg.Headers) > 0 {
-		options = append(options, otlploggrpc.WithHeaders(cfg.Headers))
+		options = append(options, otlploghttp.WithHeaders(cfg.Headers))
 	}
 
-	exporter, err := otlploggrpc.New(ctx, options...)
+	exporter, err := otlploghttp.New(ctx, options...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -115,15 +115,15 @@ func newOTelLogHandler(ctx context.Context, cfg config.ObservabilityConfig) (slo
 }
 
 func newOTelTracerProvider(ctx context.Context, cfg config.ObservabilityConfig) (trace.TracerProvider, func(context.Context) error, error) {
-	options := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(cfg.Endpoint)}
+	options := []otlptracehttp.Option{otlptracehttp.WithEndpoint(cfg.Endpoint)}
 	if cfg.Insecure {
-		options = append(options, otlptracegrpc.WithInsecure())
+		options = append(options, otlptracehttp.WithInsecure())
 	}
 	if len(cfg.Headers) > 0 {
-		options = append(options, otlptracegrpc.WithHeaders(cfg.Headers))
+		options = append(options, otlptracehttp.WithHeaders(cfg.Headers))
 	}
 
-	exporter, err := otlptracegrpc.New(ctx, options...)
+	exporter, err := otlptracehttp.New(ctx, options...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -139,15 +139,15 @@ func newOTelTracerProvider(ctx context.Context, cfg config.ObservabilityConfig) 
 }
 
 func newOTelMeterProvider(ctx context.Context, cfg config.ObservabilityConfig) (otelmetric.MeterProvider, func(context.Context) error, error) {
-	options := []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpoint(cfg.Endpoint)}
+	options := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(cfg.Endpoint)}
 	if cfg.Insecure {
-		options = append(options, otlpmetricgrpc.WithInsecure())
+		options = append(options, otlpmetrichttp.WithInsecure())
 	}
 	if len(cfg.Headers) > 0 {
-		options = append(options, otlpmetricgrpc.WithHeaders(cfg.Headers))
+		options = append(options, otlpmetrichttp.WithHeaders(cfg.Headers))
 	}
 
-	exporter, err := otlpmetricgrpc.New(ctx, options...)
+	exporter, err := otlpmetrichttp.New(ctx, options...)
 	if err != nil {
 		return nil, nil, err
 	}

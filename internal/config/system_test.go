@@ -144,7 +144,7 @@ func TestLoadAndParseSystemConfig(t *testing.T) {
 				LogLevel:  "info",
 				Observability: ObservabilityConfig{
 					ServiceName: "custom-mahiron",
-					Endpoint:    "localhost:4317",
+					Endpoint:    "localhost:4318",
 					Insecure:    true,
 					Headers: map[string]string{
 						"authorization": "Bearer token",

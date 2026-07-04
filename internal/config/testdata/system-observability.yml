@@ -1,6 +1,6 @@
 observability:
   serviceName: custom-mahiron
-  endpoint: localhost:4317
+  endpoint: localhost:4318
   insecure: true
   headers:
     authorization: Bearer token
