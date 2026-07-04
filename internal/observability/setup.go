@@ -88,10 +88,7 @@ func Setup(ctx context.Context, cfg config.ObservabilityConfig, level slog.Level
 }
 
 func newOTelLogHandler(ctx context.Context, cfg config.ObservabilityConfig) (slog.Handler, func(context.Context) error, error) {
-	options := []otlploghttp.Option{otlploghttp.WithEndpoint(cfg.Endpoint)}
-	if cfg.Insecure {
-		options = append(options, otlploghttp.WithInsecure())
-	}
+	options := []otlploghttp.Option{otlploghttp.WithEndpointURL(cfg.Endpoint)}
 	if len(cfg.Headers) > 0 {
 		options = append(options, otlploghttp.WithHeaders(cfg.Headers))
 	}
@@ -115,10 +112,7 @@ func newOTelLogHandler(ctx context.Context, cfg config.ObservabilityConfig) (slo
 }
 
 func newOTelTracerProvider(ctx context.Context, cfg config.ObservabilityConfig) (trace.TracerProvider, func(context.Context) error, error) {
-	options := []otlptracehttp.Option{otlptracehttp.WithEndpoint(cfg.Endpoint)}
-	if cfg.Insecure {
-		options = append(options, otlptracehttp.WithInsecure())
-	}
+	options := []otlptracehttp.Option{otlptracehttp.WithEndpointURL(cfg.Endpoint)}
 	if len(cfg.Headers) > 0 {
 		options = append(options, otlptracehttp.WithHeaders(cfg.Headers))
 	}
@@ -139,10 +133,7 @@ func newOTelTracerProvider(ctx context.Context, cfg config.ObservabilityConfig) 
 }
 
 func newOTelMeterProvider(ctx context.Context, cfg config.ObservabilityConfig) (otelmetric.MeterProvider, func(context.Context) error, error) {
-	options := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(cfg.Endpoint)}
-	if cfg.Insecure {
-		options = append(options, otlpmetrichttp.WithInsecure())
-	}
+	options := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpointURL(cfg.Endpoint)}
 	if len(cfg.Headers) > 0 {
 		options = append(options, otlpmetrichttp.WithHeaders(cfg.Headers))
 	}
