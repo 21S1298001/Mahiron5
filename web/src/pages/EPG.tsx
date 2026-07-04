@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Program } from '../api'
 import type { DashboardState } from '../dashboard'
 import { programGenreClass } from '../domain/program'
-import { isVisibleService } from '../domain/service'
+import { isVisibleService, sortServicesForDisplay } from '../domain/service'
 import { makeEpgColumns, makeEpgProgramBlocks } from '../epg/grid'
 import {
   floorHour,
@@ -25,7 +25,8 @@ export default function EPG({ dashboard }: { dashboard: DashboardState }) {
   const serviceWidth = 172
   const timelineHeight = ((windowEnd - windowStart) / 60000) * pxPerMinute
   const visibleServices = useMemo(
-    () => (services.data ?? []).filter(isVisibleService),
+    () =>
+      sortServicesForDisplay((services.data ?? []).filter(isVisibleService)),
     [services.data],
   )
   const serviceMap = useMemo(() => {

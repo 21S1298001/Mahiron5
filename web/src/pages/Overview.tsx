@@ -2,7 +2,11 @@ import { useMemo } from 'react'
 import type { Tuner } from '../api'
 import type { DashboardState } from '../dashboard'
 import { currentGatheringNetworks } from '../domain/job'
-import { channelLabel, isVisibleService } from '../domain/service'
+import {
+  channelLabel,
+  isVisibleService,
+  sortServicesForDisplay,
+} from '../domain/service'
 import { openServiceMap, openServiceUsers } from '../domain/tuner'
 import { formatNumber } from '../format/common'
 import { formatDate } from '../format/date'
@@ -63,7 +67,8 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
   )
   const epgGathering = gatheringNetworks.length > 0
   const visibleServices = useMemo(
-    () => (services.data ?? []).filter(isVisibleService),
+    () =>
+      sortServicesForDisplay((services.data ?? []).filter(isVisibleService)),
     [services.data],
   )
   const openServices = useMemo(

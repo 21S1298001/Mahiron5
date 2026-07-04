@@ -9,6 +9,7 @@ import {
   isTerrestrialService,
   isVisibleService,
   serviceKey,
+  sortServicesForDisplay,
 } from './service'
 
 const service = (overrides: Partial<Service>): Service => ({
@@ -28,6 +29,98 @@ describe('isVisibleService', () => {
 
   it('is false for other service types', () => {
     expect(isVisibleService(service({ type: 0x02 }))).toBe(false)
+  })
+})
+
+describe('sortServicesForDisplay', () => {
+  const sortableService = (name: string, overrides: Partial<Service>) =>
+    service({
+      id: name.charCodeAt(0),
+      name,
+      networkId: 1,
+      serviceId: 0,
+      channel: { type: 'GR', channel: '27' },
+      ...overrides,
+    })
+
+  it('keeps channel.type groups in the order received', () => {
+    const services = [
+      sortableService('a', {
+        channel: { type: 'BS', channel: '101' },
+        remoteControlKeyId: 2,
+      }),
+      sortableService('b', {
+        channel: { type: 'GR', channel: '27' },
+        remoteControlKeyId: 1,
+      }),
+      sortableService('c', {
+        channel: { type: 'BS', channel: '102' },
+        remoteControlKeyId: 1,
+      }),
+    ]
+
+    expect(sortServicesForDisplay(services).map((item) => item.name)).toEqual([
+      'c',
+      'a',
+      'b',
+    ])
+  })
+
+  it('sorts by remote control key inside a channel.type group', () => {
+    const services = [
+      sortableService('a', { remoteControlKeyId: 5 }),
+      sortableService('b', { remoteControlKeyId: 1 }),
+      sortableService('c', { remoteControlKeyId: 3 }),
+    ]
+
+    expect(sortServicesForDisplay(services).map((item) => item.name)).toEqual([
+      'b',
+      'c',
+      'a',
+    ])
+  })
+
+  it('sorts services with the same remote key by the ARIB three-digit channel components', () => {
+    const services = [
+      sortableService('a', { remoteControlKeyId: 2, serviceId: 0x0080 }),
+      sortableService('b', { remoteControlKeyId: 2, serviceId: 0x0001 }),
+      sortableService('c', { remoteControlKeyId: 2, serviceId: 0x0000 }),
+    ]
+
+    expect(sortServicesForDisplay(services).map((item) => item.name)).toEqual([
+      'c',
+      'b',
+      'a',
+    ])
+  })
+
+  it('uses stable fallbacks when channel or remote key is missing', () => {
+    const services = [
+      sortableService('a', {
+        id: 3,
+        networkId: 2,
+        serviceId: 20,
+        channel: undefined,
+      }),
+      sortableService('b', {
+        id: 2,
+        networkId: 1,
+        serviceId: 10,
+        channel: undefined,
+      }),
+      sortableService('c', {
+        id: 1,
+        networkId: 1,
+        serviceId: 10,
+        channel: undefined,
+      }),
+    ]
+
+    expect(sortServicesForDisplay(services).map((item) => item.name)).toEqual([
+      'c',
+      'b',
+      'a',
+    ])
   })
 })
 
