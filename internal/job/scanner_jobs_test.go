@@ -82,6 +82,30 @@ func TestServiceUpdaterScansWithoutWaitingForBusyTuner(t *testing.T) {
 	}
 }
 
+func TestEnqueueServiceScansUsesServiceScanJobBehavior(t *testing.T) {
+	mgr := newTestManager(t)
+	scanner := &recordingServiceScanner{newNIDs: []uint16{4}}
+
+	queued, err := EnqueueServiceScans(t.Context(), mgr, scanner, fakeEPGGatherer{}, []servicescan.Channel{{Type: "EXT1", ID: "11"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued != 1 {
+		t.Fatalf("queued = %d, want 1", queued)
+	}
+	waitForJobKeys(t, mgr, map[string]bool{
+		"service-scan:EXT1:11": true,
+		"epg-gather:nid:4":     true,
+	})
+	child := waitForFinishedJobKey(t, mgr, "service-scan:EXT1:11")
+	if child.HasFailed {
+		t.Fatalf("service scan failed: %v", child.Error)
+	}
+	if got := scanner.lastWait(); got {
+		t.Fatal("service scan wait = true, want false")
+	}
+}
+
 func TestServiceScanRetriesWhenTunerUnavailable(t *testing.T) {
 	channels := config.ChannelsConfig{{Type: "EXT1", Channel: "11"}}
 	database, err := db.OpenInMemory()
@@ -391,6 +415,7 @@ func (f fakeScanScanner) ScanServices(context.Context, string, string, bool) ([]
 type recordingServiceScanner struct {
 	channels []servicescan.Channel
 	err      error
+	newNIDs  []uint16
 	wait     bool
 }
 
@@ -403,11 +428,29 @@ func (s *recordingServiceScanner) ScanChannel(_ context.Context, _, _ string, wa
 	if s.err != nil {
 		return nil, s.err
 	}
-	return nil, nil
+	return append([]uint16(nil), s.newNIDs...), nil
 }
 
 func (s *recordingServiceScanner) lastWait() bool {
 	return s.wait
+}
+
+type fakeEPGGatherer struct{}
+
+func (fakeEPGGatherer) Groups(context.Context) (map[uint16]*epg.Network, error) {
+	return nil, nil
+}
+
+func (fakeEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error) {
+	return nil, []epg.ServiceKey{{NetworkID: 4, ServiceID: 101}}, nil
+}
+
+func (fakeEPGGatherer) GatherNetwork(context.Context, uint16, []epg.Candidate, []epg.ServiceKey) error {
+	return nil
+}
+
+func (fakeEPGGatherer) Cleanup(context.Context, time.Time) error {
+	return nil
 }
 
 type fakeLogoTargetStore struct {

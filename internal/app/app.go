@@ -102,7 +102,7 @@ func Run(ctx context.Context, args []string) int {
 	runtime.jobs.Start()
 	runtime.streams.StartRemoteProgramEventSync(signalCtx)
 
-	if err := runStartupTasks(signalCtx, runtime.services, runtime.programs, runtime.jobs, runtime.database, cfg); err != nil {
+	if err := runStartupTasks(signalCtx, runtime.services, runtime.programs, runtime.jobs, runtime.scanner, runtime.epgScan, runtime.database, cfg); err != nil {
 		slog.Error("startup tasks failed", "err", err)
 	}
 	if err := runtime.services.SeedEventLog(signalCtx); err != nil {
@@ -124,8 +124,10 @@ type applicationRuntime struct {
 	database *sql.DB
 	jobs     *job.JobManager
 	obs      observability.SetupResult
+	epgScan  *epg.Service
 	programs *program.ProgramManager
 	server   *server.Server
+	scanner  *servicescan.Service
 	services *service.ServiceManager
 	streams  *stream.StreamManager
 	tuners   *tuner.TunerManager
@@ -209,8 +211,10 @@ func buildRuntime(cfg *config.Config, database *sql.DB, obs observability.SetupR
 		database: database,
 		jobs:     jobs,
 		obs:      obs,
+		epgScan:  epgService,
 		programs: programs,
 		server:   server.NewServer(listenAddresses(cfg), handler),
+		scanner:  scanService,
 		services: services,
 		streams:  streams,
 		tuners:   tuners,
@@ -277,7 +281,7 @@ func (r *applicationRuntime) shutdown() {
 	slog.Info("observability shut down")
 }
 
-func runStartupTasks(ctx context.Context, services *service.ServiceManager, programs *program.ProgramManager, jobs *job.JobManager, database *sql.DB, cfg *config.Config) error {
+func runStartupTasks(ctx context.Context, services *service.ServiceManager, programs *program.ProgramManager, jobs *job.JobManager, scanner *servicescan.Service, epgScan *epg.Service, database *sql.DB, cfg *config.Config) error {
 	if err := services.ReconcileChannels(ctx); err != nil {
 		return fmt.Errorf("reconcile service channels: %w", err)
 	}
@@ -288,7 +292,14 @@ func runStartupTasks(ctx context.Context, services *service.ServiceManager, prog
 		return fmt.Errorf("count services: %w", err)
 	}
 
-	enqueueStartupServiceUpdate(jobs, count, channelState)
+	enqueuedFullUpdate := enqueueStartupServiceUpdate(jobs, count, channelState)
+	if !enqueuedFullUpdate {
+		missing, err := missingScannedChannels(ctx, services, scanner.Channels())
+		if err != nil {
+			return fmt.Errorf("find unscanned channels: %w", err)
+		}
+		enqueueStartupServiceScans(ctx, jobs, scanner, epgScan, missing)
+	}
 
 	stale, _, _, err := services.EPGSummary(ctx, int64(cfg.System.EpgStaleAfter), time.Now().UnixMilli())
 	if err != nil {
@@ -329,20 +340,50 @@ func loadChannelConfigState(ctx context.Context, database *sql.DB, channels conf
 	return state
 }
 
-func enqueueStartupServiceUpdate(jobs *job.JobManager, serviceCount int, channelState channelConfigState) {
+func enqueueStartupServiceUpdate(jobs *job.JobManager, serviceCount int, channelState channelConfigState) bool {
 	if serviceCount == 0 {
 		slog.Info("no services cached, running initial service update")
 		if _, err := jobs.Enqueue(job.ServiceUpdaterKey); err != nil {
 			slog.Error("failed to enqueue initial service update", "err", err)
+			return false
 		}
-		return
+		return true
 	}
 	if channelState.previouslyStored() && channelState.changed() {
 		slog.Info("channel config changed, enqueuing service update")
 		if _, err := jobs.Enqueue(job.ServiceUpdaterKey); err != nil {
 			slog.Warn("failed to enqueue service update", "err", err)
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+func missingScannedChannels(ctx context.Context, services *service.ServiceManager, channels []servicescan.Channel) ([]servicescan.Channel, error) {
+	missing := make([]servicescan.Channel, 0)
+	for _, channel := range channels {
+		stored, err := services.GetServicesByChannel(ctx, channel.Type, channel.ID)
+		if err != nil {
+			return nil, err
+		}
+		if len(stored) == 0 {
+			missing = append(missing, channel)
 		}
 	}
+	return missing, nil
+}
+
+func enqueueStartupServiceScans(ctx context.Context, jobs *job.JobManager, scanner job.ServiceScanner, epgScan job.EPGGatherer, channels []servicescan.Channel) {
+	if len(channels) == 0 {
+		return
+	}
+	queued, err := job.EnqueueServiceScans(ctx, jobs, scanner, epgScan, channels)
+	if err != nil {
+		slog.Warn("failed to enqueue startup service scans", "err", err)
+		return
+	}
+	slog.Info("unscanned channels found, enqueued service scans", "queued", queued, "channels", len(channels))
 }
 
 func enqueueStartupEPGGather(jobs *job.JobManager, serviceCount int, staleServices int) {

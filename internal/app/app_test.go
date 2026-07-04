@@ -9,8 +9,11 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/db"
+	"github.com/21S1298001/mahiron/internal/epg"
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/observability"
+	"github.com/21S1298001/mahiron/internal/service"
+	"github.com/21S1298001/mahiron/internal/servicescan"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
@@ -77,8 +80,9 @@ func TestBuildRuntimeWiresCurrentApplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildRuntime() message=%q err=%v", message, err)
 	}
-	if runtime.database == nil || runtime.jobs == nil || runtime.programs == nil || runtime.server == nil ||
-		runtime.services == nil || runtime.streams == nil || runtime.tuners == nil {
+	if runtime.database == nil || runtime.jobs == nil || runtime.epgScan == nil || runtime.programs == nil ||
+		runtime.scanner == nil || runtime.server == nil || runtime.services == nil ||
+		runtime.streams == nil || runtime.tuners == nil {
 		t.Fatalf("incomplete runtime: %#v", runtime)
 	}
 
@@ -206,6 +210,62 @@ func TestStartupQueuePolicyUsesCurrentState(t *testing.T) {
 	}
 }
 
+func TestMissingScannedChannelsFindsOnlyConfiguredEmptyChannels(t *testing.T) {
+	ctx := t.Context()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := service.NewSQLiteStore(database)
+	disabled := true
+	channels := config.ChannelsConfig{
+		{Type: "GR", Channel: "27"},
+		{Type: "GR", Channel: "26"},
+		{Type: "GR", Channel: "26"},
+		{Type: "GR", Channel: "25", IsDisabled: &disabled},
+	}
+	manager := service.NewServiceManager(store, channels)
+	if err := store.ReplaceChannelServices(ctx, "GR", "27", []*service.Service{
+		{Id: "0000100101", ServiceId: 101, NetworkId: 1, Name: "NHK", ChannelType: "GR", ChannelId: "27"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	scanner := servicescan.NewService(manager, nil, channels, 0)
+
+	missing, err := missingScannedChannels(ctx, manager, scanner.Channels())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missing) != 1 || missing[0].Type != "GR" || missing[0].ID != "26" {
+		t.Fatalf("missing channels = %#v, want GR/26 only", missing)
+	}
+}
+
+func TestStartupEnqueuesOnlyUnscannedChannelScans(t *testing.T) {
+	mgr, err := job.NewManager(job.Config{MaxHistory: 10, MaxConcurrentJobs: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	scanner := &blockingStartupScanner{release: release}
+	enqueueStartupServiceScans(t.Context(), mgr, scanner, startupEPGGatherer{}, []servicescan.Channel{
+		{Type: "GR", ID: "26"},
+		{Type: "BS", ID: "101"},
+	})
+	active := mgr.GetActiveJobKeysByPrefix("service-scan:")
+	if !containsKey(active, "service-scan:GR:26") || !containsKey(active, "service-scan:BS:101") {
+		t.Fatalf("active service scans = %v, want GR/26 and BS/101", active)
+	}
+
+	close(release)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := mgr.Shutdown(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+}
+
 func TestHashChannelConfigIsStableAndSensitiveToRoutes(t *testing.T) {
 	base := config.ChannelsConfig{{Name: "NHK", Type: "GR", Channel: "27"}}
 	if hashChannelConfig(base) != hashChannelConfig(append(config.ChannelsConfig(nil), base...)) {
@@ -215,6 +275,39 @@ func TestHashChannelConfigIsStableAndSensitiveToRoutes(t *testing.T) {
 	if hashChannelConfig(base) == hashChannelConfig(changed) {
 		t.Fatal("route change was not reflected in channel configuration hash")
 	}
+}
+
+type blockingStartupScanner struct {
+	release <-chan struct{}
+}
+
+func (s *blockingStartupScanner) Channels() []servicescan.Channel { return nil }
+
+func (s *blockingStartupScanner) ScanChannel(ctx context.Context, _, _ string, _ bool) ([]uint16, error) {
+	select {
+	case <-s.release:
+		return nil, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+type startupEPGGatherer struct{}
+
+func (startupEPGGatherer) Groups(context.Context) (map[uint16]*epg.Network, error) {
+	return nil, nil
+}
+
+func (startupEPGGatherer) BuildNetworkInputs(context.Context, uint16) ([]epg.Candidate, []epg.ServiceKey, error) {
+	return nil, nil, nil
+}
+
+func (startupEPGGatherer) GatherNetwork(context.Context, uint16, []epg.Candidate, []epg.ServiceKey) error {
+	return nil
+}
+
+func (startupEPGGatherer) Cleanup(context.Context, time.Time) error {
+	return nil
 }
 
 func containsKey(keys []string, want string) bool {
