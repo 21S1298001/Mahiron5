@@ -94,6 +94,38 @@ describe('sortServicesForDisplay', () => {
     ])
   })
 
+  it('keeps services from the same terrestrial network together when remote keys conflict', () => {
+    const services = [
+      sortableService('a', {
+        networkId: 32738,
+        remoteControlKeyId: 3,
+        serviceId: 0x0808,
+      }),
+      sortableService('b', {
+        networkId: 32737,
+        remoteControlKeyId: 3,
+        serviceId: 0x0409,
+      }),
+      sortableService('c', {
+        networkId: 32738,
+        remoteControlKeyId: 3,
+        serviceId: 0x0809,
+      }),
+      sortableService('d', {
+        networkId: 32737,
+        remoteControlKeyId: 3,
+        serviceId: 0x0408,
+      }),
+    ]
+
+    expect(sortServicesForDisplay(services).map((item) => item.name)).toEqual([
+      'd',
+      'b',
+      'a',
+      'c',
+    ])
+  })
+
   it('uses stable fallbacks when channel or remote key is missing', () => {
     const services = [
       sortableService('a', {

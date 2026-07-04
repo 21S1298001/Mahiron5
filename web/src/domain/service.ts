@@ -20,6 +20,7 @@ export function sortServicesForDisplay(services: Service[]) {
         channelTypeOrder.get(b.channel?.type ?? '') ?? 0,
       ) ||
       compareOptionalNumbers(a.remoteControlKeyId, b.remoteControlKeyId) ||
+      compareTerrestrialNetworkIds(a, b) ||
       compareNumbers(
         logicalChannelSortNumber(a),
         logicalChannelSortNumber(b),
@@ -83,6 +84,13 @@ export function epgServiceGroupKey(service: Service) {
 export function channelKey(channel?: Pick<Channel, 'type' | 'channel'>) {
   if (!channel?.type || !channel.channel) return ''
   return `channel:${channel.type}:${channel.channel}`
+}
+
+function compareTerrestrialNetworkIds(a: Service, b: Service) {
+  if (!isTerrestrialService(a) || !isTerrestrialService(b)) {
+    return 0
+  }
+  return compareNumbers(a.networkId, b.networkId)
 }
 
 function logicalChannelSortNumber(service: Service) {
