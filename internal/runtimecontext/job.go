@@ -1,8 +1,12 @@
 package runtimecontext
 
-import "context"
+import (
+	"context"
 
-type jobKey struct{}
+	"github.com/21S1298001/mahiron/internal/contextvalue"
+)
+
+var jobContextKey contextvalue.Key[JobInfo]
 
 type JobInfo struct {
 	ID   string
@@ -11,10 +15,9 @@ type JobInfo struct {
 }
 
 func WithJob(ctx context.Context, info JobInfo) context.Context {
-	return context.WithValue(ctx, jobKey{}, info)
+	return contextvalue.With(ctx, jobContextKey, info)
 }
 
 func JobFromContext(ctx context.Context) (JobInfo, bool) {
-	info, ok := ctx.Value(jobKey{}).(JobInfo)
-	return info, ok
+	return contextvalue.Get(ctx, jobContextKey)
 }

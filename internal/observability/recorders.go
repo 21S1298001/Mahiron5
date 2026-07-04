@@ -10,21 +10,22 @@ package observability
 import (
 	"context"
 
+	"github.com/21S1298001/mahiron/internal/contextvalue"
 	"github.com/21S1298001/mahiron/internal/jobreport"
 	"go.opentelemetry.io/otel/metric"
 )
 
-type epgMetricSourceContextKey struct{}
+var epgMetricSourceContextKey contextvalue.Key[string]
 
 func ContextWithEPGMetricSource(ctx context.Context, source string) context.Context {
 	if source == "" {
 		return ctx
 	}
-	return context.WithValue(ctx, epgMetricSourceContextKey{}, source)
+	return contextvalue.With(ctx, epgMetricSourceContextKey, source)
 }
 
 func EPGMetricSource(ctx context.Context) string {
-	source, _ := ctx.Value(epgMetricSourceContextKey{}).(string)
+	source, _ := contextvalue.Get(ctx, epgMetricSourceContextKey)
 	return source
 }
 

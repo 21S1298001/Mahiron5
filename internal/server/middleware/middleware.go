@@ -2,8 +2,6 @@ package middleware
 
 import "net/http"
 
-type contextKey string
-
 type MiddlewareFunc func(http.Handler) http.Handler
 
 type Middleware struct {

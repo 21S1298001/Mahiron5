@@ -3,6 +3,8 @@ package jobreport
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/21S1298001/mahiron/internal/contextvalue"
 )
 
 type Result struct {
@@ -23,17 +25,17 @@ type Reporter interface {
 	SetJobResult(Result)
 }
 
-type contextKey struct{}
+var reporterContextKey contextvalue.Key[Reporter]
 
 func ContextWithReporter(ctx context.Context, reporter Reporter) context.Context {
 	if reporter == nil {
 		return ctx
 	}
-	return context.WithValue(ctx, contextKey{}, reporter)
+	return contextvalue.With(ctx, reporterContextKey, reporter)
 }
 
 func Set(ctx context.Context, result Result) {
-	reporter, _ := ctx.Value(contextKey{}).(Reporter)
+	reporter, _ := contextvalue.Get(ctx, reporterContextKey)
 	if reporter == nil {
 		return
 	}

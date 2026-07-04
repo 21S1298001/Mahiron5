@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+
+	"github.com/21S1298001/mahiron/internal/contextvalue"
 )
 
-const requestInfoMiddlewareContextKey contextKey = "requestInfoMiddlewareContext"
+var requestInfoContextKey contextvalue.Key[*RequestInfo]
 
 var ErrRequestInfoNotFound = errors.New("request info not found")
 
@@ -23,7 +25,7 @@ func RequestInfoMiddleware() *Middleware {
 		Name: "Request",
 		Handler: func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestInfoMiddlewareContextKey, &RequestInfo{
+				next.ServeHTTP(w, r.WithContext(contextvalue.With(r.Context(), requestInfoContextKey, &RequestInfo{
 					RemoteAddr: r.RemoteAddr,
 					UserAgent:  r.UserAgent(),
 					URL:        r.URL.String(),
@@ -53,7 +55,7 @@ func requestHost(r *http.Request) string {
 }
 
 func GetRequestInfo(ctx context.Context) (*RequestInfo, error) {
-	if v, ok := ctx.Value(requestInfoMiddlewareContextKey).(*RequestInfo); ok {
+	if v, ok := contextvalue.Get(ctx, requestInfoContextKey); ok {
 		return v, nil
 	}
 	return nil, ErrRequestInfoNotFound
