@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/21S1298001/mahiron/internal/contextvalue"
+	"github.com/21S1298001/mahiron/internal/util"
 )
 
 type JobInfo struct {
@@ -31,27 +31,27 @@ type Reporter interface {
 	SetJobResult(Result)
 }
 
-var jobContextKey contextvalue.Key[JobInfo]
+var jobContextKey util.ContextKey[JobInfo]
 
-var reporterContextKey contextvalue.Key[Reporter]
+var reporterContextKey util.ContextKey[Reporter]
 
 func WithJob(ctx context.Context, info JobInfo) context.Context {
-	return contextvalue.With(ctx, jobContextKey, info)
+	return util.ContextWith(ctx, jobContextKey, info)
 }
 
 func JobInfoFromContext(ctx context.Context) (JobInfo, bool) {
-	return contextvalue.Get(ctx, jobContextKey)
+	return util.ContextGet(ctx, jobContextKey)
 }
 
 func WithReporter(ctx context.Context, reporter Reporter) context.Context {
 	if reporter == nil {
 		return ctx
 	}
-	return contextvalue.With(ctx, reporterContextKey, reporter)
+	return util.ContextWith(ctx, reporterContextKey, reporter)
 }
 
 func Set(ctx context.Context, result Result) {
-	reporter, _ := contextvalue.Get(ctx, reporterContextKey)
+	reporter, _ := util.ContextGet(ctx, reporterContextKey)
 	if reporter == nil {
 		return
 	}

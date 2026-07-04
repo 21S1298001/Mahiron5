@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/21S1298001/mahiron/internal/config"
-	"github.com/21S1298001/mahiron/internal/contextvalue"
+	"github.com/21S1298001/mahiron/internal/util"
 )
 
 type User struct {
@@ -65,26 +65,26 @@ type ProcessUptimeStatus interface {
 	ProcessStartedAt() time.Time
 }
 
-var userContextKey contextvalue.Key[User]
+var userContextKey util.ContextKey[User]
 
 type streamInfoReporter func(userID, key string, info StreamInfo)
 
-var streamInfoReporterContextKey contextvalue.Key[streamInfoReporter]
+var streamInfoReporterContextKey util.ContextKey[streamInfoReporter]
 
 func WithUser(ctx context.Context, user User) context.Context {
-	return contextvalue.With(ctx, userContextKey, user)
+	return util.ContextWith(ctx, userContextKey, user)
 }
 
 func UserFromContext(ctx context.Context) (User, bool) {
-	return contextvalue.Get(ctx, userContextKey)
+	return util.ContextGet(ctx, userContextKey)
 }
 
 func WithStreamInfoReporter(ctx context.Context, report func(userID, key string, info StreamInfo)) context.Context {
-	return contextvalue.With(ctx, streamInfoReporterContextKey, streamInfoReporter(report))
+	return util.ContextWith(ctx, streamInfoReporterContextKey, streamInfoReporter(report))
 }
 
 func WithoutStreamInfoReporter(ctx context.Context) context.Context {
-	return contextvalue.With(ctx, streamInfoReporterContextKey, streamInfoReporter(nil))
+	return util.ContextWith(ctx, streamInfoReporterContextKey, streamInfoReporter(nil))
 }
 
 func ReportStreamInfo(ctx context.Context, key string, info StreamInfo) bool {
@@ -92,7 +92,7 @@ func ReportStreamInfo(ctx context.Context, key string, info StreamInfo) bool {
 	if !ok || user.ID == "" || key == "" {
 		return false
 	}
-	report, ok := contextvalue.Get(ctx, streamInfoReporterContextKey)
+	report, ok := util.ContextGet(ctx, streamInfoReporterContextKey)
 	if !ok || report == nil {
 		return false
 	}
