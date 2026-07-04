@@ -51,14 +51,47 @@ func NewService(store Store, scanner StreamScanner, channels config.ChannelsConf
 }
 
 func (s *Service) Channels() []Channel {
+	seen := make(map[Channel]struct{}, len(s.channels))
 	channels := make([]Channel, 0, len(s.channels))
 	for _, channel := range s.channels {
 		if config.IsChannelDisabled(channel) {
 			continue
 		}
-		channels = append(channels, Channel{Type: channel.Type, ID: channel.Channel})
+		key := Channel{Type: channel.Type, ID: channel.Channel}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		channels = append(channels, key)
 	}
 	return channels
+}
+
+// allowedServiceIDs returns the serviceIds configured across all enabled
+// (channelType, channelID) entries, and whether scan results should be
+// filtered to them. Filtering only applies when every enabled entry for the
+// pair specifies a serviceId; a single entry without one means the whole mux
+// should be registered, matching prior behavior.
+func (s *Service) allowedServiceIDs(channelType, channelID string) (map[uint32]struct{}, bool) {
+	allowed := make(map[uint32]struct{})
+	matched := false
+	for _, channel := range s.channels {
+		if channel.Type != channelType || channel.Channel != channelID {
+			continue
+		}
+		if config.IsChannelDisabled(channel) {
+			continue
+		}
+		matched = true
+		if channel.ServiceId == nil {
+			return nil, false
+		}
+		allowed[*channel.ServiceId] = struct{}{}
+	}
+	if !matched {
+		return nil, false
+	}
+	return allowed, true
 }
 
 func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID string, wait bool) (newNIDs []uint16, err error) {
@@ -110,6 +143,16 @@ func (s *Service) ScanChannel(ctx context.Context, channelType string, channelID
 	if err != nil {
 		slog.Warn("service scan failed", "type", channelType, "channel", channelID, "duration", time.Since(startedAt), "err", err)
 		return nil, err
+	}
+
+	if allowed, filter := s.allowedServiceIDs(channelType, channelID); filter {
+		filtered := make([]ts.ServiceInfo, 0, len(services))
+		for _, svc := range services {
+			if _, ok := allowed[uint32(svc.Sid)]; ok {
+				filtered = append(filtered, svc)
+			}
+		}
+		services = filtered
 	}
 
 	scanned := make([]*service.Service, len(services))

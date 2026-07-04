@@ -2,11 +2,13 @@ package source
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/runtimecontext"
+	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/tuner"
 )
 
@@ -72,3 +74,40 @@ func TestTunerLiveSourceWithUserPassesThroughExplicitUser(t *testing.T) {
 		t.Fatalf("user = %+v, want ID=explicit Priority=42", user)
 	}
 }
+
+var errNoTunerFake = errors.New("no tuner (fake)")
+
+type noDeviceTunerManager struct{}
+
+func (noDeviceTunerManager) NewDeviceByType(string, *config.ChannelConfig) (tuner.Device, error) {
+	return nil, errNoTunerFake
+}
+
+func TestFindChannelSkipsDisabledEntryToReachEnabledSibling(t *testing.T) {
+	isDisabled := true
+	channels := config.ChannelsConfig{
+		{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(100), IsDisabled: &isDisabled},
+		{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(119)},
+	}
+	pool := NewPool(channels, noDeviceTunerManager{}, nil, nil)
+
+	_, err := pool.Acquire(context.Background(), "EXT1", "38", false)
+	if !errors.Is(err, errNoTunerFake) {
+		t.Fatalf("Acquire error = %v, want to reach tuner acquisition (errNoTunerFake)", err)
+	}
+}
+
+func TestFindChannelReturnsNotFoundWhenAllMatchesDisabled(t *testing.T) {
+	isDisabled := true
+	channels := config.ChannelsConfig{
+		{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(100), IsDisabled: &isDisabled},
+	}
+	pool := NewPool(channels, noDeviceTunerManager{}, nil, nil)
+
+	_, err := pool.Acquire(context.Background(), "EXT1", "38", false)
+	if !errors.Is(err, remote.ErrChannelNotFound) {
+		t.Fatalf("Acquire error = %v, want ErrChannelNotFound", err)
+	}
+}
+
+func uint32Ptr(v uint32) *uint32 { return &v }

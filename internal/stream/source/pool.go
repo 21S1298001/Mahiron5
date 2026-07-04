@@ -66,9 +66,6 @@ func (p *Pool) Acquire(ctx context.Context, channelType, channel string, wait bo
 	if channelConfig == nil {
 		return nil, remote.ErrChannelNotFound
 	}
-	if channelConfig.IsDisabled != nil && *channelConfig.IsDisabled {
-		return nil, remote.ErrChannelNotFound
-	}
 
 	selected, err := p.selectRoute(ctx, channelConfig, wait)
 	if err != nil {
@@ -126,7 +123,8 @@ func (p *Pool) localLease(channelType, channel string, selected routeSelection) 
 
 func (p *Pool) findChannel(channelType, channel string) *config.ChannelConfig {
 	for i := range p.channels {
-		if p.channels[i].Type == channelType && p.channels[i].Channel == channel {
+		if p.channels[i].Type == channelType && p.channels[i].Channel == channel &&
+			!config.IsChannelDisabled(p.channels[i]) {
 			return &p.channels[i]
 		}
 	}

@@ -247,6 +247,137 @@ func TestServiceChannelsExcludesDisabledChannels(t *testing.T) {
 	}
 }
 
+func TestServiceChannelsDedupesSameTypeAndChannelWithDifferentServiceIds(t *testing.T) {
+	channels := NewService(nil, nil, config.ChannelsConfig{
+		{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(100)},
+		{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(119)},
+	}, time.Second).Channels()
+
+	if len(channels) != 1 || channels[0] != (Channel{Type: "EXT1", ID: "38"}) {
+		t.Fatalf("channels = %#v, want single deduped EXT1/38", channels)
+	}
+}
+
+func TestServiceScanChannelFiltersToConfiguredServiceId(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := service.NewSQLiteStore(database)
+	manager := service.NewServiceManager(store, nil)
+	scanner := &staticScanner{services: []ts.ServiceInfo{
+		{Nid: 4, Tsid: 1, Sid: 100, Name: "other service", Type: 1},
+		{Nid: 4, Tsid: 1, Sid: 119, Name: "iTSCOMLive", Type: 1},
+	}}
+	channels := config.ChannelsConfig{{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(119)}}
+
+	if _, err := NewService(manager, scanner, channels, time.Second).ScanChannel(ctx, "EXT1", "38", false); err != nil {
+		t.Fatal(err)
+	}
+	services, err := store.GetByChannel(ctx, "EXT1", "38")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(services) != 1 || services[0].ServiceId != 119 {
+		t.Fatalf("stored services = %#v, want only sid 119", services)
+	}
+}
+
+func TestServiceScanChannelUnionsServiceIdsAcrossMultipleEnabledEntries(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := service.NewSQLiteStore(database)
+	manager := service.NewServiceManager(store, nil)
+	scanner := &staticScanner{services: []ts.ServiceInfo{
+		{Nid: 4, Tsid: 1, Sid: 100, Name: "first", Type: 1},
+		{Nid: 4, Tsid: 1, Sid: 119, Name: "second", Type: 1},
+		{Nid: 4, Tsid: 1, Sid: 200, Name: "excluded", Type: 1},
+	}}
+	channels := config.ChannelsConfig{
+		{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(100)},
+		{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(119)},
+	}
+
+	if _, err := NewService(manager, scanner, channels, time.Second).ScanChannel(ctx, "EXT1", "38", false); err != nil {
+		t.Fatal(err)
+	}
+	services, err := store.GetByChannel(ctx, "EXT1", "38")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[uint16]bool{}
+	for _, svc := range services {
+		got[svc.ServiceId] = true
+	}
+	if len(got) != 2 || !got[100] || !got[119] {
+		t.Fatalf("stored services = %#v, want sids 100 and 119", services)
+	}
+}
+
+func TestServiceScanChannelDoesNotFilterWhenAnyEnabledEntryLacksServiceId(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := service.NewSQLiteStore(database)
+	manager := service.NewServiceManager(store, nil)
+	scanner := &staticScanner{services: []ts.ServiceInfo{
+		{Nid: 4, Tsid: 1, Sid: 100, Name: "first", Type: 1},
+		{Nid: 4, Tsid: 1, Sid: 119, Name: "second", Type: 1},
+	}}
+	channels := config.ChannelsConfig{{Type: "EXT1", Channel: "38"}}
+
+	if _, err := NewService(manager, scanner, channels, time.Second).ScanChannel(ctx, "EXT1", "38", false); err != nil {
+		t.Fatal(err)
+	}
+	services, err := store.GetByChannel(ctx, "EXT1", "38")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(services) != 2 {
+		t.Fatalf("stored services = %#v, want all 2 unfiltered", services)
+	}
+}
+
+func TestServiceScanChannelIgnoresDisabledEntryServiceId(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.OpenInMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	store := service.NewSQLiteStore(database)
+	manager := service.NewServiceManager(store, nil)
+	scanner := &staticScanner{services: []ts.ServiceInfo{
+		{Nid: 4, Tsid: 1, Sid: 100, Name: "disabled-only", Type: 1},
+		{Nid: 4, Tsid: 1, Sid: 119, Name: "enabled", Type: 1},
+	}}
+	disabled := true
+	channels := config.ChannelsConfig{
+		{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(100), IsDisabled: &disabled},
+		{Type: "EXT1", Channel: "38", ServiceId: uint32Ptr(119)},
+	}
+
+	if _, err := NewService(manager, scanner, channels, time.Second).ScanChannel(ctx, "EXT1", "38", false); err != nil {
+		t.Fatal(err)
+	}
+	services, err := store.GetByChannel(ctx, "EXT1", "38")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(services) != 1 || services[0].ServiceId != 119 {
+		t.Fatalf("stored services = %#v, want only sid 119 (disabled entry's sid 100 excluded)", services)
+	}
+}
+
 func TestNewNetworkIDsFromDiffEmptyInputs(t *testing.T) {
 	if got := newNetworkIDsFromDiff(nil, nil); got != nil {
 		t.Errorf("nil scanned = %v, want nil", got)
@@ -324,3 +455,5 @@ func idFor(nid, sid uint16) string {
 }
 
 func uint8Ptr(v uint8) *uint8 { return &v }
+
+func uint32Ptr(v uint32) *uint32 { return &v }
