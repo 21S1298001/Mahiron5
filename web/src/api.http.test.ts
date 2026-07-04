@@ -56,7 +56,7 @@ describe('api.status (apiFetch)', () => {
 })
 
 describe('api job actions', () => {
-  it('POSTs to the encoded rerun endpoint', async () => {
+  it('PUTs to the encoded rerun endpoint', async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve(new Response('', { status: 200 })),
     )
@@ -66,7 +66,35 @@ describe('api job actions', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/jobs/job%2Fwith%20slash/rerun',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({ method: 'PUT' }),
+    )
+  })
+
+  it('PUTs to the encoded abort endpoint', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response('', { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.abortJob('job/with slash')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/jobs/job%2Fwith%20slash/abort',
+      expect.objectContaining({ method: 'PUT' }),
+    )
+  })
+
+  it('PUTs to the encoded schedule run endpoint', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response('', { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.runSchedule('schedule/with slash')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/job-schedules/schedule%2Fwith%20slash/run',
+      expect.objectContaining({ method: 'PUT' }),
     )
   })
 })

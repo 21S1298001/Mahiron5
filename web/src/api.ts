@@ -227,15 +227,15 @@ export const api = {
   },
   rerunJob: (id: string) =>
     apiFetch<void>(`/api/jobs/${encodeURIComponent(id)}/rerun`, {
-      method: 'POST',
+      method: 'PUT',
     }),
   abortJob: (id: string) =>
     apiFetch<void>(`/api/jobs/${encodeURIComponent(id)}/abort`, {
-      method: 'POST',
+      method: 'PUT',
     }),
   runSchedule: (key: string) =>
     apiFetch<void>(`/api/job-schedules/${encodeURIComponent(key)}/run`, {
-      method: 'POST',
+      method: 'PUT',
     }),
 }
 
