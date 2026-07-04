@@ -35,11 +35,23 @@ type Demuxer struct {
 	onEmpty     func()
 	onSections  []func(ts.Section)
 	packets     map[uint64]*packetSubscription
+	packetSubs  []packetSubscriptionEntry
 	sections    map[uint64]*sectionSubscription
+	sectionSubs []sectionSubscriptionEntry
 	source      SourceSubscriber
 	started     bool
 	stopped     bool
 	stopOnce    sync.Once
+}
+
+type packetSubscriptionEntry struct {
+	id  uint64
+	sub *packetSubscription
+}
+
+type sectionSubscriptionEntry struct {
+	id  uint64
+	sub *sectionSubscription
 }
 
 func New(source SourceSubscriber, onEmpty func(), onSections ...func(ts.Section)) *Demuxer {
@@ -208,6 +220,7 @@ func (e *Demuxer) attachPacket(sub *packetSubscription) (uint64, error) {
 		sub.service = e.demux.Service(*sub.serviceID)
 	}
 	e.packets[id] = sub
+	e.packetSubs = append(e.packetSubs, packetSubscriptionEntry{id: id, sub: sub})
 	e.startLocked()
 	return id, nil
 }
@@ -221,6 +234,7 @@ func (e *Demuxer) attachSection(sub *sectionSubscription, start bool) (uint64, e
 	id := e.nextID
 	e.nextID++
 	e.sections[id] = sub
+	e.sectionSubs = append(e.sectionSubs, sectionSubscriptionEntry{id: id, sub: sub})
 	if start {
 		e.startLocked()
 	}
@@ -311,7 +325,11 @@ func (m *continuityMonitor) observe(packet ts.Packet) bool {
 
 func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.Section) {
 	e.mu.Lock()
-	for id, sub := range e.packets {
+	var rawPacket ts.Packet
+	for i := 0; i < len(e.packetSubs); {
+		entry := e.packetSubs[i]
+		id := entry.id
+		sub := entry.sub
 		out := packet
 		if sub.serviceID != nil {
 			if e.demux.PATReady() && !e.demux.HasService(*sub.serviceID) {
@@ -321,11 +339,20 @@ func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.Section) {
 			out = sub.service.Packet(packet)
 		}
 		if out == nil {
+			i++
 			continue
 		}
-		out = append(ts.Packet(nil), out...)
+		if sub.serviceID == nil {
+			if rawPacket == nil {
+				rawPacket = append(ts.Packet(nil), packet...)
+			}
+			out = rawPacket
+		} else {
+			out = append(ts.Packet(nil), out...)
+		}
 		select {
 		case sub.queue <- out:
+			i++
 		default:
 			observability.RecordStreamSubscriberOverflow(context.Background(), e.channelType, "packet_overflow")
 			e.finishPacketLocked(id, ErrSubscriberOverflow)
@@ -335,12 +362,17 @@ func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.Section) {
 		for _, hook := range e.onSections {
 			hook(section)
 		}
-		for id, sub := range e.sections {
+		for i := 0; i < len(e.sectionSubs); {
+			entry := e.sectionSubs[i]
+			id := entry.id
+			sub := entry.sub
 			if sub.accept != nil && !sub.accept(section) {
+				i++
 				continue
 			}
 			select {
 			case sub.queue <- section:
+				i++
 			default:
 				observability.RecordStreamSubscriberOverflow(context.Background(), e.channelType, "section_overflow")
 				e.finishSectionLocked(id, ErrSubscriberOverflow)

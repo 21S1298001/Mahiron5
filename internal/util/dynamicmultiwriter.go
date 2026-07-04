@@ -6,20 +6,28 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"sync/atomic"
 )
 
 const dynamicMultiWriterBufferSize = 128
 
 type DynamicMultiWriter struct {
 	mutex       sync.RWMutex
+	pool        sync.Pool
 	subscribers []*dynamicMultiWriterSubscriber
 }
 
 type dynamicMultiWriterSubscriber struct {
 	writer io.Writer
-	ch     chan []byte
+	ch     chan *dynamicMultiWriterChunk
 	done   chan struct{}
 	once   sync.Once
+}
+
+type dynamicMultiWriterChunk struct {
+	refs int32
+	data []byte
+	pool *sync.Pool
 }
 
 func NewDynamicMultiWriter(writers ...io.Writer) *DynamicMultiWriter {
@@ -40,7 +48,7 @@ func (d *DynamicMultiWriter) Attach(writer io.Writer) {
 
 	sub := &dynamicMultiWriterSubscriber{
 		writer: writer,
-		ch:     make(chan []byte, dynamicMultiWriterBufferSize),
+		ch:     make(chan *dynamicMultiWriterChunk, dynamicMultiWriterBufferSize),
 		done:   make(chan struct{}),
 	}
 	d.subscribers = append(d.subscribers, sub)
@@ -109,7 +117,7 @@ func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	}
 
-	chunk := append([]byte(nil), p...)
+	chunk := d.newChunk(p, len(d.subscribers))
 	for _, sub := range d.subscribers {
 		sub.enqueue(chunk)
 	}
@@ -118,7 +126,31 @@ func (d *DynamicMultiWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func (s *dynamicMultiWriterSubscriber) enqueue(chunk []byte) {
+func (d *DynamicMultiWriter) newChunk(p []byte, refs int) *dynamicMultiWriterChunk {
+	chunk, _ := d.pool.Get().(*dynamicMultiWriterChunk)
+	if chunk == nil {
+		chunk = &dynamicMultiWriterChunk{pool: &d.pool}
+	}
+	if cap(chunk.data) < len(p) {
+		chunk.data = make([]byte, len(p))
+	} else {
+		chunk.data = chunk.data[:len(p)]
+	}
+	copy(chunk.data, p)
+	atomic.StoreInt32(&chunk.refs, int32(refs))
+	return chunk
+}
+
+func (c *dynamicMultiWriterChunk) release() {
+	if atomic.AddInt32(&c.refs, -1) != 0 {
+		return
+	}
+	pool := c.pool
+	c.data = c.data[:0]
+	pool.Put(c)
+}
+
+func (s *dynamicMultiWriterSubscriber) enqueue(chunk *dynamicMultiWriterChunk) {
 	select {
 	case s.ch <- chunk:
 		return
@@ -126,22 +158,41 @@ func (s *dynamicMultiWriterSubscriber) enqueue(chunk []byte) {
 	}
 
 	select {
-	case <-s.ch:
+	case dropped := <-s.ch:
+		dropped.release()
 	default:
 	}
 
 	select {
 	case s.ch <- chunk:
 	default:
+		chunk.release()
 	}
 }
 
 func (s *dynamicMultiWriterSubscriber) run(onError func()) {
 	defer close(s.done)
+	defer s.drain()
 	for chunk := range s.ch {
-		written, err := s.writer.Write(chunk)
-		if err != nil || written != len(chunk) {
+		want := len(chunk.data)
+		written, err := s.writer.Write(chunk.data)
+		chunk.release()
+		if err != nil || written != want {
 			onError()
+			return
+		}
+	}
+}
+
+func (s *dynamicMultiWriterSubscriber) drain() {
+	for {
+		select {
+		case chunk, ok := <-s.ch:
+			if !ok {
+				return
+			}
+			chunk.release()
+		default:
 			return
 		}
 	}

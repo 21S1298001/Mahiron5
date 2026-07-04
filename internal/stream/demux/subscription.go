@@ -3,6 +3,7 @@ package demux
 import (
 	"context"
 	"io"
+	"slices"
 	"strconv"
 
 	"github.com/21S1298001/mahiron/internal/observability"
@@ -116,6 +117,9 @@ func (e *Demuxer) finishPacketLocked(id uint64, err error) {
 	sub.finished = true
 	sub.err = err
 	delete(e.packets, id)
+	e.packetSubs = slices.DeleteFunc(e.packetSubs, func(entry packetSubscriptionEntry) bool {
+		return entry.id == id
+	})
 	close(sub.queue)
 	close(sub.done)
 	e.cancelIfEmptyLocked()
@@ -135,6 +139,9 @@ func (e *Demuxer) finishSectionLocked(id uint64, err error) {
 	sub.finished = true
 	sub.err = err
 	delete(e.sections, id)
+	e.sectionSubs = slices.DeleteFunc(e.sectionSubs, func(entry sectionSubscriptionEntry) bool {
+		return entry.id == id
+	})
 	close(sub.queue)
 	close(sub.done)
 	e.cancelIfEmptyLocked()
@@ -157,11 +164,11 @@ func (e *Demuxer) close(err error) {
 		e.mu.Lock()
 		e.err = err
 		e.stopped = true
-		for id := range e.packets {
-			e.finishPacketLocked(id, err)
+		for len(e.packetSubs) > 0 {
+			e.finishPacketLocked(e.packetSubs[0].id, err)
 		}
-		for id := range e.sections {
-			e.finishSectionLocked(id, err)
+		for len(e.sectionSubs) > 0 {
+			e.finishSectionLocked(e.sectionSubs[0].id, err)
 		}
 		onEmpty := e.onEmpty
 		e.mu.Unlock()
