@@ -318,7 +318,7 @@ func ParseSDTTCommonDataAnnouncements(s Section) ([]CommonDataAnnouncement, erro
 		return nil, nil
 	}
 	tableIDExt := binary.BigEndian.Uint16(s[3:5])
-	if byte(tableIDExt>>8) != 0xff {
+	if !isSatelliteCommonDataTableIDExt(tableIDExt) {
 		return nil, nil
 	}
 	end := s.TotalLength() - 4
@@ -328,6 +328,9 @@ func ParseSDTTCommonDataAnnouncements(s Section) ([]CommonDataAnnouncement, erro
 	tsid := binary.BigEndian.Uint16(s[8:10])
 	onid := binary.BigEndian.Uint16(s[10:12])
 	sid := binary.BigEndian.Uint16(s[12:14])
+	if !IsSatelliteOriginalNetworkID(onid) {
+		return nil, nil
+	}
 	contentCount := int(s[14])
 	off := 15
 	result := make([]CommonDataAnnouncement, 0, contentCount)
@@ -350,7 +353,7 @@ func ParseSDTTCommonDataAnnouncements(s Section) ([]CommonDataAnnouncement, erro
 		if err != nil {
 			return nil, err
 		}
-		if ok && scheduleDescriptionLength == 0 && IsSatelliteOriginalNetworkID(onid) && sid != 0 && sid != 0xffff {
+		if ok && scheduleDescriptionLength == 0 && sid != 0 && sid != 0xffff {
 			result = append(result, CommonDataAnnouncement{
 				OriginalNetworkID: onid,
 				TransportStreamID: tsid,
@@ -362,6 +365,10 @@ func ParseSDTTCommonDataAnnouncements(s Section) ([]CommonDataAnnouncement, erro
 		off = contentEnd
 	}
 	return result, nil
+}
+
+func isSatelliteCommonDataTableIDExt(tableIDExt uint16) bool {
+	return tableIDExt == 0xfffe || tableIDExt == 0xfffc
 }
 
 func sdttDownloadContentID(descriptors []byte) (uint32, bool, error) {

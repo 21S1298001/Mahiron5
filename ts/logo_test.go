@@ -230,6 +230,36 @@ func TestParseSDTTCommonDataAnnouncementsIgnoresNonCommonAndNotCurrent(t *testin
 	}
 }
 
+func TestParseSDTTCommonDataAnnouncementsIgnoresNonSatelliteCommonData(t *testing.T) {
+	for _, tableIDExt := range []uint16{0xfffa, 0xfff8} {
+		section := buildSDTT(t, tableIDExt, 0x4031, 0x0004, 929, true, 0x0007, 0x12345678, true)
+		section[24] = 0xff
+		writeCRC(section)
+
+		got, err := ParseSDTTCommonDataAnnouncements(section)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 0 {
+			t.Fatalf("announcements = %#v, want none", got)
+		}
+	}
+}
+
+func TestParseSDTTCommonDataAnnouncementsIgnoresNonSatelliteNetwork(t *testing.T) {
+	section := buildSDTT(t, 0xfffe, 0x4031, 0x7fe0, 929, true, 0x0007, 0x12345678, true)
+	section[24] = 0xff
+	writeCRC(section)
+
+	got, err := ParseSDTTCommonDataAnnouncements(section)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("announcements = %#v, want none", got)
+	}
+}
+
 func TestNormalizeARIBLogoPNGAddsPaletteAndTransparency(t *testing.T) {
 	png := buildPalettePNG(t, false)
 
