@@ -447,11 +447,3 @@ func cloneCurrentTime(current *DataBroadcastCurrentTime) *DataBroadcastCurrentTi
 func ptr[T any](v T) *T {
 	return &v
 }
-
-func waitContext(ctx context.Context) error {
-	<-ctx.Done()
-	if err := ctx.Err(); err != nil && err != context.Canceled {
-		return err
-	}
-	return nil
-}
