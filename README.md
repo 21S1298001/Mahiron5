@@ -20,7 +20,7 @@ Yet another DVR Tuner Server for Japanese TV.
 
 ## ライセンス
 
-Copyright (c) 2026 21S1298001
+Copyright (c) 2026 Rokoucha
 
 Licensed under the Apache License, Version 2.0.
 
