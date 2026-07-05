@@ -13,10 +13,51 @@ Yet another DVR Tuner Server for Japanese TV.
 - ケーブルテレビの再送信など複数経路のTSを統合
 - OpenTelemetryによる高い可観測性
 
-## Mirakurun APIとの差分
+## セットアップ
 
-- 非対応
-  - `/api/config` 関連
+[リリース](https://github.com/rokoucha/Mahiron/releases)より最新のバージョンをダウンロードするか、[コンテナイメージ](https://github.com/rokoucha/Mahiron/pkgs/container/mahiron)をpullしてください。
+
+設定は[サンプル](https://github.com/rokoucha/Mahiron/tree/main/config)を参考に、実行ファイルと同じディレクトリの `config` フォルダ内に配置してください。別なフォルダにする場合は、実行時に `-config-dir <path>` オプションを指定してください。
+
+起動すると、自動的に放送サービスをスキャンし、EPGやロゴを取得します。
+実行状態はダッシュボードで確認してください。
+
+## Mirakurunとの差分
+
+代表的な差分です。これ以外にも非互換な部分があります。
+
+### API
+
+- 設定系のAPIは対応していません
+  - `/config` 以下の全て
+  - `PUT /restart`
+- ChannelTypeは好きな文字列を指定できます
+- Serviceに以下のフィールドを追加しています
+  - transportStreamId
+  - eitScheduleFlag
+  - eitPresentFollowing
+  - epgLastAttemptAt
+  - epgLastError
+- Channelに以下のフィールドを追加しています
+  - routes
+- TunerDeviceに以下のフィールドを追加しています
+  - currentChannel*
+  - tunedChannel*
+- `/api/version` にserverフィールドを追加しています
+  - 値は常に `mahiron` です
+- JobItemに以下のフィールドを追加しています
+  - nextRunAt
+  - result
+- RelatedItemに以下のフィールドを追加しています
+  - transportStreamId
+
+### 設定
+
+- チャンネル設定(`channels.yml`)は互換です
+  - ケーブルテレビの再送信などで複数経路で同じTSを受信できる場合の設定フィールド(`routes`)を追加しています
+- チューナー設定(`tuners.yml`)はリモートMirakurunを除いて互換です
+- サーバー設定(`server.yml`)は非互換です
+- リモートMirakurun機能はありませんが、Mirakurun互換サーバーに接続する機能があります(`remotes.yml`)
 
 ## ライセンス
 
