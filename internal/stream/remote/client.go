@@ -369,14 +369,6 @@ func remoteOperationResult(err error) string {
 	}
 }
 
-func (c *Client) getJSON(ctx context.Context, dst any, elems ...string) error {
-	req, err := c.newRequest(ctx, http.MethodGet, elems...)
-	if err != nil {
-		return err
-	}
-	return c.doJSON(req, dst)
-}
-
 func (c *Client) doJSON(req *http.Request, dst any) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
