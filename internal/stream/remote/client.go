@@ -105,6 +105,42 @@ func (c *Client) CheckAvailableForRoute(ctx context.Context, channelType, channe
 	return tuner.ErrTunerUnavailable
 }
 
+// TunerStatuses returns the current tuner state reported by the remote server.
+// A short timeout keeps a temporarily unreachable remote from delaying the
+// local status page indefinitely.
+func (c *Client) TunerStatuses(ctx context.Context) ([]tuner.Status, error) {
+	checkCtx, cancel := context.WithTimeout(ctx, remoteAvailabilityTimeout)
+	defer cancel()
+
+	req, err := c.newRequest(checkCtx, http.MethodGet, "tuners")
+	if err != nil {
+		return nil, err
+	}
+	var remoteTuners []remoteTuner
+	if err := c.doJSON(req, &remoteTuners); err != nil {
+		return nil, err
+	}
+	statuses := make([]tuner.Status, len(remoteTuners))
+	for i, item := range remoteTuners {
+		statuses[i] = tuner.Status{
+			Index:              item.Index,
+			Name:               item.Name,
+			Types:              item.Types,
+			Command:            item.Command,
+			PID:                item.PID,
+			IsAvailable:        item.IsAvailable,
+			IsFree:             item.IsFree,
+			IsUsing:            item.IsUsing,
+			IsFault:            item.IsFault,
+			CurrentChannelType: item.CurrentChannelType,
+			CurrentChannel:     item.CurrentChannel,
+			TunedChannelType:   item.TunedChannelType,
+			TunedChannel:       item.TunedChannel,
+		}
+	}
+	return statuses, nil
+}
+
 func (c *Client) ChannelStream(ctx context.Context, channelType, channel string, decode bool, dst io.Writer) error {
 	return c.stream(ctx, remoteOperationChannelStream, decode, dst, "channels", channelType, channel, "stream")
 }

@@ -41,6 +41,10 @@ func (a *APIStreamAdapter) ActiveSessionCount() int {
 	return a.manager.ActiveSessionCount()
 }
 
+func (a *APIStreamAdapter) RemoteTunerStatuses(ctx context.Context) []RemoteTunerStatus {
+	return a.manager.RemoteTunerStatuses(ctx)
+}
+
 type EPGCollectorAdapter struct {
 	manager *StreamManager
 }

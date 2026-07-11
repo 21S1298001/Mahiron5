@@ -124,6 +124,28 @@ func TestRemoteClientCheckAvailableForRoute(t *testing.T) {
 	}
 }
 
+func TestRemoteClientTunerStatuses(t *testing.T) {
+	client := NewClient(config.RemoteConfig{URL: "http://remote.local/api"})
+	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/api/tuners" {
+			t.Fatalf("path = %q, want /api/tuners", r.URL.Path)
+		}
+		return streamtest.StringResponse(http.StatusOK, `[{"index":2,"name":"remote","types":["GR"],"isAvailable":true,"isFree":false,"isUsing":true,"isFault":false,"currentChannelType":"GR","currentChannel":"27"}]`), nil
+	})}
+
+	statuses, err := client.TunerStatuses(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(statuses) != 1 {
+		t.Fatalf("statuses = %#v", statuses)
+	}
+	status := statuses[0]
+	if status.Index != 2 || status.Name != "remote" || !status.IsUsing || status.CurrentChannel != "27" {
+		t.Fatalf("status = %+v", status)
+	}
+}
+
 func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 	paths := []string{}
 	queries := []string{}

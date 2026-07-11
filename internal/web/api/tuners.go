@@ -5,18 +5,37 @@ import (
 	"encoding/json"
 
 	"github.com/21S1298001/mahiron/internal/config"
+	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/go-faster/jx"
 )
 
-func GetTuners(_ context.Context, h *Handler) (apigen.GetTunersRes, error) {
+func GetTuners(ctx context.Context, h *Handler) (apigen.GetTunersRes, error) {
 	statuses := h.tunerManager.Statuses()
-	result := make(apigen.GetTunersOKApplicationJSON, len(statuses))
+	result := make(apigen.GetTunersOKApplicationJSON, 0, len(statuses))
 	for i := range statuses {
-		result[i] = *apiTuner(statuses[i])
+		result = append(result, *apiTuner(statuses[i]))
+	}
+	if provider, ok := h.streamManager.(interface {
+		RemoteTunerStatuses(context.Context) []stream.RemoteTunerStatus
+	}); ok {
+		for i, remote := range provider.RemoteTunerStatuses(ctx) {
+			result = append(result, *apiRemoteTuner(remote, i))
+		}
 	}
 	return &result, nil
+}
+
+func apiRemoteTuner(remote stream.RemoteTunerStatus, position int) *apigen.TunerDevice {
+	result := apiTuner(remote.Status)
+	// Remote indexes only have meaning on their own server. Keep list keys
+	// distinct from local tuners without making remote tuner process endpoints
+	// accidentally address a local device.
+	result.Index = -position - 1
+	result.Name = remote.Remote + " / " + remote.Status.Name
+	result.IsRemote = true
+	return result
 }
 
 func GetTuner(_ context.Context, h *Handler, params apigen.GetTunerParams) (apigen.GetTunerRes, error) {

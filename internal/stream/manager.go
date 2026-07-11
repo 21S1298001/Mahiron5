@@ -1,10 +1,13 @@
 package stream
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/21S1298001/mahiron/internal/config"
@@ -27,9 +30,17 @@ type StreamManager struct {
 	remoteEventSyncOnce   sync.Once
 	remoteEventSyncWG     sync.WaitGroup
 	remotes               map[string]*remote.Client
+	remoteTunerTypes      map[string]map[string]struct{}
 	serviceLister         ServiceLister
 	registry              *sessionRegistry
 	sources               *source.Pool
+}
+
+// RemoteTunerStatus identifies a tuner that belongs to a configured remote
+// Mahiron server.
+type RemoteTunerStatus struct {
+	Remote string
+	Status tuner.Status
 }
 
 type StreamManagerConfig struct {
@@ -64,14 +75,30 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 	for _, remoteConfig := range cfg.Remotes {
 		remotes[remoteConfig.Name] = newRemoteClient(remoteConfig)
 	}
+	remoteTunerTypes := make(map[string]map[string]struct{}, len(remotes))
+	for _, channel := range cfg.Channels {
+		if config.IsChannelDisabled(channel) {
+			continue
+		}
+		for _, route := range channel.RoutesOrDefault() {
+			if route.Remote == "" || route.IsDisabled != nil && *route.IsDisabled {
+				continue
+			}
+			if remoteTunerTypes[route.Remote] == nil {
+				remoteTunerTypes[route.Remote] = map[string]struct{}{}
+			}
+			remoteTunerTypes[route.Remote][route.Type] = struct{}{}
+		}
+	}
 	return &StreamManager{
-		eitUpdater:     cfg.EITUpdater,
-		logoUpdater:    cfg.LogoUpdater,
-		programUpdater: cfg.ProgramUpdater,
-		remotes:        remotes,
-		serviceLister:  cfg.ServiceLister,
-		registry:       newSessionRegistry(),
-		sources:        source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
+		eitUpdater:       cfg.EITUpdater,
+		logoUpdater:      cfg.LogoUpdater,
+		programUpdater:   cfg.ProgramUpdater,
+		remotes:          remotes,
+		remoteTunerTypes: remoteTunerTypes,
+		serviceLister:    cfg.ServiceLister,
+		registry:         newSessionRegistry(),
+		sources:          source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
 	}
 }
 
@@ -225,6 +252,57 @@ func (m *StreamManager) GetExisting(channelType, channel string) (Session, bool)
 
 func (m *StreamManager) ActiveSessionCount() int {
 	return m.registry.count()
+}
+
+// RemoteTunerStatuses collects remote tuner state concurrently. A failed
+// remote is omitted so the local tuner status endpoint remains available.
+func (m *StreamManager) RemoteTunerStatuses(ctx context.Context) []RemoteTunerStatus {
+	type result struct {
+		name     string
+		statuses []tuner.Status
+	}
+	results := make(chan result, len(m.remotes))
+	var wg sync.WaitGroup
+	for name, client := range m.remotes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			statuses, err := client.TunerStatuses(ctx)
+			if err == nil {
+				results <- result{name: name, statuses: m.configuredRemoteTuners(name, statuses)}
+			}
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	var collected []RemoteTunerStatus
+	for item := range results {
+		for _, status := range item.statuses {
+			collected = append(collected, RemoteTunerStatus{Remote: item.name, Status: status})
+		}
+	}
+	slices.SortFunc(collected, func(a, b RemoteTunerStatus) int {
+		if a.Remote != b.Remote {
+			return strings.Compare(a.Remote, b.Remote)
+		}
+		return cmp.Compare(a.Status.Index, b.Status.Index)
+	})
+	return collected
+}
+
+func (m *StreamManager) configuredRemoteTuners(remoteName string, statuses []tuner.Status) []tuner.Status {
+	types := m.remoteTunerTypes[remoteName]
+	result := make([]tuner.Status, 0, len(statuses))
+	for _, status := range statuses {
+		if slices.ContainsFunc(status.Types, func(typ string) bool {
+			_, ok := types[typ]
+			return ok
+		}) {
+			result = append(result, status)
+		}
+	}
+	return result
 }
 
 func (m *StreamManager) Shutdown(ctx context.Context) error {
