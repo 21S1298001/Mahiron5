@@ -134,7 +134,12 @@ func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/channels/GR/27/stream":
 			return streamtest.StringResponse(http.StatusOK, "channel-ts"), nil
-		case "/api/channels/GR/27/services/1024/stream":
+		case "/api/services":
+			if got := r.URL.Query(); got.Get("channel.type") != "GR" || got.Get("channel.channel") != "27" {
+				t.Fatalf("query = %q, want channel.type=GR and channel.channel=27", r.URL.RawQuery)
+			}
+			return streamtest.StringResponse(http.StatusOK, `[{"networkId":32736,"serviceId":1024}]`), nil
+		case "/api/services/3273601024/stream":
 			return streamtest.StringResponse(http.StatusOK, "service-ts"), nil
 		case "/api/programs/10100009/stream":
 			return streamtest.StringResponse(http.StatusOK, "program-ts"), nil
@@ -163,8 +168,8 @@ func TestRemoteSessionStreamsChannelServiceAndProgram(t *testing.T) {
 	if channelOut.String() != "channel-ts" || serviceOut.String() != "service-ts" || programOut.String() != "program-ts" {
 		t.Fatalf("streams = %q/%q/%q", channelOut.String(), serviceOut.String(), programOut.String())
 	}
-	wantPaths := []string{"/api/channels/GR/27/stream", "/api/channels/GR/27/services/1024/stream", "/api/programs/10100009/stream"}
-	wantQueries := []string{"", "decode=1", "decode=1"}
+	wantPaths := []string{"/api/channels/GR/27/stream", "/api/services", "/api/services/3273601024/stream", "/api/programs/10100009/stream"}
+	wantQueries := []string{"", "channel.channel=27&channel.type=GR", "decode=1", "decode=1"}
 	if len(paths) != len(wantPaths) || len(queries) != len(wantQueries) {
 		t.Fatalf("requests = %#v?%#v", paths, queries)
 	}
@@ -228,8 +233,11 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		auth = r.Header.Get("Authorization")
 		path = r.URL.Path
-		if r.URL.Path != "/api/channels/GR/27/services" {
-			t.Fatalf("path = %s, want /api/channels/GR/27/services", r.URL.Path)
+		if r.URL.Path != "/api/services" {
+			t.Fatalf("path = %s, want /api/services", r.URL.Path)
+		}
+		if got := r.URL.Query(); got.Get("channel.type") != "GR" || got.Get("channel.channel") != "27" {
+			t.Fatalf("query = %q, want channel.type=GR and channel.channel=27", r.URL.RawQuery)
 		}
 		return streamtest.StringResponse(http.StatusOK, `[{
 			"id": 327361024,
@@ -252,7 +260,7 @@ func TestRemoteSessionScanServicesUsesRemoteAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != "/api/channels/GR/27/services" {
+	if path != "/api/services" {
 		t.Fatalf("path = %s", path)
 	}
 	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:pass"))
@@ -283,7 +291,10 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 	client.httpClient = &http.Client{Transport: streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		paths = append(paths, r.URL.Path)
 		switch r.URL.Path {
-		case "/api/channels/GR/27/services":
+		case "/api/services":
+			if got := r.URL.Query(); got.Get("channel.type") != "GR" || got.Get("channel.channel") != "27" {
+				t.Fatalf("query = %q, want channel.type=GR and channel.channel=27", r.URL.RawQuery)
+			}
 			return streamtest.StringResponse(http.StatusOK, `[{
 				"serviceId": 101,
 				"networkId": 4,
@@ -326,7 +337,7 @@ func TestRemoteSessionObserveLogosUsesRemoteAPI(t *testing.T) {
 	if observed != 1 {
 		t.Fatalf("observed logos = %d, want 1", observed)
 	}
-	if len(paths) != 2 || paths[0] != "/api/channels/GR/27/services" || paths[1] != "/api/services/400101/logo" {
+	if len(paths) != 2 || paths[0] != "/api/services" || paths[1] != "/api/services/400101/logo" {
 		t.Fatalf("paths = %#v", paths)
 	}
 }

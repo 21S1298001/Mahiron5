@@ -110,7 +110,11 @@ func (c *Client) ChannelStream(ctx context.Context, channelType, channel string,
 }
 
 func (c *Client) ServiceStream(ctx context.Context, channelType, channel string, serviceID uint16, decode bool, dst io.Writer) error {
-	return c.stream(ctx, remoteOperationServiceStream, decode, dst, "channels", channelType, channel, "services", fmt.Sprint(serviceID), "stream")
+	serviceItemID, err := c.channelServiceItemID(ctx, channelType, channel, serviceID)
+	if err != nil {
+		return err
+	}
+	return c.stream(ctx, remoteOperationServiceStream, decode, dst, "services", fmt.Sprint(serviceItemID), "stream")
 }
 
 func (c *Client) ProgramStream(ctx context.Context, programID int64, decode bool, dst io.Writer) error {
@@ -191,10 +195,35 @@ func remoteBoolDefault(value *bool, fallback bool) bool {
 
 func (c *Client) ListChannelServices(ctx context.Context, channelType, channel string) ([]remoteService, error) {
 	var services []remoteService
-	if err := c.getJSON(ctx, &services, "channels", channelType, channel, "services"); err != nil {
+	// Use Mirakurun's standard service filter instead of Mahiron's newer
+	// /channels/{type}/{channel}/services endpoint. Some older Mahiron servers
+	// redirect that endpoint with a relative Location header, which net/http
+	// resolves below the channel path and consequently turns into a 404.
+	req, err := c.newRequest(ctx, http.MethodGet, "services")
+	if err != nil {
+		return nil, err
+	}
+	query := req.URL.Query()
+	query.Set("channel.type", channelType)
+	query.Set("channel.channel", channel)
+	req.URL.RawQuery = query.Encode()
+	if err := c.doJSON(req, &services); err != nil {
 		return nil, err
 	}
 	return services, nil
+}
+
+func (c *Client) channelServiceItemID(ctx context.Context, channelType, channel string, serviceID uint16) (int64, error) {
+	services, err := c.ListChannelServices(ctx, channelType, channel)
+	if err != nil {
+		return 0, err
+	}
+	for _, svc := range services {
+		if svc.ServiceID == serviceID {
+			return int64(svc.NetworkID)*100000 + int64(svc.ServiceID), nil
+		}
+	}
+	return 0, ErrChannelNotFound
 }
 
 func remoteServiceHasLogo(svc remoteService) bool {
