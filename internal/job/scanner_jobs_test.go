@@ -478,14 +478,3 @@ func waitForFinishedJobKey(t *testing.T, mgr *JobManager, key string) *Job {
 	t.Helper()
 	return waitForJobKeyStatus(t, mgr, key, StatusFinished)
 }
-
-func countFinishedJobs(t *testing.T, mgr *JobManager, key string) int {
-	t.Helper()
-	count := 0
-	for _, item := range mgr.GetJobs() {
-		if item.Key == key && item.Status == StatusFinished {
-			count++
-		}
-	}
-	return count
-}
