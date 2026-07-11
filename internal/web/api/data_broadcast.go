@@ -115,6 +115,8 @@ func apiDataBroadcastEvent(serviceItemID int64, event stream.DataBroadcastEvent)
 		result["currentTime"] = event.CurrentTime
 	case "esEventUpdated":
 		result["esEvent"] = event.ESEvent
+	case "bit":
+		result["bit"] = apiDataBroadcastBIT(event.BIT)
 	}
 	return result
 }
@@ -126,7 +128,31 @@ func apiDataBroadcastSnapshot(serviceItemID int64, snapshot stream.DataBroadcast
 		"components":  apiDataBroadcastComponents(serviceItemID, snapshot.Components),
 		"programInfo": snapshot.ProgramInfo,
 		"currentTime": snapshot.CurrentTime,
+		"bit":         apiDataBroadcastBIT(snapshot.BIT),
 	}
+}
+
+func apiDataBroadcastBIT(bit *stream.DataBroadcastBIT) any {
+	if bit == nil {
+		return nil
+	}
+	broadcasters := make([]map[string]any, 0, len(bit.Broadcasters))
+	for _, broadcaster := range bit.Broadcasters {
+		services := make([]map[string]any, 0, len(broadcaster.Services))
+		for _, service := range broadcaster.Services {
+			services = append(services, map[string]any{"serviceId": service.ServiceID, "serviceType": service.ServiceType})
+		}
+		affiliated := make([]map[string]any, 0, len(broadcaster.AffiliationBroadcasters))
+		for _, item := range broadcaster.AffiliationBroadcasters {
+			affiliated = append(affiliated, map[string]any{"originalNetworkId": item.OriginalNetworkID, "broadcasterId": item.BroadcasterID})
+		}
+		broadcasters = append(broadcasters, map[string]any{
+			"broadcasterId": broadcaster.BroadcasterID, "broadcasterName": broadcaster.BroadcasterName,
+			"services": services, "affiliations": broadcaster.Affiliations,
+			"affiliationBroadcasters": affiliated, "terrestrialBroadcasterId": broadcaster.TerrestrialBroadcasterID,
+		})
+	}
+	return map[string]any{"originalNetworkId": bit.OriginalNetworkID, "version": bit.Version, "broadcasters": broadcasters, "rawSectionHex": bit.RawSectionHex}
 }
 
 func apiDataBroadcastPMT(serviceItemID int64, pmt *stream.DataBroadcastPMT) any {

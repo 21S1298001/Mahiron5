@@ -10,20 +10,23 @@ import (
 // this package (StreamManagerConfig fields and adapter signatures), so
 // external consumers keep importing only internal/stream.
 type (
-	TunerManager            = source.TunerManager
-	TunerAllocator          = source.TunerAllocator
-	DecoderCommandProvider  = source.DecoderCommandProvider
-	TunerDevice             = source.TunerDevice
-	Descrambler             = source.Descrambler
-	DescramblerFactory      = source.DescramblerFactory
-	EITSectionUpdater       = local.EITSectionUpdater
-	LogoUpdater             = local.LogoUpdater
-	DataBroadcastEvent      = databroadcast.DataBroadcastEvent
-	DataBroadcastModule     = databroadcast.DataBroadcastModule
-	DataBroadcastSnapshot   = databroadcast.DataBroadcastSnapshot
-	DataBroadcastPMT        = databroadcast.DataBroadcastPMT
-	DataBroadcastComponent  = databroadcast.DataBroadcastComponent
-	DataBroadcastModuleList = databroadcast.DataBroadcastModuleList
+	TunerManager             = source.TunerManager
+	TunerAllocator           = source.TunerAllocator
+	DecoderCommandProvider   = source.DecoderCommandProvider
+	TunerDevice              = source.TunerDevice
+	Descrambler              = source.Descrambler
+	DescramblerFactory       = source.DescramblerFactory
+	EITSectionUpdater        = local.EITSectionUpdater
+	LogoUpdater              = local.LogoUpdater
+	DataBroadcastEvent       = databroadcast.DataBroadcastEvent
+	DataBroadcastModule      = databroadcast.DataBroadcastModule
+	DataBroadcastSnapshot    = databroadcast.DataBroadcastSnapshot
+	DataBroadcastPMT         = databroadcast.DataBroadcastPMT
+	DataBroadcastComponent   = databroadcast.DataBroadcastComponent
+	DataBroadcastModuleList  = databroadcast.DataBroadcastModuleList
+	DataBroadcastBIT         = databroadcast.DataBroadcastBIT
+	DataBroadcastBroadcaster = databroadcast.DataBroadcastBroadcaster
+	DataBroadcastService     = databroadcast.DataBroadcastService
 )
 
 func NewCommandDescrambler(command string) Descrambler {

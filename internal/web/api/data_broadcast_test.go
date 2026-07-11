@@ -14,6 +14,19 @@ import (
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
+func TestAPIDataBroadcastBITUsesWebBMLFieldNames(t *testing.T) {
+	name := "局"
+	payload := apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "bit", BIT: &stream.DataBroadcastBIT{OriginalNetworkID: 0x7fe0, Broadcasters: []stream.DataBroadcastBroadcaster{{BroadcasterID: 0xff, BroadcasterName: &name, Affiliations: []byte{1, 2}, Services: []stream.DataBroadcastService{{ServiceID: 101, ServiceType: 1}}}}}})
+	bit, ok := payload["bit"].(map[string]any)
+	if !ok || bit["originalNetworkId"] != uint16(0x7fe0) {
+		t.Fatalf("bit = %#v", payload["bit"])
+	}
+	broadcasters := bit["broadcasters"].([]map[string]any)
+	if len(broadcasters) != 1 || broadcasters[0]["broadcasterId"] != byte(0xff) || broadcasters[0]["affiliations"] == nil {
+		t.Fatalf("broadcasters = %#v", broadcasters)
+	}
+}
+
 func TestGetServiceDataBroadcastEventsWritesSnapshot(t *testing.T) {
 	handler := testProgramHandler(t)
 	handler.streamManager = fakeDataBroadcastStreamManager{session: fakeDataBroadcastSession{}}

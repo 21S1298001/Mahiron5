@@ -192,7 +192,7 @@ func (d *Demuxer) HasService(serviceID uint16) bool {
 func (d *Demuxer) PATReady() bool { return d.pat != nil }
 
 func (d *Demuxer) shouldAssemble(pid uint16) bool {
-	if pid == PIDPAT || pid == PIDCAT || pid == PIDNIT || pid == PIDSDT || pid == PIDEIT || pid == PIDTOT || pid == PIDSDTT || pid == PIDCDT {
+	if pid == PIDPAT || pid == PIDCAT || pid == PIDNIT || pid == PIDSDT || pid == PIDEIT || pid == PIDTOT || pid == PIDSDTT || pid == PIDBIT || pid == PIDCDT {
 		return true
 	}
 	_, ok := d.pmtByPID[pid]

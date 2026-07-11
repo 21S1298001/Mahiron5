@@ -20,6 +20,7 @@ const (
 	TableIDTOT            = 0x73 // time offset table
 	TableIDSDTT           = 0xC3 // software download trigger table
 	TableIDCDT            = 0xC8 // common data table
+	TableIDBIT            = 0xC4 // broadcaster information table
 	TableIDDSMCCDII       = 0x3B // DSM-CC DownloadInfoIndication
 	TableIDDSMCCDDB       = 0x3C // DSM-CC DownloadDataBlock
 	TableIDDSMCCStream    = 0x3D // DSM-CC stream descriptors (event messages/NPT)

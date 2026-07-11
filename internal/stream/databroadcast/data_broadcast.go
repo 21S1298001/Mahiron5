@@ -21,6 +21,7 @@ type DataBroadcastEvent struct {
 	ProgramInfo *DataBroadcastProgramInfo
 	CurrentTime *DataBroadcastCurrentTime
 	ESEvent     *DataBroadcastESEvent
+	BIT         *DataBroadcastBIT
 }
 
 type DataBroadcastSnapshot struct {
@@ -29,6 +30,7 @@ type DataBroadcastSnapshot struct {
 	Components  []DataBroadcastComponent
 	ProgramInfo *DataBroadcastProgramInfo
 	CurrentTime *DataBroadcastCurrentTime
+	BIT         *DataBroadcastBIT
 }
 
 type DataBroadcastPMT struct {
@@ -94,10 +96,36 @@ type DataBroadcastGeneralEvent struct {
 	PrivateData         []byte
 }
 
+type DataBroadcastBIT struct {
+	OriginalNetworkID uint16
+	Version           byte
+	Broadcasters      []DataBroadcastBroadcaster
+	RawSectionHex     string
+}
+
+type DataBroadcastBroadcaster struct {
+	BroadcasterID            byte
+	BroadcasterName          *string
+	Services                 []DataBroadcastService
+	Affiliations             []byte
+	AffiliationBroadcasters  []DataBroadcastAffiliatedBroadcaster
+	TerrestrialBroadcasterID *uint16
+}
+
+type DataBroadcastService struct {
+	ServiceID   uint16
+	ServiceType byte
+}
+type DataBroadcastAffiliatedBroadcaster struct {
+	OriginalNetworkID uint16
+	BroadcasterID     byte
+}
+
 type DataBroadcastHub struct {
 	mu       sync.Mutex
 	services map[uint16]*dataBroadcastService
 	subs     map[uint16]map[chan DataBroadcastEvent]struct{}
+	bit      *DataBroadcastBIT
 }
 
 type dataBroadcastService struct {
@@ -153,11 +181,57 @@ func (h *DataBroadcastHub) Observe(section ts.PIDSection) {
 		h.observeDDB(section)
 	case ts.TableIDDSMCCStream:
 		h.observeES(section)
+	case ts.TableIDBIT:
+		h.observeBIT(section.Section)
 	case ts.TableIDEITPF0, ts.TableIDEITPF1:
 		h.observeEIT(section.Section)
 	case ts.TableIDTOT:
 		h.observeTOT(section.Section)
 	}
+}
+
+func (h *DataBroadcastHub) observeBIT(section ts.Section) {
+	bit, err := ts.ParseBIT(section)
+	if err != nil || !bit.CurrentNext {
+		return
+	}
+	value := &DataBroadcastBIT{OriginalNetworkID: bit.OriginalNetworkID, Version: bit.VersionNumber, RawSectionHex: hex.EncodeToString(section)}
+	for _, source := range bit.Broadcasters {
+		b := DataBroadcastBroadcaster{BroadcasterID: source.BroadcasterID, Services: []DataBroadcastService{}, Affiliations: []byte{}, AffiliationBroadcasters: []DataBroadcastAffiliatedBroadcaster{}}
+		for _, descriptor := range source.Descriptors {
+			switch descriptor.Tag() {
+			case ts.DescriptorTagBroadcasterName:
+				if name, err := ts.ParseBroadcasterNameDescriptor(descriptor); err == nil {
+					b.BroadcasterName = ptr(name)
+				}
+			case ts.DescriptorTagServiceList:
+				if list, err := ts.ParseServiceListDescriptor(descriptor); err == nil {
+					for _, service := range list.Services {
+						b.Services = append(b.Services, DataBroadcastService{ServiceID: service.ServiceID, ServiceType: service.ServiceType})
+					}
+				}
+			case ts.DescriptorTagExtendedBroadcaster:
+				extended, err := ts.ParseExtendedBroadcasterDescriptor(descriptor)
+				if err != nil {
+					continue
+				}
+				b.Affiliations = append([]byte(nil), extended.AffiliationIDs...)
+				if extended.BroadcasterType == 1 || extended.BroadcasterType == 2 {
+					b.TerrestrialBroadcasterID = ptr(extended.TerrestrialBroadcasterID)
+				}
+				for _, affiliated := range extended.Broadcasters {
+					b.AffiliationBroadcasters = append(b.AffiliationBroadcasters, DataBroadcastAffiliatedBroadcaster{OriginalNetworkID: affiliated.OriginalNetworkID, BroadcasterID: affiliated.BroadcasterID})
+				}
+			}
+		}
+		value.Broadcasters = append(value.Broadcasters, b)
+	}
+	h.mu.Lock()
+	h.bit = value
+	for serviceID := range h.subs {
+		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "bit", BIT: cloneBIT(value)})
+	}
+	h.mu.Unlock()
 }
 
 func (h *DataBroadcastHub) Module(serviceID uint16, componentTag byte, moduleID uint16) (DataBroadcastModule, bool) {
@@ -374,7 +448,7 @@ func (h *DataBroadcastHub) carouselByPIDLocked(pid uint16) (uint16, byte, *ts.DS
 
 func (h *DataBroadcastHub) snapshotLocked(serviceID uint16) DataBroadcastSnapshot {
 	service := h.services[serviceID]
-	snapshot := DataBroadcastSnapshot{ServiceID: serviceID}
+	snapshot := DataBroadcastSnapshot{ServiceID: serviceID, BIT: cloneBIT(h.bit)}
 	if service == nil {
 		return snapshot
 	}
@@ -486,6 +560,27 @@ func cloneCurrentTime(current *DataBroadcastCurrentTime) *DataBroadcastCurrentTi
 		return nil
 	}
 	clone := *current
+	return &clone
+}
+
+func cloneBIT(bit *DataBroadcastBIT) *DataBroadcastBIT {
+	if bit == nil {
+		return nil
+	}
+	clone := *bit
+	clone.Broadcasters = make([]DataBroadcastBroadcaster, len(bit.Broadcasters))
+	for i, b := range bit.Broadcasters {
+		clone.Broadcasters[i] = b
+		clone.Broadcasters[i].Services = append([]DataBroadcastService(nil), b.Services...)
+		clone.Broadcasters[i].Affiliations = append([]byte(nil), b.Affiliations...)
+		clone.Broadcasters[i].AffiliationBroadcasters = append([]DataBroadcastAffiliatedBroadcaster(nil), b.AffiliationBroadcasters...)
+		if b.BroadcasterName != nil {
+			clone.Broadcasters[i].BroadcasterName = ptr(*b.BroadcasterName)
+		}
+		if b.TerrestrialBroadcasterID != nil {
+			clone.Broadcasters[i].TerrestrialBroadcasterID = ptr(*b.TerrestrialBroadcasterID)
+		}
+	}
 	return &clone
 }
 
