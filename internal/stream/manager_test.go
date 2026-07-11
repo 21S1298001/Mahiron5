@@ -25,6 +25,26 @@ func testManager(t *testing.T, devices *fakeTunerDeviceRecorder) *StreamManager 
 	return testManagerWithDescrambler(t, devices, nil)
 }
 
+func TestConfiguredRemoteTunersFiltersByRemoteRouteType(t *testing.T) {
+	disabled := true
+	manager := NewStreamManager(StreamManagerConfig{
+		Channels: config.ChannelsConfig{
+			{Type: "GR", Channel: "27", Routes: []config.ChannelRouteConfig{{Type: "GR", Channel: "27", Remote: "living"}}},
+			{Type: "BS", Channel: "101", Routes: []config.ChannelRouteConfig{{Type: "BS", Channel: "101", Remote: "living", IsDisabled: &disabled}}},
+			{Type: "CS", Channel: "CS1", IsDisabled: &disabled, Routes: []config.ChannelRouteConfig{{Type: "CS", Channel: "CS1", Remote: "living"}}},
+		},
+	})
+
+	statuses := manager.configuredRemoteTuners("living", []tuner.Status{
+		{Name: "GR", Types: []string{"GR"}},
+		{Name: "BS", Types: []string{"BS"}},
+		{Name: "mixed", Types: []string{"BS", "GR"}},
+	})
+	if len(statuses) != 2 || statuses[0].Name != "GR" || statuses[1].Name != "mixed" {
+		t.Fatalf("statuses = %+v, want GR-compatible tuners only", statuses)
+	}
+}
+
 func testManagerWithDescrambler(t *testing.T, devices *fakeTunerDeviceRecorder, descramblers *fakeDescramblerRecorder) *StreamManager {
 	t.Helper()
 	no := false

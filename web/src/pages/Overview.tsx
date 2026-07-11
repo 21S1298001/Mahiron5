@@ -200,7 +200,8 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
                   <div className="overview-tuner-header">
                     <div>
                       <strong>
-                        #{tuner.index} {tuner.name}
+                        {tuner.isRemote ? 'リモート ' : `#${tuner.index} `}
+                        {tuner.name}
                       </strong>
                       <span>
                         {sortedTunerTypes(tuner).join(', ') || '-'} ·{' '}
@@ -208,7 +209,10 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
                           tuner.currentChannelType,
                           tuner.currentChannel,
                         )}{' '}
-                        · {tuner.users.length}利用
+                        ·{' '}
+                        {tuner.isRemote && tuner.isUsing
+                          ? 'リモートで使用中'
+                          : `${tuner.users.length}利用`}
                       </span>
                     </div>
                     <StatusPill tuner={tuner} />

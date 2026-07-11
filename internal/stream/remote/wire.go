@@ -13,9 +13,14 @@ import (
 )
 
 type remoteTuner struct {
+	Index              int      `json:"index"`
+	Name               string   `json:"name"`
 	Types              []string `json:"types"`
+	Command            string   `json:"command"`
+	PID                int      `json:"pid"`
 	IsAvailable        bool     `json:"isAvailable"`
 	IsFree             bool     `json:"isFree"`
+	IsUsing            bool     `json:"isUsing"`
 	IsFault            bool     `json:"isFault"`
 	CurrentChannelType string   `json:"currentChannelType"`
 	CurrentChannel     string   `json:"currentChannel"`

@@ -49,6 +49,43 @@ func TestGetTunersAndGetTuner(t *testing.T) {
 	}
 }
 
+func TestGetTunersIncludesRemoteTuners(t *testing.T) {
+	localTuners := tuner.NewTunerManager(&tuner.TunerManagerConfig{TunersConfig: config.TunersConfig{
+		{Name: "local-first", Types: []string{"BS"}, Command: "sleep 1"},
+	}})
+	streamManager := remoteTunerStatusProvider{APIStreamAdapter: stream.NewAPIStreamAdapter(stream.NewStreamManager(stream.StreamManagerConfig{TunerManager: localTuners}))}
+	handler := NewHandler(HandlerConfig{TunerManager: localTuners, StreamManager: streamManager})
+
+	res, err := handler.GetTuners(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := *(res.(*apigen.GetTunersOKApplicationJSON))
+	if len(items) != 2 {
+		t.Fatalf("tuners = %+v, want local and remote", items)
+	}
+	got := items[1]
+	if !got.IsRemote || got.Name != "living / remote-first" || !got.IsUsing || got.Index >= 0 {
+		t.Fatalf("remote tuner = %+v", got)
+	}
+	if channel, ok := got.CurrentChannel.Get(); !ok || channel != "27" {
+		t.Fatalf("currentChannel = %q, %v", channel, ok)
+	}
+}
+
+type remoteTunerStatusProvider struct{ *stream.APIStreamAdapter }
+
+func (remoteTunerStatusProvider) RemoteTunerStatuses(context.Context) []stream.RemoteTunerStatus {
+	return []stream.RemoteTunerStatus{{
+		Remote: "living",
+		Status: tuner.Status{
+			Index: 0, Name: "remote-first", Types: []string{"GR"},
+			IsAvailable: true, IsUsing: true,
+			CurrentChannelType: "GR", CurrentChannel: "27",
+		},
+	}}
+}
+
 func TestGetTunerProcess(t *testing.T) {
 	handler := NewHandler(HandlerConfig{TunerManager: tuner.NewTunerManager(&tuner.TunerManagerConfig{
 		TunersConfig: config.TunersConfig{{Name: "first", Types: []string{"GR"}, Command: "sleep 1"}},
