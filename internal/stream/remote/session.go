@@ -177,7 +177,7 @@ func (s *Session) observeDataBroadcast(ctx context.Context, serviceID uint16, de
 	// received transport stream here, just as local sessions do.
 	demuxer := demux.New(func(streamCtx context.Context, dst io.Writer) error {
 		return s.client.ChannelStream(streamCtx, s.routeChannel.Type, s.routeChannel.Channel, decode, dst)
-	}, nil).WithPIDSections(s.dataBroadcast.Observe)
+	}, nil).WithPIDSections(s.dataBroadcast.Observe).WithPackets(s.dataBroadcast.ObservePacket)
 	defer demuxer.Stop()
 
 	observeCtx, cancel := context.WithCancel(ctx)
@@ -211,7 +211,7 @@ func (s *Session) DataBroadcastModule(serviceID uint16, componentTag byte, modul
 
 func acceptDataBroadcastSection(section ts.Section) bool {
 	switch section.TableID() {
-	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDTOT:
+	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDDSMCCStream, ts.TableIDBIT, ts.TableIDTOT:
 		return true
 	default:
 		return ts.IsEITPF(section.TableID())

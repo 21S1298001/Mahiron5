@@ -192,7 +192,7 @@ func (d *Demuxer) HasService(serviceID uint16) bool {
 func (d *Demuxer) PATReady() bool { return d.pat != nil }
 
 func (d *Demuxer) shouldAssemble(pid uint16) bool {
-	if pid == PIDPAT || pid == PIDCAT || pid == PIDNIT || pid == PIDSDT || pid == PIDEIT || pid == PIDTOT || pid == PIDSDTT || pid == PIDCDT {
+	if pid == PIDPAT || pid == PIDCAT || pid == PIDNIT || pid == PIDSDT || pid == PIDEIT || pid == PIDTOT || pid == PIDSDTT || pid == PIDBIT || pid == PIDCDT {
 		return true
 	}
 	_, ok := d.pmtByPID[pid]
@@ -297,7 +297,7 @@ func (d *Demuxer) observePMT(serviceID uint16, section Section) {
 	}
 	for _, elem := range pmt.Elements {
 		pids[elem.ElementaryPID] = true
-		if elem.StreamType == StreamTypeDSMCCDataCarousel {
+		if elem.StreamType == StreamTypeDSMCCUNMessages || elem.StreamType == StreamTypeDSMCCDataCarousel || elem.StreamType == StreamTypeDSMCCStreamDescriptors {
 			sectionPIDs[elem.ElementaryPID] = true
 		}
 		for _, desc := range elem.Descriptors {

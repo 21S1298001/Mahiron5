@@ -35,6 +35,18 @@ func TestPacketReaderNormalizesPacketSizes(t *testing.T) {
 	}
 }
 
+func TestPacketProgramClockReference(t *testing.T) {
+	p := make(Packet, PacketSize)
+	p[0], p[1], p[2], p[3], p[4], p[5] = SyncByte, 0x01, 0x00, 0x20, 7, 0x10
+	base, extension := uint64(0x123456789), uint16(0x155)
+	p[6], p[7], p[8], p[9] = byte(base>>25), byte(base>>17), byte(base>>9), byte(base>>1)
+	p[10], p[11] = byte(base&1)<<7|0x7e|byte(extension>>8), byte(extension)
+	gotBase, gotExtension, ok := p.ProgramClockReference()
+	if !ok || gotBase != base || gotExtension != extension {
+		t.Fatalf("PCR = %#x/%#x/%v, want %#x/%#x", gotBase, gotExtension, ok, base, extension)
+	}
+}
+
 func TestPacketReaderResyncsAfterGarbage(t *testing.T) {
 	packet := payloadPacket(0x0100, []byte{1}, 0)
 	input := append([]byte{0, 1, 2, 3, 4}, packet...)

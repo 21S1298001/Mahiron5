@@ -77,6 +77,16 @@ func (p Packet) Payload() []byte {
 // IsNull reports whether this is a null packet (PID 0x1fff).
 func (p Packet) IsNull() bool { return p.PID() == 0x1fff }
 
+// ProgramClockReference returns the 33-bit PCR base and 9-bit extension.
+func (p Packet) ProgramClockReference() (uint64, uint16, bool) {
+	if len(p) < PacketSize || !p.HasAdaptationField() || p.AdaptationFieldLength() < 7 || p[5]&0x10 == 0 {
+		return 0, 0, false
+	}
+	base := uint64(p[6])<<25 | uint64(p[7])<<17 | uint64(p[8])<<9 | uint64(p[9])<<1 | uint64(p[10]>>7)
+	extension := uint16(p[10]&1)<<8 | uint16(p[11])
+	return base, extension, true
+}
+
 // PacketReader reads TS packets from an io.Reader, recovering sync if necessary.
 type PacketReader struct {
 	r      io.Reader

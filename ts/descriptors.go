@@ -30,16 +30,18 @@ func ParseDescriptors(b []byte) []Descriptor {
 
 // ARIB descriptor tags.
 const (
-	DescriptorTagCA               = 0x09
-	DescriptorTagService          = 0x48
-	DescriptorTagServiceList      = 0x41
-	DescriptorTagShortEvent       = 0x4D
-	DescriptorTagExtendedEvent    = 0x4E
-	DescriptorTagComponent        = 0x50
-	DescriptorTagContent          = 0x54
-	DescriptorTagAudioComponent   = 0xC4
-	DescriptorTagDownloadContent  = 0xC9
-	DescriptorTagLogoTransmission = 0xCF
+	DescriptorTagCA                  = 0x09
+	DescriptorTagService             = 0x48
+	DescriptorTagServiceList         = 0x41
+	DescriptorTagShortEvent          = 0x4D
+	DescriptorTagExtendedEvent       = 0x4E
+	DescriptorTagComponent           = 0x50
+	DescriptorTagContent             = 0x54
+	DescriptorTagAudioComponent      = 0xC4
+	DescriptorTagExtendedBroadcaster = 0xCE
+	DescriptorTagBroadcasterName     = 0xD8
+	DescriptorTagDownloadContent     = 0xC9
+	DescriptorTagLogoTransmission    = 0xCF
 	// TS information descriptor carries remote_control_key_id in terrestrial NIT TS loops.
 	DescriptorTagTSInformation = 0xCD
 	// Terrestrial delivery system descriptor is assigned by the terrestrial operating guidelines.

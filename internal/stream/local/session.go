@@ -69,7 +69,7 @@ func NewSession(config Config) *Session {
 		if config.OnStop != nil {
 			config.OnStop()
 		}
-	}, session.observeSection).WithPIDSections(session.observePIDSection).WithMetricLabels(config.Type, config.Channel)
+	}, session.observeSection).WithPIDSections(session.observePIDSection).WithPackets(session.dataBroadcast.ObservePacket).WithMetricLabels(config.Type, config.Channel)
 	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
 }
@@ -304,7 +304,7 @@ func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error 
 
 func acceptDataBroadcastSection(section ts.Section) bool {
 	switch section.TableID() {
-	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDTOT:
+	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDDSMCCStream, ts.TableIDBIT, ts.TableIDTOT:
 		return true
 	default:
 		return ts.IsEITPF(section.TableID())

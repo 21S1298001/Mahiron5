@@ -20,6 +20,9 @@ type DataBroadcastEvent struct {
 	Module      *DataBroadcastModule
 	ProgramInfo *DataBroadcastProgramInfo
 	CurrentTime *DataBroadcastCurrentTime
+	ESEvent     *DataBroadcastESEvent
+	BIT         *DataBroadcastBIT
+	PCR         *DataBroadcastPCR
 }
 
 type DataBroadcastSnapshot struct {
@@ -28,6 +31,8 @@ type DataBroadcastSnapshot struct {
 	Components  []DataBroadcastComponent
 	ProgramInfo *DataBroadcastProgramInfo
 	CurrentTime *DataBroadcastCurrentTime
+	BIT         *DataBroadcastBIT
+	PCR         *DataBroadcastPCR
 }
 
 type DataBroadcastPMT struct {
@@ -74,10 +79,72 @@ type DataBroadcastCurrentTime struct {
 	JSTTimeUnixMilli int64
 }
 
+type DataBroadcastESEvent struct {
+	ComponentTag        byte
+	DataEventID         byte
+	EventMessageGroupID uint16
+	Version             byte
+	SectionNumber       byte
+	Events              []DataBroadcastGeneralEvent
+	RawSectionHex       string
+}
+
+type DataBroadcastGeneralEvent struct {
+	Type                string
+	EventMessageGroupID uint16
+	TimeMode            byte
+	TimeValueHex        string
+	EventMessageType    byte
+	EventMessageID      uint16
+	PrivateData         []byte
+	EventMessageNPT     *uint64
+	NPTReference        *DataBroadcastNPTReference
+}
+
+type DataBroadcastNPTReference struct {
+	PostDiscontinuityIndicator bool
+	DSMContentID               byte
+	STCReference               uint64
+	NPTReference               uint64
+	ScaleNumerator             int16
+	ScaleDenominator           int16
+}
+
+type DataBroadcastPCR struct {
+	PCRBase      uint64
+	PCRExtension uint16
+}
+
+type DataBroadcastBIT struct {
+	OriginalNetworkID uint16
+	Version           byte
+	Broadcasters      []DataBroadcastBroadcaster
+	RawSectionHex     string
+}
+
+type DataBroadcastBroadcaster struct {
+	BroadcasterID            byte
+	BroadcasterName          *string
+	Services                 []DataBroadcastService
+	Affiliations             []byte
+	AffiliationBroadcasters  []DataBroadcastAffiliatedBroadcaster
+	TerrestrialBroadcasterID *uint16
+}
+
+type DataBroadcastService struct {
+	ServiceID   uint16
+	ServiceType byte
+}
+type DataBroadcastAffiliatedBroadcaster struct {
+	OriginalNetworkID uint16
+	BroadcasterID     byte
+}
+
 type DataBroadcastHub struct {
 	mu       sync.Mutex
 	services map[uint16]*dataBroadcastService
 	subs     map[uint16]map[chan DataBroadcastEvent]struct{}
+	bit      *DataBroadcastBIT
 }
 
 type dataBroadcastService struct {
@@ -86,6 +153,7 @@ type dataBroadcastService struct {
 	carousels   map[byte]*ts.DSMCCCarousel
 	programInfo *DataBroadcastProgramInfo
 	currentTime *DataBroadcastCurrentTime
+	pcr         *DataBroadcastPCR
 }
 
 func NewDataBroadcastHub() *DataBroadcastHub {
@@ -131,11 +199,76 @@ func (h *DataBroadcastHub) Observe(section ts.PIDSection) {
 		h.observeDII(section)
 	case ts.TableIDDSMCCDDB:
 		h.observeDDB(section)
+	case ts.TableIDDSMCCStream:
+		h.observeES(section)
+	case ts.TableIDBIT:
+		h.observeBIT(section.Section)
 	case ts.TableIDEITPF0, ts.TableIDEITPF1:
 		h.observeEIT(section.Section)
 	case ts.TableIDTOT:
 		h.observeTOT(section.Section)
 	}
+}
+
+func (h *DataBroadcastHub) ObservePacket(packet ts.Packet) {
+	base, extension, ok := packet.ProgramClockReference()
+	if !ok {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for serviceID, service := range h.services {
+		if service.pmt == nil || service.pmt.PCRPID != packet.PID() {
+			continue
+		}
+		pcr := &DataBroadcastPCR{PCRBase: base, PCRExtension: extension}
+		service.pcr = pcr
+		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "pcr", PCR: clonePCR(pcr)})
+	}
+}
+
+func (h *DataBroadcastHub) observeBIT(section ts.Section) {
+	bit, err := ts.ParseBIT(section)
+	if err != nil || !bit.CurrentNext {
+		return
+	}
+	value := &DataBroadcastBIT{OriginalNetworkID: bit.OriginalNetworkID, Version: bit.VersionNumber, RawSectionHex: hex.EncodeToString(section)}
+	for _, source := range bit.Broadcasters {
+		b := DataBroadcastBroadcaster{BroadcasterID: source.BroadcasterID, Services: []DataBroadcastService{}, Affiliations: []byte{}, AffiliationBroadcasters: []DataBroadcastAffiliatedBroadcaster{}}
+		for _, descriptor := range source.Descriptors {
+			switch descriptor.Tag() {
+			case ts.DescriptorTagBroadcasterName:
+				if name, err := ts.ParseBroadcasterNameDescriptor(descriptor); err == nil {
+					b.BroadcasterName = ptr(name)
+				}
+			case ts.DescriptorTagServiceList:
+				if list, err := ts.ParseServiceListDescriptor(descriptor); err == nil {
+					for _, service := range list.Services {
+						b.Services = append(b.Services, DataBroadcastService{ServiceID: service.ServiceID, ServiceType: service.ServiceType})
+					}
+				}
+			case ts.DescriptorTagExtendedBroadcaster:
+				extended, err := ts.ParseExtendedBroadcasterDescriptor(descriptor)
+				if err != nil {
+					continue
+				}
+				b.Affiliations = append([]byte(nil), extended.AffiliationIDs...)
+				if extended.BroadcasterType == 1 || extended.BroadcasterType == 2 {
+					b.TerrestrialBroadcasterID = ptr(extended.TerrestrialBroadcasterID)
+				}
+				for _, affiliated := range extended.Broadcasters {
+					b.AffiliationBroadcasters = append(b.AffiliationBroadcasters, DataBroadcastAffiliatedBroadcaster{OriginalNetworkID: affiliated.OriginalNetworkID, BroadcasterID: affiliated.BroadcasterID})
+				}
+			}
+		}
+		value.Broadcasters = append(value.Broadcasters, b)
+	}
+	h.mu.Lock()
+	h.bit = value
+	for serviceID := range h.subs {
+		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "bit", BIT: cloneBIT(value)})
+	}
+	h.mu.Unlock()
 }
 
 func (h *DataBroadcastHub) Module(serviceID uint16, componentTag byte, moduleID uint16) (DataBroadcastModule, bool) {
@@ -164,7 +297,7 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 	components := make([]DataBroadcastComponent, 0)
 	pidToTag := map[uint16]byte{}
 	for _, elem := range pmt.Elements {
-		if elem.StreamType != ts.StreamTypeDSMCCDataCarousel {
+		if elem.StreamType != ts.StreamTypeDSMCCUNMessages && elem.StreamType != ts.StreamTypeDSMCCDataCarousel && elem.StreamType != ts.StreamTypeDSMCCStreamDescriptors {
 			continue
 		}
 		tag, ok := streamIdentifierComponentTag(elem.Descriptors)
@@ -206,6 +339,44 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 	}
 	event := DataBroadcastEvent{Type: "pmt", PMT: clonePMT(service.pmt)}
 	h.broadcastLocked(pmt.ProgramNumber, event)
+	h.mu.Unlock()
+}
+
+func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
+	stream, err := ts.ParseDSMCCStream(section.Section)
+	if err != nil || !stream.CurrentNext {
+		return
+	}
+	h.mu.Lock()
+	serviceID, componentTag, _, ok := h.carouselByPIDLocked(section.PID)
+	if !ok {
+		h.mu.Unlock()
+		return
+	}
+	e := &DataBroadcastESEvent{ComponentTag: componentTag, DataEventID: stream.DataEventID, EventMessageGroupID: stream.EventMessageGroupID, Version: stream.VersionNumber, SectionNumber: stream.SectionNumber, RawSectionHex: hex.EncodeToString(section.Section)}
+	for _, descriptor := range stream.Descriptors {
+		if reference, ok := ts.ParseDSMCCNPTReference(descriptor); ok {
+			e.Events = append(e.Events, DataBroadcastGeneralEvent{Type: "nptReference", NPTReference: &DataBroadcastNPTReference{PostDiscontinuityIndicator: reference.PostDiscontinuityIndicator, DSMContentID: reference.DSMContentID, STCReference: reference.STCReference, NPTReference: reference.NPTReference, ScaleNumerator: reference.ScaleNumerator, ScaleDenominator: reference.ScaleDenominator}})
+			continue
+		}
+		item, ok := ts.ParseDSMCCGeneralEvent(descriptor)
+		if !ok {
+			continue
+		}
+		eventType := "event"
+		switch item.TimeMode {
+		case 0:
+			eventType = "immediateEvent"
+		case 2:
+			eventType = "nptEvent"
+		}
+		event := DataBroadcastGeneralEvent{Type: eventType, EventMessageGroupID: item.EventMessageGroupID, TimeMode: item.TimeMode, TimeValueHex: hex.EncodeToString(item.TimeValue), EventMessageType: item.EventMessageType, EventMessageID: item.EventMessageID, PrivateData: item.PrivateData}
+		if npt, ok := item.EventMessageNPT(); ok {
+			event.EventMessageNPT = ptr(npt)
+		}
+		e.Events = append(e.Events, event)
+	}
+	h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "esEventUpdated", ESEvent: e})
 	h.mu.Unlock()
 }
 
@@ -329,13 +500,14 @@ func (h *DataBroadcastHub) carouselByPIDLocked(pid uint16) (uint16, byte, *ts.DS
 
 func (h *DataBroadcastHub) snapshotLocked(serviceID uint16) DataBroadcastSnapshot {
 	service := h.services[serviceID]
-	snapshot := DataBroadcastSnapshot{ServiceID: serviceID}
+	snapshot := DataBroadcastSnapshot{ServiceID: serviceID, BIT: cloneBIT(h.bit)}
 	if service == nil {
 		return snapshot
 	}
 	snapshot.PMT = clonePMT(service.pmt)
 	snapshot.ProgramInfo = cloneProgramInfo(service.programInfo)
 	snapshot.CurrentTime = cloneCurrentTime(service.currentTime)
+	snapshot.PCR = clonePCR(service.pcr)
 	if service.pmt != nil {
 		snapshot.Components = cloneComponents(service.pmt.Components)
 		for i := range snapshot.Components {
@@ -441,6 +613,35 @@ func cloneCurrentTime(current *DataBroadcastCurrentTime) *DataBroadcastCurrentTi
 		return nil
 	}
 	clone := *current
+	return &clone
+}
+
+func cloneBIT(bit *DataBroadcastBIT) *DataBroadcastBIT {
+	if bit == nil {
+		return nil
+	}
+	clone := *bit
+	clone.Broadcasters = make([]DataBroadcastBroadcaster, len(bit.Broadcasters))
+	for i, b := range bit.Broadcasters {
+		clone.Broadcasters[i] = b
+		clone.Broadcasters[i].Services = append([]DataBroadcastService(nil), b.Services...)
+		clone.Broadcasters[i].Affiliations = append([]byte(nil), b.Affiliations...)
+		clone.Broadcasters[i].AffiliationBroadcasters = append([]DataBroadcastAffiliatedBroadcaster(nil), b.AffiliationBroadcasters...)
+		if b.BroadcasterName != nil {
+			clone.Broadcasters[i].BroadcasterName = ptr(*b.BroadcasterName)
+		}
+		if b.TerrestrialBroadcasterID != nil {
+			clone.Broadcasters[i].TerrestrialBroadcasterID = ptr(*b.TerrestrialBroadcasterID)
+		}
+	}
+	return &clone
+}
+
+func clonePCR(pcr *DataBroadcastPCR) *DataBroadcastPCR {
+	if pcr == nil {
+		return nil
+	}
+	clone := *pcr
 	return &clone
 }
 
