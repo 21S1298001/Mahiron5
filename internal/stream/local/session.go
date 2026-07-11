@@ -69,7 +69,7 @@ func NewSession(config Config) *Session {
 		if config.OnStop != nil {
 			config.OnStop()
 		}
-	}, session.observeSection).WithPIDSections(session.observePIDSection).WithMetricLabels(config.Type, config.Channel)
+	}, session.observeSection).WithPIDSections(session.observePIDSection).WithPackets(session.dataBroadcast.ObservePacket).WithMetricLabels(config.Type, config.Channel)
 	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
 }

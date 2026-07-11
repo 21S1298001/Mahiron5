@@ -114,9 +114,11 @@ func apiDataBroadcastEvent(serviceItemID int64, event stream.DataBroadcastEvent)
 	case "currentTime":
 		result["currentTime"] = event.CurrentTime
 	case "esEventUpdated":
-		result["esEvent"] = event.ESEvent
+		result["esEvent"] = apiDataBroadcastESEvent(event.ESEvent)
 	case "bit":
 		result["bit"] = apiDataBroadcastBIT(event.BIT)
+	case "pcr":
+		result["pcr"] = apiDataBroadcastPCR(event.PCR)
 	}
 	return result
 }
@@ -129,7 +131,44 @@ func apiDataBroadcastSnapshot(serviceItemID int64, snapshot stream.DataBroadcast
 		"programInfo": snapshot.ProgramInfo,
 		"currentTime": snapshot.CurrentTime,
 		"bit":         apiDataBroadcastBIT(snapshot.BIT),
+		"pcr":         apiDataBroadcastPCR(snapshot.PCR),
 	}
+}
+
+func apiDataBroadcastPCR(pcr *stream.DataBroadcastPCR) any {
+	if pcr == nil {
+		return nil
+	}
+	return map[string]any{"pcrBase": pcr.PCRBase, "pcrExtension": pcr.PCRExtension}
+}
+
+func apiDataBroadcastESEvent(event *stream.DataBroadcastESEvent) any {
+	if event == nil {
+		return nil
+	}
+	events := make([]map[string]any, 0, len(event.Events))
+	for _, item := range event.Events {
+		value := map[string]any{"type": item.Type}
+		if item.NPTReference != nil {
+			value["postDiscontinuityIndicator"] = item.NPTReference.PostDiscontinuityIndicator
+			value["dsmContentId"] = item.NPTReference.DSMContentID
+			value["STCReference"] = item.NPTReference.STCReference
+			value["NPTReference"] = item.NPTReference.NPTReference
+			value["scaleNumerator"] = item.NPTReference.ScaleNumerator
+			value["scaleDenominator"] = item.NPTReference.ScaleDenominator
+		} else {
+			value["eventMessageGroupId"] = item.EventMessageGroupID
+			value["timeMode"] = item.TimeMode
+			value["eventMessageType"] = item.EventMessageType
+			value["eventMessageId"] = item.EventMessageID
+			value["privateDataByte"] = item.PrivateData
+			if item.EventMessageNPT != nil {
+				value["eventMessageNPT"] = *item.EventMessageNPT
+			}
+		}
+		events = append(events, value)
+	}
+	return map[string]any{"componentId": event.ComponentTag, "dataEventId": event.DataEventID, "events": events}
 }
 
 func apiDataBroadcastBIT(bit *stream.DataBroadcastBIT) any {

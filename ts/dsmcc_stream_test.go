@@ -49,3 +49,30 @@ func TestParseDSMCCGeneralEventReservedTimeModeHasNoTimeField(t *testing.T) {
 		t.Fatalf("event = %#v", event)
 	}
 }
+
+func TestParseDSMCCNPTReference(t *testing.T) {
+	data := make([]byte, 18)
+	data[0] = 0x85
+	data[1], data[2], data[3], data[4], data[5] = 0xff, 0x23, 0x45, 0x67, 0x89
+	data[9], data[10], data[11], data[12], data[13] = 0xff, 0x12, 0x34, 0x56, 0x78
+	data[14], data[15], data[16], data[17] = 0, 1, 0, 1
+	reference, ok := ParseDSMCCNPTReference(descriptor(StreamDescriptorTagNPTReference, data))
+	if !ok {
+		t.Fatal("NPT reference was not parsed")
+	}
+	if !reference.PostDiscontinuityIndicator || reference.DSMContentID != 5 || reference.STCReference != 0x123456789 || reference.NPTReference != 0x112345678 || reference.ScaleNumerator != 1 || reference.ScaleDenominator != 1 {
+		t.Fatalf("reference = %#v", reference)
+	}
+}
+
+func TestDSMCCGeneralEventNPT(t *testing.T) {
+	d := descriptor(StreamDescriptorTagGeneralEvent, []byte{0x12, 0x3f, 2, 0xff, 0x12, 0x34, 0x56, 0x78, 4, 0x45, 0x67})
+	event, ok := ParseDSMCCGeneralEvent(d)
+	if !ok {
+		t.Fatal("NPT event was not parsed")
+	}
+	npt, ok := event.EventMessageNPT()
+	if !ok || npt != 0x112345678 {
+		t.Fatalf("NPT = %#x, %v", npt, ok)
+	}
+}

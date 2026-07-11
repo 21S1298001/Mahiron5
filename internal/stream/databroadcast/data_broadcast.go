@@ -22,6 +22,7 @@ type DataBroadcastEvent struct {
 	CurrentTime *DataBroadcastCurrentTime
 	ESEvent     *DataBroadcastESEvent
 	BIT         *DataBroadcastBIT
+	PCR         *DataBroadcastPCR
 }
 
 type DataBroadcastSnapshot struct {
@@ -31,6 +32,7 @@ type DataBroadcastSnapshot struct {
 	ProgramInfo *DataBroadcastProgramInfo
 	CurrentTime *DataBroadcastCurrentTime
 	BIT         *DataBroadcastBIT
+	PCR         *DataBroadcastPCR
 }
 
 type DataBroadcastPMT struct {
@@ -88,12 +90,29 @@ type DataBroadcastESEvent struct {
 }
 
 type DataBroadcastGeneralEvent struct {
+	Type                string
 	EventMessageGroupID uint16
 	TimeMode            byte
 	TimeValueHex        string
 	EventMessageType    byte
 	EventMessageID      uint16
 	PrivateData         []byte
+	EventMessageNPT     *uint64
+	NPTReference        *DataBroadcastNPTReference
+}
+
+type DataBroadcastNPTReference struct {
+	PostDiscontinuityIndicator bool
+	DSMContentID               byte
+	STCReference               uint64
+	NPTReference               uint64
+	ScaleNumerator             int16
+	ScaleDenominator           int16
+}
+
+type DataBroadcastPCR struct {
+	PCRBase      uint64
+	PCRExtension uint16
 }
 
 type DataBroadcastBIT struct {
@@ -134,6 +153,7 @@ type dataBroadcastService struct {
 	carousels   map[byte]*ts.DSMCCCarousel
 	programInfo *DataBroadcastProgramInfo
 	currentTime *DataBroadcastCurrentTime
+	pcr         *DataBroadcastPCR
 }
 
 func NewDataBroadcastHub() *DataBroadcastHub {
@@ -187,6 +207,23 @@ func (h *DataBroadcastHub) Observe(section ts.PIDSection) {
 		h.observeEIT(section.Section)
 	case ts.TableIDTOT:
 		h.observeTOT(section.Section)
+	}
+}
+
+func (h *DataBroadcastHub) ObservePacket(packet ts.Packet) {
+	base, extension, ok := packet.ProgramClockReference()
+	if !ok {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for serviceID, service := range h.services {
+		if service.pmt == nil || service.pmt.PCRPID != packet.PID() {
+			continue
+		}
+		pcr := &DataBroadcastPCR{PCRBase: base, PCRExtension: extension}
+		service.pcr = pcr
+		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "pcr", PCR: clonePCR(pcr)})
 	}
 }
 
@@ -318,11 +355,25 @@ func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
 	}
 	e := &DataBroadcastESEvent{ComponentTag: componentTag, DataEventID: stream.DataEventID, EventMessageGroupID: stream.EventMessageGroupID, Version: stream.VersionNumber, SectionNumber: stream.SectionNumber, RawSectionHex: hex.EncodeToString(section.Section)}
 	for _, descriptor := range stream.Descriptors {
+		if reference, ok := ts.ParseDSMCCNPTReference(descriptor); ok {
+			e.Events = append(e.Events, DataBroadcastGeneralEvent{Type: "nptReference", NPTReference: &DataBroadcastNPTReference{PostDiscontinuityIndicator: reference.PostDiscontinuityIndicator, DSMContentID: reference.DSMContentID, STCReference: reference.STCReference, NPTReference: reference.NPTReference, ScaleNumerator: reference.ScaleNumerator, ScaleDenominator: reference.ScaleDenominator}})
+			continue
+		}
 		item, ok := ts.ParseDSMCCGeneralEvent(descriptor)
 		if !ok {
 			continue
 		}
-		e.Events = append(e.Events, DataBroadcastGeneralEvent{EventMessageGroupID: item.EventMessageGroupID, TimeMode: item.TimeMode, TimeValueHex: hex.EncodeToString(item.TimeValue), EventMessageType: item.EventMessageType, EventMessageID: item.EventMessageID, PrivateData: item.PrivateData})
+		eventType := "event"
+		if item.TimeMode == 0 {
+			eventType = "immediateEvent"
+		} else if item.TimeMode == 2 {
+			eventType = "nptEvent"
+		}
+		event := DataBroadcastGeneralEvent{Type: eventType, EventMessageGroupID: item.EventMessageGroupID, TimeMode: item.TimeMode, TimeValueHex: hex.EncodeToString(item.TimeValue), EventMessageType: item.EventMessageType, EventMessageID: item.EventMessageID, PrivateData: item.PrivateData}
+		if npt, ok := item.EventMessageNPT(); ok {
+			event.EventMessageNPT = ptr(npt)
+		}
+		e.Events = append(e.Events, event)
 	}
 	h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "esEventUpdated", ESEvent: e})
 	h.mu.Unlock()
@@ -455,6 +506,7 @@ func (h *DataBroadcastHub) snapshotLocked(serviceID uint16) DataBroadcastSnapsho
 	snapshot.PMT = clonePMT(service.pmt)
 	snapshot.ProgramInfo = cloneProgramInfo(service.programInfo)
 	snapshot.CurrentTime = cloneCurrentTime(service.currentTime)
+	snapshot.PCR = clonePCR(service.pcr)
 	if service.pmt != nil {
 		snapshot.Components = cloneComponents(service.pmt.Components)
 		for i := range snapshot.Components {
@@ -581,6 +633,14 @@ func cloneBIT(bit *DataBroadcastBIT) *DataBroadcastBIT {
 			clone.Broadcasters[i].TerrestrialBroadcasterID = ptr(*b.TerrestrialBroadcasterID)
 		}
 	}
+	return &clone
+}
+
+func clonePCR(pcr *DataBroadcastPCR) *DataBroadcastPCR {
+	if pcr == nil {
+		return nil
+	}
+	clone := *pcr
 	return &clone
 }
 

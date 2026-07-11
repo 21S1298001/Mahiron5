@@ -177,7 +177,7 @@ func (s *Session) observeDataBroadcast(ctx context.Context, serviceID uint16, de
 	// received transport stream here, just as local sessions do.
 	demuxer := demux.New(func(streamCtx context.Context, dst io.Writer) error {
 		return s.client.ChannelStream(streamCtx, s.routeChannel.Type, s.routeChannel.Channel, decode, dst)
-	}, nil).WithPIDSections(s.dataBroadcast.Observe)
+	}, nil).WithPIDSections(s.dataBroadcast.Observe).WithPackets(s.dataBroadcast.ObservePacket)
 	defer demuxer.Stop()
 
 	observeCtx, cancel := context.WithCancel(ctx)

@@ -34,6 +34,7 @@ type Demuxer struct {
 	nextID        uint64
 	onEmpty       func()
 	onPIDSections []func(ts.PIDSection)
+	onPackets     []func(ts.Packet)
 	onSections    []func(ts.Section)
 	packets       map[uint64]*packetSubscription
 	packetSubs    []packetSubscriptionEntry
@@ -43,6 +44,13 @@ type Demuxer struct {
 	started       bool
 	stopped       bool
 	stopOnce      sync.Once
+}
+
+func (e *Demuxer) WithPackets(onPackets ...func(ts.Packet)) *Demuxer {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.onPackets = append(e.onPackets, onPackets...)
+	return e
 }
 
 type packetSubscriptionEntry struct {
@@ -333,6 +341,9 @@ func (m *continuityMonitor) observe(packet ts.Packet) bool {
 
 func (e *Demuxer) dispatch(packet ts.Packet, sections []ts.PIDSection) {
 	e.mu.Lock()
+	for _, hook := range e.onPackets {
+		hook(packet)
+	}
 	var rawPacket ts.Packet
 	for i := 0; i < len(e.packetSubs); {
 		entry := e.packetSubs[i]

@@ -27,6 +27,8 @@ type (
 	DataBroadcastBIT         = databroadcast.DataBroadcastBIT
 	DataBroadcastBroadcaster = databroadcast.DataBroadcastBroadcaster
 	DataBroadcastService     = databroadcast.DataBroadcastService
+	DataBroadcastPCR         = databroadcast.DataBroadcastPCR
+	DataBroadcastESEvent     = databroadcast.DataBroadcastESEvent
 )
 
 func NewCommandDescrambler(command string) Descrambler {

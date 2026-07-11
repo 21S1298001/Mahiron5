@@ -11,6 +11,7 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/stream"
+	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
 
@@ -24,6 +25,23 @@ func TestAPIDataBroadcastBITUsesWebBMLFieldNames(t *testing.T) {
 	broadcasters := bit["broadcasters"].([]map[string]any)
 	if len(broadcasters) != 1 || broadcasters[0]["broadcasterId"] != byte(0xff) || broadcasters[0]["affiliations"] == nil {
 		t.Fatalf("broadcasters = %#v", broadcasters)
+	}
+}
+
+func TestAPIDataBroadcastPCRAndNPTUseWebBMLFieldNames(t *testing.T) {
+	npt := uint64(0x112345678)
+	event := apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "esEventUpdated", ESEvent: &stream.DataBroadcastESEvent{ComponentTag: 0x40, DataEventID: 3, Events: []databroadcast.DataBroadcastGeneralEvent{{Type: "nptEvent", TimeMode: 2, EventMessageNPT: &npt}}}})
+	es := event["esEvent"].(map[string]any)
+	if es["componentId"] != byte(0x40) || es["dataEventId"] != byte(3) {
+		t.Fatalf("esEvent = %#v", es)
+	}
+	events := es["events"].([]map[string]any)
+	if len(events) != 1 || events[0]["eventMessageNPT"] != npt {
+		t.Fatalf("events = %#v", events)
+	}
+	pcr := apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "pcr", PCR: &stream.DataBroadcastPCR{PCRBase: 10, PCRExtension: 20}})["pcr"].(map[string]any)
+	if pcr["pcrBase"] != uint64(10) || pcr["pcrExtension"] != uint16(20) {
+		t.Fatalf("pcr = %#v", pcr)
 	}
 }
 

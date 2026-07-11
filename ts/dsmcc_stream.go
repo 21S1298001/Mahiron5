@@ -27,6 +27,15 @@ type DSMCCGeneralEvent struct {
 	PrivateData         []byte
 }
 
+type DSMCCNPTReference struct {
+	PostDiscontinuityIndicator bool
+	DSMContentID               byte
+	STCReference               uint64
+	NPTReference               uint64
+	ScaleNumerator             int16
+	ScaleDenominator           int16
+}
+
 func ParseDSMCCStream(s Section) (*DSMCCStream, error) {
 	if len(s) < 12 || s.TableID() != TableIDDSMCCStream || !s.SectionSyntaxIndicator() || s[1]&0x40 != 0 || s.TotalLength() > len(s) || !s.ValidateCRC() {
 		return nil, ErrInvalidSection
@@ -67,4 +76,24 @@ func ParseDSMCCGeneralEvent(d Descriptor) (DSMCCGeneralEvent, bool) {
 	out.EventMessageID = binary.BigEndian.Uint16(data[off+1 : off+3])
 	out.PrivateData = append([]byte(nil), data[off+3:]...)
 	return out, true
+}
+
+func ParseDSMCCNPTReference(d Descriptor) (DSMCCNPTReference, bool) {
+	data := d.Data()
+	if d.Tag() != StreamDescriptorTagNPTReference || len(data) < 18 {
+		return DSMCCNPTReference{}, false
+	}
+	return DSMCCNPTReference{
+		PostDiscontinuityIndicator: data[0]&0x80 != 0, DSMContentID: data[0] & 0x7f,
+		STCReference:   uint64(data[1]&1)<<32 | uint64(binary.BigEndian.Uint32(data[2:6])),
+		NPTReference:   uint64(data[9]&1)<<32 | uint64(binary.BigEndian.Uint32(data[10:14])),
+		ScaleNumerator: int16(binary.BigEndian.Uint16(data[14:16])), ScaleDenominator: int16(binary.BigEndian.Uint16(data[16:18])),
+	}, true
+}
+
+func (e DSMCCGeneralEvent) EventMessageNPT() (uint64, bool) {
+	if e.TimeMode != 0x02 || len(e.TimeValue) != 5 {
+		return 0, false
+	}
+	return uint64(e.TimeValue[0]&1)<<32 | uint64(binary.BigEndian.Uint32(e.TimeValue[1:])), true
 }
