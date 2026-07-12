@@ -12,7 +12,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/observability"
-	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/google/uuid"
 )
@@ -25,25 +24,67 @@ type LiveSource interface {
 	WithUser(context.Context, func(context.Context) error) error
 }
 
-type Lease struct {
-	Broadcast   *Broadcast
-	Descrambler Descrambler
-	RouteType   string
-	Remote      *remote.Session
-	Source      LiveSource
+type StreamVariant uint8
+
+const (
+	StreamRaw StreamVariant = iota
+	StreamDecoded
+)
+
+// ChannelInput is the narrow transport interface consumed by a channel
+// session. User accounting belongs to the input so the acquisition user is
+// retained for each subscription's full lifetime.
+type ChannelInput interface {
+	Subscribe(context.Context, StreamVariant, io.Writer) error
+	WithUser(context.Context, func(context.Context) error) error
 }
+
+type InputMetadata struct {
+	PublicChannel config.ChannelConfig
+	Remote        string
+	RouteChannel  config.ChannelConfig
+}
+
+type RemoteClient interface {
+	CheckAvailableForRoute(context.Context, string, string) error
+	ChannelStream(context.Context, string, string, bool, io.Writer) error
+}
+
+type InputHandle interface {
+	Input() ChannelInput
+	Descrambler() Descrambler
+	Metadata() InputMetadata
+	RouteType() string
+	SourceLabel() string
+	Release(context.Context) error
+}
+
+type inputHandle struct {
+	input       ChannelInput
+	descrambler Descrambler
+	metadata    InputMetadata
+	routeType   string
+	sourceLabel string
+}
+
+func (h *inputHandle) Input() ChannelInput           { return h.input }
+func (h *inputHandle) Descrambler() Descrambler      { return h.descrambler }
+func (h *inputHandle) Metadata() InputMetadata       { return h.metadata }
+func (h *inputHandle) RouteType() string             { return h.routeType }
+func (h *inputHandle) SourceLabel() string           { return h.sourceLabel }
+func (h *inputHandle) Release(context.Context) error { return nil }
 
 type Pool struct {
 	channels           config.ChannelsConfig
 	descramblerFactory DescramblerFactory
 	mu                 sync.Mutex
-	remotes            map[string]*remote.Client
+	remotes            map[string]RemoteClient
 	routeSourceCreates map[routeSourceKey]chan struct{}
 	routeSources       map[routeSourceKey]*sharedRouteSource
 	tunerManager       TunerManager
 }
 
-func NewPool(channels config.ChannelsConfig, tunerManager TunerManager, descramblerFactory DescramblerFactory, remotes map[string]*remote.Client) *Pool {
+func NewPool(channels config.ChannelsConfig, tunerManager TunerManager, descramblerFactory DescramblerFactory, remotes map[string]RemoteClient) *Pool {
 	return &Pool{
 		channels:           channels,
 		descramblerFactory: descramblerFactory,
@@ -54,7 +95,7 @@ func NewPool(channels config.ChannelsConfig, tunerManager TunerManager, descramb
 	}
 }
 
-func (p *Pool) Acquire(ctx context.Context, channelType, channel string, wait bool) (lease *Lease, err error) {
+func (p *Pool) Acquire(ctx context.Context, channelType, channel string, wait bool) (handle InputHandle, err error) {
 	ctx, span := observability.StartSpan(ctx, observability.SpanStreamSourceAcquire,
 		observability.AttrChannelType.String(channelType),
 		observability.AttrChannelID.String(channel),
@@ -64,7 +105,7 @@ func (p *Pool) Acquire(ctx context.Context, channelType, channel string, wait bo
 
 	channelConfig := p.findChannel(channelType, channel)
 	if channelConfig == nil {
-		return nil, remote.ErrChannelNotFound
+		return nil, ErrChannelNotFound
 	}
 
 	selected, err := p.selectRoute(ctx, channelConfig, wait)
@@ -77,27 +118,32 @@ func (p *Pool) Acquire(ctx context.Context, channelType, channel string, wait bo
 	return p.localLease(channelType, channel, selected), nil
 }
 
-func (p *Pool) remoteLease(channelType, channel string, selected routeSelection) (*Lease, error) {
+// Shutdown stops physical inputs owned by the pool. Releasing an individual
+// session handle intentionally does not do this because routes may be shared.
+func (p *Pool) Shutdown(ctx context.Context) error {
+	p.mu.Lock()
+	broadcasts := make([]*Broadcast, 0, len(p.routeSources))
+	for _, shared := range p.routeSources {
+		broadcasts = append(broadcasts, shared.broadcast)
+	}
+	p.mu.Unlock()
+	var result error
+	for _, broadcast := range broadcasts {
+		result = errors.Join(result, broadcast.Stop(ctx))
+	}
+	return result
+}
+
+func (p *Pool) remoteLease(channelType, channel string, selected routeSelection) (InputHandle, error) {
 	client := p.remotes[selected.route.Remote]
 	if client == nil {
 		return nil, tuner.ErrTunerNotFound
 	}
 	slog.Debug("selected remote stream route", "type", channelType, "channel", channel, "routeType", selected.route.Type, "remote", selected.route.Remote)
-	return &Lease{
-		RouteType: selected.route.Type,
-		Remote: remote.NewSession(remote.SessionConfig{
-			Client: client,
-			Channel: &config.ChannelConfig{
-				Type:    channelType,
-				Channel: channel,
-			},
-			Remote:       selected.route.Remote,
-			RouteChannel: &selected.channel,
-		}),
-	}, nil
+	return NewRemoteInputHandle(client, config.ChannelConfig{Type: channelType, Channel: channel}, selected.channel, selected.route.Remote, selected.route.Type), nil
 }
 
-func (p *Pool) localLease(channelType, channel string, selected routeSelection) *Lease {
+func (p *Pool) localLease(channelType, channel string, selected routeSelection) InputHandle {
 	decoderCommand := selected.decoder
 	if decoderCommand == "" {
 		if provider, ok := p.tunerManager.(DecoderCommandProvider); ok {
@@ -111,15 +157,45 @@ func (p *Pool) localLease(channelType, channel string, selected routeSelection) 
 	}
 
 	slog.Debug("selected local stream route", "type", channelType, "channel", channel, "routeType", selected.route.Type, "decoder", decoderCommand != "")
-	return &Lease{
-		Broadcast:   selected.broadcast,
-		Descrambler: descrambler,
-		RouteType:   selected.route.Type,
-		Source: &tunerLiveSource{
+	broadcast := selected.broadcast
+	if broadcast == nil {
+		broadcast = NewBroadcast(&tunerLiveSource{
 			channel: &config.ChannelConfig{Type: channelType, Channel: channel},
 			device:  selected.device,
-		},
+		}, nil)
 	}
+	return &inputHandle{
+		input:       broadcastInput{broadcast},
+		descrambler: descrambler,
+		metadata: InputMetadata{
+			PublicChannel: config.ChannelConfig{Type: channelType, Channel: channel},
+			RouteChannel:  selected.channel,
+		},
+		routeType:   selected.route.Type,
+		sourceLabel: "local",
+	}
+}
+
+type broadcastInput struct{ *Broadcast }
+
+func (i broadcastInput) Subscribe(ctx context.Context, _ StreamVariant, dst io.Writer) error {
+	return i.SubscribeRaw(ctx, dst)
+}
+
+type remoteInputHandle struct {
+	inputHandle
+}
+
+func NewRemoteInputHandle(client RemoteClient, channel, routeChannel config.ChannelConfig, remoteName, routeType string) InputHandle {
+	return &remoteInputHandle{inputHandle: inputHandle{
+		input: newRemoteInput(client, routeChannel, remoteName),
+		metadata: InputMetadata{
+			PublicChannel: channel,
+			Remote:        remoteName,
+			RouteChannel:  routeChannel,
+		},
+		routeType: routeType, sourceLabel: "remote",
+	}}
 }
 
 func (p *Pool) findChannel(channelType, channel string) *config.ChannelConfig {
@@ -160,7 +236,7 @@ func (p *Pool) selectRoute(ctx context.Context, channel *config.ChannelConfig, w
 			if lastErr != nil {
 				return routeSelection{}, lastErr
 			}
-			return routeSelection{}, remote.ErrChannelNotFound
+			return routeSelection{}, ErrChannelNotFound
 		}
 		if err := waitForRouteRetry(ctx, channel); err != nil {
 			return routeSelection{}, err

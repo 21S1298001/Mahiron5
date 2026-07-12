@@ -13,8 +13,8 @@ import (
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/internal/streamtest"
-	"github.com/21S1298001/mahiron/internal/stream/local"
 	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	"github.com/21S1298001/mahiron/ts"
@@ -156,7 +156,7 @@ func TestManagerSelectsRouteByFreeChannelType(t *testing.T) {
 	if got, want := routeManager.channelID, "C101"; got != want {
 		t.Fatalf("device channel = %q, want %q", got, want)
 	}
-	localSession := session.(*local.Session)
+	localSession := session.(*channel.ChannelSession)
 	if got, want := localSession.Type(), "BS"; got != want {
 		t.Fatalf("session type = %q, want public type %q", got, want)
 	}
@@ -734,8 +734,8 @@ func TestManagerFallsBackWhenRemoteRouteUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := session.(*local.Session); !ok {
-		t.Fatalf("session type = %T, want *local.Session", session)
+	if _, ok := session.(*channel.ChannelSession); !ok {
+		t.Fatalf("session type = %T, want *channel.ChannelSession", session)
 	}
 	select {
 	case request := <-requests:

@@ -8,7 +8,6 @@ import (
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/job/run"
-	"github.com/21S1298001/mahiron/internal/stream/remote"
 	"github.com/21S1298001/mahiron/internal/tuner"
 )
 
@@ -105,7 +104,7 @@ func TestFindChannelReturnsNotFoundWhenAllMatchesDisabled(t *testing.T) {
 	pool := NewPool(channels, noDeviceTunerManager{}, nil, nil)
 
 	_, err := pool.Acquire(context.Background(), "EXT1", "38", false)
-	if !errors.Is(err, remote.ErrChannelNotFound) {
+	if !errors.Is(err, ErrChannelNotFound) {
 		t.Fatalf("Acquire error = %v, want ErrChannelNotFound", err)
 	}
 }

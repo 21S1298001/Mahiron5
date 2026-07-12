@@ -1,8 +1,8 @@
 package stream
 
 import (
+	"github.com/21S1298001/mahiron/internal/stream/channel"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
-	"github.com/21S1298001/mahiron/internal/stream/local"
 	"github.com/21S1298001/mahiron/internal/stream/source"
 )
 
@@ -16,8 +16,8 @@ type (
 	TunerDevice              = source.TunerDevice
 	Descrambler              = source.Descrambler
 	DescramblerFactory       = source.DescramblerFactory
-	EITSectionUpdater        = local.EITSectionUpdater
-	LogoUpdater              = local.LogoUpdater
+	EITSectionUpdater        = channel.EITSectionUpdater
+	LogoUpdater              = channel.LogoUpdater
 	DataBroadcastEvent       = databroadcast.DataBroadcastEvent
 	DataBroadcastModule      = databroadcast.DataBroadcastModule
 	DataBroadcastSnapshot    = databroadcast.DataBroadcastSnapshot

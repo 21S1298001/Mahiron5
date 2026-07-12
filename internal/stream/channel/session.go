@@ -1,4 +1,4 @@
-package local
+package channel
 
 import (
 	"context"
@@ -17,7 +17,8 @@ import (
 )
 
 type Session struct {
-	broadcast         *source.Broadcast
+	input             source.ChannelInput
+	handle            source.InputHandle
 	channel           string
 	descrambler       source.Descrambler
 	mu                sync.Mutex
@@ -37,9 +38,14 @@ type Session struct {
 	eitPFFingerprints map[eitPFSectionKey]uint32
 }
 
+// ChannelSession is the shared TS streaming, demux, and data-broadcast
+// implementation used by both local and remote sessions.
+type ChannelSession = Session
+
 type Config struct {
 	Channel     string
 	Broadcast   *source.Broadcast
+	Handle      source.InputHandle
 	Descrambler source.Descrambler
 	EITUpdater  EITSectionUpdater
 	LogoUpdater LogoUpdater
@@ -48,8 +54,16 @@ type Config struct {
 }
 
 func NewSession(config Config) *Session {
+	input := source.ChannelInput(nil)
+	if config.Handle != nil {
+		input = config.Handle.Input()
+		config.Descrambler = config.Handle.Descrambler()
+	} else if config.Broadcast != nil {
+		input = localBroadcastInput{config.Broadcast}
+	}
 	session := &Session{
-		broadcast:     config.Broadcast,
+		input:         input,
+		handle:        config.Handle,
 		channel:       config.Channel,
 		descrambler:   config.Descrambler,
 		typ:           config.Type,
@@ -64,7 +78,7 @@ func NewSession(config Config) *Session {
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
 	go session.runSectionUpdates(sectionCtx)
-	session.rawDemuxer = demux.New(config.Broadcast.SubscribeRaw, func() {
+	session.rawDemuxer = demux.New(func(ctx context.Context, dst io.Writer) error { return input.Subscribe(ctx, source.StreamRaw, dst) }, func() {
 		session.stopSectionUpdates()
 		if config.OnStop != nil {
 			config.OnStop()
@@ -72,6 +86,14 @@ func NewSession(config Config) *Session {
 	}, session.observeSection).WithPIDSections(session.observePIDSection).WithPackets(session.dataBroadcast.ObservePacket).WithMetricLabels(config.Type, config.Channel)
 	session.decodedDemuxer = demux.New(session.subscribeDecodedMux, nil).WithMetricLabels(config.Type, config.Channel)
 	return session
+}
+
+func NewChannelSession(config Config) *ChannelSession { return NewSession(config) }
+
+type localBroadcastInput struct{ *source.Broadcast }
+
+func (i localBroadcastInput) Subscribe(ctx context.Context, _ source.StreamVariant, dst io.Writer) error {
+	return i.SubscribeRaw(ctx, dst)
 }
 
 // Type reports the public channel type this session was created for.
@@ -98,7 +120,7 @@ func (s *Session) ProgramStream(ctx context.Context, p *program.Program, decode 
 
 func (s *Session) ScanServices(ctx context.Context) ([]ts.ServiceInfo, error) {
 	scan := ts.NewServiceScan()
-	err := s.broadcast.WithUser(ctx, func(ctx context.Context) error {
+	err := s.input.WithUser(ctx, func(ctx context.Context) error {
 		return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
 			switch section.TableID() {
 			case ts.TableIDPAT, ts.TableIDSDT0, ts.TableIDNIT0:
@@ -127,11 +149,11 @@ func (s *Session) CollectEIT(ctx context.Context, observe func(*ts.EIT) error) e
 }
 
 func (s *Session) CollectEITWithClock(ctx context.Context, observe func(*ts.EIT, time.Time) error) error {
-	return s.broadcast.WithUser(ctx, func(ctx context.Context) error { return s.observeEIT(ctx, observe) })
+	return s.input.WithUser(ctx, func(ctx context.Context) error { return s.observeEIT(ctx, observe) })
 }
 
 func (s *Session) ObserveLogos(ctx context.Context, observe func(*ts.LogoImage) error) error {
-	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
+	return s.input.WithUser(ctx, func(ctx context.Context) error {
 		return s.rawDemuxer.ObserveSections(ctx, func(section ts.Section) bool {
 			return section.TableID() == ts.TableIDCDT
 		}, func(section ts.Section) error {
@@ -152,7 +174,7 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 	if s.dataBroadcast == nil {
 		return waitContext(ctx)
 	}
-	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
+	return s.input.WithUser(ctx, func(ctx context.Context) error {
 		snapshot, events, unsubscribe := s.dataBroadcast.Subscribe(ctx, serviceID)
 		defer unsubscribe()
 		if err := observe(databroadcast.DataBroadcastEvent{Type: "snapshot", Snapshot: snapshot}); err != nil {
@@ -204,7 +226,7 @@ func (s *Session) Stop(ctx context.Context) error {
 		return nil
 	}
 	s.stopped = true
-	broadcast := s.broadcast
+	handle := s.handle
 	rawDemuxer := s.rawDemuxer
 	decodedDemuxer := s.decodedDemuxer
 	sectionCancel := s.sectionCancel
@@ -221,8 +243,8 @@ func (s *Session) Stop(ctx context.Context) error {
 	}
 
 	var result error
-	if broadcast != nil {
-		result = errors.Join(result, broadcast.Stop(ctx))
+	if handle != nil {
+		result = errors.Join(result, handle.Release(ctx))
 	}
 	return result
 }
@@ -252,6 +274,9 @@ var (
 func (s *Session) Alive() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, restartable := s.input.(interface{ SupportsDecodedInput() bool }); restartable {
+		return !s.stopped
+	}
 	return !s.stopped && !s.rawDemuxer.Stopped()
 }
 
@@ -260,7 +285,7 @@ func (s *Session) attachDemuxer(ctx context.Context, decode bool, serviceID uint
 	if err != nil {
 		return err
 	}
-	return s.broadcast.WithUser(ctx, func(ctx context.Context) error {
+	return s.input.WithUser(ctx, func(ctx context.Context) error {
 		if service {
 			return demuxer.SubscribeService(ctx, serviceID, dst)
 		}
@@ -275,7 +300,14 @@ func (s *Session) streamDemuxer(decode bool) (*demux.Demuxer, error) {
 		return nil, ErrSessionStopped
 	}
 	demuxer := s.rawDemuxer
-	if decode && s.descrambler != nil {
+	_, nativeDecode := s.input.(interface{ SupportsDecodedInput() bool })
+	if nativeDecode && demuxer.Stopped() {
+		demuxer = demux.New(func(ctx context.Context, dst io.Writer) error {
+			return s.input.Subscribe(ctx, source.StreamRaw, dst)
+		}, nil, s.observeSection).WithPIDSections(s.observePIDSection).WithPackets(s.dataBroadcast.ObservePacket).WithMetricLabels(s.typ, s.channel)
+		s.rawDemuxer = demuxer
+	}
+	if decode && (s.descrambler != nil || nativeDecode) {
 		if s.decodedDemuxer.Stopped() {
 			s.decodedDemuxer = demux.New(s.subscribeDecodedMux, nil).WithMetricLabels(s.typ, s.channel)
 		}
@@ -286,7 +318,7 @@ func (s *Session) streamDemuxer(decode bool) (*demux.Demuxer, error) {
 
 func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error {
 	if s.descrambler == nil {
-		return s.rawDemuxer.SubscribeChannel(ctx, dst)
+		return s.input.Subscribe(ctx, source.StreamDecoded, dst)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

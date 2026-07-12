@@ -98,8 +98,16 @@ func NewStreamManager(cfg StreamManagerConfig) *StreamManager {
 		remoteTunerTypes: remoteTunerTypes,
 		serviceLister:    cfg.ServiceLister,
 		registry:         newSessionRegistry(),
-		sources:          source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remotes),
+		sources:          source.NewPool(cfg.Channels, cfg.TunerManager, descramblerFactory, remoteClients(remotes)),
 	}
+}
+
+func remoteClients(clients map[string]*remote.Client) map[string]source.RemoteClient {
+	result := make(map[string]source.RemoteClient, len(clients))
+	for name, client := range clients {
+		result[name] = client
+	}
+	return result
 }
 
 func (m *StreamManager) StartRemoteProgramEventSync(ctx context.Context) {
@@ -225,7 +233,7 @@ func (m *StreamManager) getOrCreate(ctx context.Context, channelType, channel st
 
 // aliveChecker is implemented by session types that can outlive their
 // underlying resources and go dead before being evicted from the session
-// registry (see local.Session.Alive). Sessions without a lifecycle race
+// registry (see channel.ChannelSession.Alive). Sessions without a lifecycle race
 // (e.g. remote sessions) are treated as always alive.
 type aliveChecker interface {
 	Alive() bool
@@ -295,7 +303,11 @@ func (m *StreamManager) RemoteTunerStatuses(ctx context.Context) []RemoteTunerSt
 func (m *StreamManager) remoteSessionUsers(remoteName string, status tuner.Status) []tuner.User {
 	var users []tuner.User
 	for _, session := range m.registry.activeSessions() {
-		remoteSession, ok := session.(*remote.Session)
+		remoteSession, ok := session.(interface {
+			RemoteName() string
+			MatchesTuner(tuner.Status) bool
+			Users() []tuner.User
+		})
 		if !ok || remoteSession.RemoteName() != remoteName || !remoteSession.MatchesTuner(status) {
 			continue
 		}
@@ -345,6 +357,9 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 		if err := session.Stop(ctx); err != nil {
 			result = errors.Join(result, err)
 		}
+	}
+	if err := m.sources.Shutdown(ctx); err != nil {
+		result = errors.Join(result, err)
 	}
 	m.registry.clear()
 	return result
