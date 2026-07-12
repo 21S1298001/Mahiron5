@@ -177,6 +177,28 @@ func RecordStreamSubscriberOverflow(ctx context.Context, channelType, result str
 	))
 }
 
+func RecordDataBroadcastCarouselEvent(ctx context.Context, channelType, channelID, operation, result string) {
+	if instruments.dataBroadcastCarouselEvents == nil {
+		return
+	}
+	instruments.dataBroadcastCarouselEvents.Add(ctx, 1, metric.WithAttributes(
+		AttrChannelType.String(channelType),
+		AttrChannelID.String(channelID),
+		AttrOperation.String(operation),
+		AttrResult.String(result),
+	))
+}
+
+func RecordDataBroadcastModuleDuration(ctx context.Context, channelType, channelID string, durationMS int64) {
+	if instruments.dataBroadcastModuleDuration == nil || durationMS < 0 {
+		return
+	}
+	instruments.dataBroadcastModuleDuration.Record(ctx, durationMS, metric.WithAttributes(
+		AttrChannelType.String(channelType),
+		AttrChannelID.String(channelID),
+	))
+}
+
 func RecordTunerProcessStart(ctx context.Context, channelType, channelID, result string) {
 	if instruments.tunerProcessStarts == nil {
 		return

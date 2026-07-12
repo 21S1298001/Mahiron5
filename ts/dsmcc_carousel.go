@@ -42,6 +42,15 @@ type DSMCCModule struct {
 	Generation uint64
 }
 
+type DSMCCDDBResult string
+
+const (
+	DSMCCDDBIgnored   DSMCCDDBResult = "ignored"
+	DSMCCDDBBlock     DSMCCDDBResult = "block"
+	DSMCCDDBDuplicate DSMCCDDBResult = "duplicate"
+	DSMCCDDBCompleted DSMCCDDBResult = "completed"
+)
+
 type DSMCCCarousel struct {
 	limits         DSMCCCarouselLimits
 	modules        map[uint16]*dsmccModuleState
@@ -115,29 +124,41 @@ func (c *DSMCCCarousel) ObserveDII(dii *DSMCCDII) []DSMCCModuleInfo {
 }
 
 func (c *DSMCCCarousel) ObserveDDB(ddb *DSMCCDDB) (*DSMCCModule, bool, error) {
+	module, complete, err, _ := c.ObserveDDBWithResult(ddb)
+	return module, complete, err
+}
+
+// ObserveDDBWithResult observes a data block and also reports whether it was
+// new, duplicate, ignored, or completed a module. The result is intended for
+// receiver diagnostics and does not change the assembly semantics.
+func (c *DSMCCCarousel) ObserveDDBWithResult(ddb *DSMCCDDB) (*DSMCCModule, bool, error, DSMCCDDBResult) {
 	state := c.modules[ddb.ModuleID]
 	if state == nil || state.completed || state.downloadID != ddb.DownloadID || state.info.Version != ddb.ModuleVersion || state.blockSize == 0 {
-		return nil, false, nil
+		return nil, false, nil, DSMCCDDBIgnored
 	}
 	blockNumber := int(ddb.BlockNumber)
 	if blockNumber >= len(state.received) {
-		return nil, false, nil
+		return nil, false, nil, DSMCCDDBIgnored
 	}
 	off := blockNumber * int(state.blockSize)
 	if off >= len(state.data) {
-		return nil, false, nil
+		return nil, false, nil, DSMCCDDBIgnored
 	}
 	end := off + len(ddb.Data)
 	if end > len(state.data) {
 		end = len(state.data)
 	}
-	if !state.received[blockNumber] {
+	duplicate := state.received[blockNumber]
+	if !duplicate {
 		state.received[blockNumber] = true
 		state.count++
 	}
 	copy(state.data[off:end], ddb.Data[:end-off])
 	if state.count < len(state.received) {
-		return nil, false, nil
+		if duplicate {
+			return nil, false, nil, DSMCCDDBDuplicate
+		}
+		return nil, false, nil, DSMCCDDBBlock
 	}
 	state.completed = true
 	state.received = nil
@@ -147,10 +168,10 @@ func (c *DSMCCCarousel) ObserveDDB(ddb *DSMCCDDB) (*DSMCCModule, bool, error) {
 	}
 	if c.completedBytes > c.limits.MaxCompletedBytes {
 		c.remove(ddb.ModuleID)
-		return nil, false, ErrDSMCCCarouselBudgetExceeded
+		return nil, false, ErrDSMCCCarouselBudgetExceeded, DSMCCDDBIgnored
 	}
 	module := state.module()
-	return &module, true, nil
+	return &module, true, nil, DSMCCDDBCompleted
 }
 
 func (c *DSMCCCarousel) Module(moduleID uint16) (DSMCCModule, bool) {

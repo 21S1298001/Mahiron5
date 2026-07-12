@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 
+	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -141,21 +143,31 @@ type DataBroadcastAffiliatedBroadcaster struct {
 }
 
 type DataBroadcastHub struct {
-	mu       sync.Mutex
-	services map[uint16]*dataBroadcastService
-	subs     map[uint16]map[chan DataBroadcastEvent]struct{}
-	bit      *DataBroadcastBIT
+	mu          sync.Mutex
+	services    map[uint16]*dataBroadcastService
+	subs        map[uint16]map[chan DataBroadcastEvent]struct{}
+	bit         *DataBroadcastBIT
+	channelType string
+	channelID   string
 }
 
 type dataBroadcastService struct {
-	pmt         *DataBroadcastPMT
-	pmtSection  string
-	pidToTag    map[uint16]byte
-	carousels   map[byte]*ts.DSMCCCarousel
-	diiSections map[byte]string
-	programInfo *DataBroadcastProgramInfo
-	currentTime *DataBroadcastCurrentTime
-	pcr         *DataBroadcastPCR
+	pmt          *DataBroadcastPMT
+	pmtSection   string
+	pidToTag     map[uint16]byte
+	carousels    map[byte]*ts.DSMCCCarousel
+	diiSections  map[byte]string
+	moduleStarts map[dataBroadcastModuleKey]time.Time
+	programInfo  *DataBroadcastProgramInfo
+	currentTime  *DataBroadcastCurrentTime
+	pcr          *DataBroadcastPCR
+}
+
+type dataBroadcastModuleKey struct {
+	componentTag byte
+	downloadID   uint32
+	moduleID     uint16
+	version      byte
 }
 
 func NewDataBroadcastHub() *DataBroadcastHub {
@@ -163,6 +175,16 @@ func NewDataBroadcastHub() *DataBroadcastHub {
 		services: map[uint16]*dataBroadcastService{},
 		subs:     map[uint16]map[chan DataBroadcastEvent]struct{}{},
 	}
+}
+
+func (h *DataBroadcastHub) WithMetricLabels(channelType, channelID string) *DataBroadcastHub {
+	h.channelType = channelType
+	h.channelID = channelID
+	return h
+}
+
+func (h *DataBroadcastHub) recordCarousel(operation, result string) {
+	observability.RecordDataBroadcastCarouselEvent(context.Background(), h.channelType, h.channelID, operation, result)
 }
 
 func (h *DataBroadcastHub) Subscribe(ctx context.Context, serviceID uint16) (DataBroadcastSnapshot, <-chan DataBroadcastEvent, func()) {
@@ -391,24 +413,35 @@ func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
 func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 	dii, err := ts.ParseDSMCCDII(section.Section)
 	if err != nil {
+		h.recordCarousel("dii", "invalid")
 		return
 	}
 	h.mu.Lock()
 	serviceID, componentTag, carousel, ok := h.carouselByPIDLocked(section.PID)
 	if !ok {
 		h.mu.Unlock()
+		h.recordCarousel("dii", "unmapped")
 		return
 	}
 	service := h.services[serviceID]
 	diiSection := string(section.Section)
 	if service.diiSections[componentTag] == diiSection {
 		h.mu.Unlock()
+		h.recordCarousel("dii", "duplicate")
 		return
 	}
 	service.diiSections[componentTag] = diiSection
 	infos := carousel.ObserveDII(dii)
+	now := time.Now()
+	for key := range service.moduleStarts {
+		if key.componentTag == componentTag {
+			delete(service.moduleStarts, key)
+		}
+	}
 	modules := make([]DataBroadcastModule, 0, len(infos))
 	for _, info := range infos {
+		key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version}
+		service.moduleStarts[key] = now
 		modules = append(modules, DataBroadcastModule{
 			ComponentTag: componentTag,
 			ModuleID:     info.ModuleID,
@@ -427,27 +460,42 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 	}}
 	h.broadcastLocked(serviceID, event)
 	h.mu.Unlock()
+	h.recordCarousel("dii", "accepted")
 }
 
 func (h *DataBroadcastHub) observeDDB(section ts.PIDSection) {
 	ddb, err := ts.ParseDSMCCDDB(section.Section)
 	if err != nil {
+		h.recordCarousel("ddb", "invalid")
 		return
 	}
 	h.mu.Lock()
 	serviceID, componentTag, carousel, ok := h.carouselByPIDLocked(section.PID)
 	if !ok {
 		h.mu.Unlock()
+		h.recordCarousel("ddb", "unmapped")
 		return
 	}
-	module, complete, err := carousel.ObserveDDB(ddb)
+	module, complete, err, result := carousel.ObserveDDBWithResult(ddb)
 	if err != nil || !complete {
 		h.mu.Unlock()
+		if err != nil {
+			h.recordCarousel("ddb", "error")
+		} else {
+			h.recordCarousel("ddb", string(result))
+		}
 		return
 	}
+	key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: module.DownloadID, moduleID: module.ModuleID, version: module.Version}
+	started, timed := h.services[serviceID].moduleStarts[key]
+	delete(h.services[serviceID].moduleStarts, key)
 	event := DataBroadcastEvent{Type: "moduleUpdated", Module: ptr(apiModule(componentTag, *module, false))}
 	h.broadcastLocked(serviceID, event)
 	h.mu.Unlock()
+	h.recordCarousel("ddb", "completed")
+	if timed {
+		observability.RecordDataBroadcastModuleDuration(context.Background(), h.channelType, h.channelID, time.Since(started).Milliseconds())
+	}
 }
 
 func (h *DataBroadcastHub) observeEIT(section ts.Section) {
@@ -489,9 +537,10 @@ func (h *DataBroadcastHub) serviceLocked(serviceID uint16) *dataBroadcastService
 	service := h.services[serviceID]
 	if service == nil {
 		service = &dataBroadcastService{
-			pidToTag:    map[uint16]byte{},
-			carousels:   map[byte]*ts.DSMCCCarousel{},
-			diiSections: map[byte]string{},
+			pidToTag:     map[uint16]byte{},
+			carousels:    map[byte]*ts.DSMCCCarousel{},
+			diiSections:  map[byte]string{},
+			moduleStarts: map[dataBroadcastModuleKey]time.Time{},
 		}
 		h.services[serviceID] = service
 	}

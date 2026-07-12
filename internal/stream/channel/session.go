@@ -70,7 +70,7 @@ func NewSession(config Config) *Session {
 		eitUpdater:    config.EITUpdater,
 		logoUpdater:   config.LogoUpdater,
 		logoCarousel:  ts.NewDSMCCLogoCarousel(),
-		dataBroadcast: databroadcast.NewDataBroadcastHub(),
+		dataBroadcast: databroadcast.NewDataBroadcastHub().WithMetricLabels(config.Type, config.Channel),
 	}
 	sectionCtx, sectionCancel := context.WithCancel(context.Background())
 	session.sectionCancel = sectionCancel
@@ -195,7 +195,22 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 				<-done
 				return nil
 			case err := <-done:
-				return err
+				// PID-section observers may have queued the final carousel event
+				// immediately before the finite/disconnected input completed. Drain
+				// those events so a completed module notification is not lost.
+				for {
+					select {
+					case event, ok := <-events:
+						if !ok {
+							return err
+						}
+						if observeErr := observe(event); observeErr != nil {
+							return observeErr
+						}
+					default:
+						return err
+					}
+				}
 			case event, ok := <-events:
 				if !ok {
 					cancel()

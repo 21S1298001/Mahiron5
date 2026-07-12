@@ -7,43 +7,45 @@ import (
 )
 
 const (
-	MetricStreamSessionsActive     = "mahiron.stream.session.active"
-	MetricTunerDevices             = "mahiron.tuner.devices"
-	MetricTunerUsers               = "mahiron.tuner.users"
-	MetricJobCount                 = "mahiron.job.count"
-	MetricEPGProgramsStored        = "mahiron.epg.program.stored"
-	MetricEPGServicesStale         = "mahiron.epg.service.stale"
-	MetricEPGServicesFailed        = "mahiron.epg.service.failed"
-	MetricJobRuns                  = "mahiron.job.runs"
-	MetricJobDuration              = "mahiron.job.duration"
-	MetricJobItems                 = "mahiron.job.items"
-	MetricStreamSessionStarts      = "mahiron.stream.session.starts"
-	MetricStreamSessionDuration    = "mahiron.stream.session.duration"
-	MetricStreamBytes              = "mahiron.stream.bytes"
-	MetricStreamPackets            = "mahiron.stream.packets"
-	MetricStreamPacketErrors       = "mahiron.stream.packet.errors"
-	MetricStreamContinuityErrors   = "mahiron.stream.continuity_counter.errors"
-	MetricTunerAcquireRequests     = "mahiron.tuner.acquire.requests"
-	MetricTunerAcquireDuration     = "mahiron.tuner.acquire.duration"
-	MetricTunerProcessStarts       = "mahiron.tuner.process.starts"
-	MetricTunerProcessExits        = "mahiron.tuner.process.exits"
-	MetricTunerProcessRestarts     = "mahiron.tuner.process.restart_attempts"
-	MetricTunerProcessUptime       = "mahiron.tuner.process.uptime"
-	MetricRemoteRequests           = "mahiron.remote.requests"
-	MetricRemoteDuration           = "mahiron.remote.duration"
-	MetricRemoteErrors             = "mahiron.remote.errors"
-	MetricDBOperationDuration      = "mahiron.db.operation.duration"
-	MetricDBOperationErrors        = "mahiron.db.operation.errors"
-	MetricEventsSubscribers        = "mahiron.events.subscribers"
-	MetricLogsSubscribers          = "mahiron.logs.subscribers"
-	MetricEventsPublished          = "mahiron.events.published"
-	MetricStreamSubscriberErrors   = "mahiron.stream.subscriber.errors"
-	MetricStreamSubscriberOverflow = "mahiron.stream.subscriber.overflow"
-	MetricEventsDropped            = "mahiron.events.dropped"
-	MetricLogsDropped              = "mahiron.logs.dropped"
-	MetricEPGProgramsUpserted      = "mahiron.epg.program.upserted"
-	MetricEPGProgramsDeleted       = "mahiron.epg.program.deleted"
-	MetricEPGServiceUpdateErrors   = "mahiron.epg.service.update_errors"
+	MetricStreamSessionsActive        = "mahiron.stream.session.active"
+	MetricTunerDevices                = "mahiron.tuner.devices"
+	MetricTunerUsers                  = "mahiron.tuner.users"
+	MetricJobCount                    = "mahiron.job.count"
+	MetricEPGProgramsStored           = "mahiron.epg.program.stored"
+	MetricEPGServicesStale            = "mahiron.epg.service.stale"
+	MetricEPGServicesFailed           = "mahiron.epg.service.failed"
+	MetricJobRuns                     = "mahiron.job.runs"
+	MetricJobDuration                 = "mahiron.job.duration"
+	MetricJobItems                    = "mahiron.job.items"
+	MetricStreamSessionStarts         = "mahiron.stream.session.starts"
+	MetricStreamSessionDuration       = "mahiron.stream.session.duration"
+	MetricStreamBytes                 = "mahiron.stream.bytes"
+	MetricStreamPackets               = "mahiron.stream.packets"
+	MetricStreamPacketErrors          = "mahiron.stream.packet.errors"
+	MetricStreamContinuityErrors      = "mahiron.stream.continuity_counter.errors"
+	MetricTunerAcquireRequests        = "mahiron.tuner.acquire.requests"
+	MetricTunerAcquireDuration        = "mahiron.tuner.acquire.duration"
+	MetricTunerProcessStarts          = "mahiron.tuner.process.starts"
+	MetricTunerProcessExits           = "mahiron.tuner.process.exits"
+	MetricTunerProcessRestarts        = "mahiron.tuner.process.restart_attempts"
+	MetricTunerProcessUptime          = "mahiron.tuner.process.uptime"
+	MetricRemoteRequests              = "mahiron.remote.requests"
+	MetricRemoteDuration              = "mahiron.remote.duration"
+	MetricRemoteErrors                = "mahiron.remote.errors"
+	MetricDBOperationDuration         = "mahiron.db.operation.duration"
+	MetricDBOperationErrors           = "mahiron.db.operation.errors"
+	MetricEventsSubscribers           = "mahiron.events.subscribers"
+	MetricLogsSubscribers             = "mahiron.logs.subscribers"
+	MetricEventsPublished             = "mahiron.events.published"
+	MetricStreamSubscriberErrors      = "mahiron.stream.subscriber.errors"
+	MetricStreamSubscriberOverflow    = "mahiron.stream.subscriber.overflow"
+	MetricEventsDropped               = "mahiron.events.dropped"
+	MetricLogsDropped                 = "mahiron.logs.dropped"
+	MetricEPGProgramsUpserted         = "mahiron.epg.program.upserted"
+	MetricEPGProgramsDeleted          = "mahiron.epg.program.deleted"
+	MetricEPGServiceUpdateErrors      = "mahiron.epg.service.update_errors"
+	MetricDataBroadcastCarouselEvents = "mahiron.data_broadcast.carousel.events"
+	MetricDataBroadcastModuleDuration = "mahiron.data_broadcast.module.duration"
 )
 
 // instrumentSet holds the package-level instruments shared by the Record*
@@ -55,14 +57,16 @@ type instrumentSet struct {
 	jobItems    metric.Int64Counter
 
 	// stream
-	streamSessionStarts      metric.Int64Counter
-	streamSessionDuration    metric.Int64Histogram
-	streamBytes              metric.Int64Counter
-	streamPackets            metric.Int64Counter
-	streamPacketErrors       metric.Int64Counter
-	streamContinuityErrors   metric.Int64Counter
-	streamSubscriberErrors   metric.Int64Counter
-	streamSubscriberOverflow metric.Int64Counter
+	streamSessionStarts         metric.Int64Counter
+	streamSessionDuration       metric.Int64Histogram
+	streamBytes                 metric.Int64Counter
+	streamPackets               metric.Int64Counter
+	streamPacketErrors          metric.Int64Counter
+	streamContinuityErrors      metric.Int64Counter
+	streamSubscriberErrors      metric.Int64Counter
+	streamSubscriberOverflow    metric.Int64Counter
+	dataBroadcastCarouselEvents metric.Int64Counter
+	dataBroadcastModuleDuration metric.Int64Histogram
 
 	// tuner
 	tunerAcquireRequests metric.Int64Counter
@@ -103,14 +107,16 @@ func initMetrics(provider metric.MeterProvider) {
 		jobDuration: newInt64Histogram(meter, MetricJobDuration, metric.WithUnit("ms")),
 		jobItems:    newInt64Counter(meter, MetricJobItems),
 
-		streamSessionStarts:      newInt64Counter(meter, MetricStreamSessionStarts),
-		streamSessionDuration:    newInt64Histogram(meter, MetricStreamSessionDuration, metric.WithUnit("ms")),
-		streamBytes:              newInt64Counter(meter, MetricStreamBytes, metric.WithUnit("By")),
-		streamPackets:            newInt64Counter(meter, MetricStreamPackets),
-		streamPacketErrors:       newInt64Counter(meter, MetricStreamPacketErrors),
-		streamContinuityErrors:   newInt64Counter(meter, MetricStreamContinuityErrors),
-		streamSubscriberErrors:   newInt64Counter(meter, MetricStreamSubscriberErrors),
-		streamSubscriberOverflow: newInt64Counter(meter, MetricStreamSubscriberOverflow),
+		streamSessionStarts:         newInt64Counter(meter, MetricStreamSessionStarts),
+		streamSessionDuration:       newInt64Histogram(meter, MetricStreamSessionDuration, metric.WithUnit("ms")),
+		streamBytes:                 newInt64Counter(meter, MetricStreamBytes, metric.WithUnit("By")),
+		streamPackets:               newInt64Counter(meter, MetricStreamPackets),
+		streamPacketErrors:          newInt64Counter(meter, MetricStreamPacketErrors),
+		streamContinuityErrors:      newInt64Counter(meter, MetricStreamContinuityErrors),
+		streamSubscriberErrors:      newInt64Counter(meter, MetricStreamSubscriberErrors),
+		streamSubscriberOverflow:    newInt64Counter(meter, MetricStreamSubscriberOverflow),
+		dataBroadcastCarouselEvents: newInt64Counter(meter, MetricDataBroadcastCarouselEvents),
+		dataBroadcastModuleDuration: newInt64Histogram(meter, MetricDataBroadcastModuleDuration, metric.WithUnit("ms")),
 
 		tunerAcquireRequests: newInt64Counter(meter, MetricTunerAcquireRequests),
 		tunerAcquireDuration: newInt64Histogram(meter, MetricTunerAcquireDuration, metric.WithUnit("ms")),
