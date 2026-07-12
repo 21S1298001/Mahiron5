@@ -40,6 +40,8 @@ func TestSessionSectionUpdaterRoutesCommonLogoSections(t *testing.T) {
 	session := &Session{
 		channel:       "BS01_0",
 		typ:           "BS",
+		logoUpdater:   noopLogoUpdater{},
+		logoCarousel:  ts.NewDSMCCLogoCarousel(),
 		sectionQueue:  make(chan ts.Section, sectionQueueSize),
 		carouselQueue: make(chan ts.Section, carouselQueueSize),
 	}
@@ -53,8 +55,10 @@ func TestSessionSectionUpdaterRoutesCommonLogoSections(t *testing.T) {
 		t.Fatalf("carousel updater queue length = %d, want 0 before carousel sections", got)
 	}
 
-	session.observeSection(ts.Section{ts.TableIDDSMCCDII})
-	session.observeSection(ts.Section{ts.TableIDDSMCCDDB})
+	dii := streamBuildDSMCCDII(t, 1, 16, 2, 4, 1, []byte("LOGO-05"))
+	ddb := streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte{1, 2, 3, 4})
+	session.observeSection(dii)
+	session.observeSection(ddb)
 	if got := len(session.carouselQueue); got != 2 {
 		t.Fatalf("carousel updater queue length = %d, want DII and DDB to be queued", got)
 	}
@@ -63,16 +67,38 @@ func TestSessionSectionUpdaterRoutesCommonLogoSections(t *testing.T) {
 	}
 }
 
-func TestSessionSectionUpdaterCarouselOverflowDoesNotBlockSections(t *testing.T) {
+func TestSessionSectionUpdaterIgnoresUnrelatedDSMCCCarousel(t *testing.T) {
 	session := &Session{
-		channel:       "BS01_0",
-		typ:           "BS",
+		channel:       "27",
+		typ:           "user-defined",
+		logoUpdater:   noopLogoUpdater{},
+		logoCarousel:  ts.NewDSMCCLogoCarousel(),
 		sectionQueue:  make(chan ts.Section, sectionQueueSize),
 		carouselQueue: make(chan ts.Section, carouselQueueSize),
 	}
 
+	session.observeSection(streamBuildDSMCCDII(t, 1, 16, 2, 4, 1, []byte("index.bml")))
+	for i := range carouselQueueSize + 1 {
+		session.observeSection(streamBuildDSMCCDDB(t, 1, 2, 1, uint16(i), []byte{1, 2, 3, 4}))
+	}
+	if got := len(session.carouselQueue); got != 0 {
+		t.Fatalf("carousel updater queue length = %d, want unrelated data carousel ignored", got)
+	}
+}
+
+func TestSessionSectionUpdaterCarouselOverflowDoesNotBlockSections(t *testing.T) {
+	session := &Session{
+		channel:       "BS01_0",
+		typ:           "BS",
+		logoUpdater:   noopLogoUpdater{},
+		logoCarousel:  ts.NewDSMCCLogoCarousel(),
+		sectionQueue:  make(chan ts.Section, sectionQueueSize),
+		carouselQueue: make(chan ts.Section, carouselQueueSize),
+	}
+
+	session.observeSection(streamBuildDSMCCDII(t, 1, 16, 2, 4, 1, []byte("LOGO-05")))
 	for range carouselQueueSize + 1 {
-		session.observeSection(ts.Section{ts.TableIDDSMCCDDB})
+		session.observeSection(streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte{1, 2, 3, 4}))
 	}
 	if got := len(session.carouselQueue); got != carouselQueueSize {
 		t.Fatalf("carousel updater queue length = %d, want capped at %d", got, carouselQueueSize)
@@ -212,6 +238,16 @@ type failingEITUpdater struct{}
 
 func (failingEITUpdater) UpsertEIT(context.Context, *ts.EIT) error {
 	return errors.New("upsert failed")
+}
+
+type noopLogoUpdater struct{}
+
+func (noopLogoUpdater) UpsertLogoImage(context.Context, *ts.LogoImage) error { return nil }
+func (noopLogoUpdater) UpsertCommonLogoImage(context.Context, ts.CommonLogoImage) error {
+	return nil
+}
+func (noopLogoUpdater) UpsertCommonDataAnnouncement(context.Context, ts.CommonDataAnnouncement, string, string) error {
+	return nil
 }
 
 func streamBuildTOT(jstTime time.Time) ts.Section {
