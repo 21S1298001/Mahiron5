@@ -2,7 +2,11 @@ import { useMemo } from 'react'
 import type { Tuner } from '../api'
 import type { DashboardState } from '../dashboard'
 import { currentGatheringNetworks } from '../domain/job'
-import { channelLabel, isVisibleService } from '../domain/service'
+import {
+  channelLabel,
+  isVisibleService,
+  openServiceMetricValue,
+} from '../domain/service'
 import { openServiceMap, openServiceUsers } from '../domain/tuner'
 import { formatNumber } from '../format/common'
 import { formatDate } from '../format/date'
@@ -110,7 +114,11 @@ export default function Overview({ dashboard }: { dashboard: DashboardState }) {
         />
         <Metric
           label="視聴中サービス"
-          value={`${openServiceCount}/${services.loading ? '-' : visibleServices.length}`}
+          value={openServiceMetricValue(
+            openServiceCount,
+            services.data != null,
+            visibleServices.length,
+          )}
           tone={openServiceCount > 0 ? 'warn' : 'ok'}
         />
         <Metric
