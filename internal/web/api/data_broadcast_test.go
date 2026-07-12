@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/21S1298001/mahiron/internal/program"
+	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
@@ -163,32 +164,21 @@ type fakeDataBroadcastStreamManager struct {
 	session  fakeDataBroadcastSession
 }
 
-func (m fakeDataBroadcastStreamManager) GetOrCreate(context.Context, string, string) (interface {
-	ChannelStream(context.Context, bool, io.Writer) error
-	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
-	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
-	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
-}, error) {
+func (m fakeDataBroadcastStreamManager) GetOrCreate(context.Context, string, string) (stream.Session, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.session, nil
 }
 
-func (m fakeDataBroadcastStreamManager) GetExisting(string, string) (interface {
-	ChannelStream(context.Context, bool, io.Writer) error
-	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
-	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
-	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
-}, bool) {
+func (m fakeDataBroadcastStreamManager) GetExisting(string, string) (stream.Session, bool) {
 	return m.session, m.existing
 }
 
 func (m fakeDataBroadcastStreamManager) ActiveSessionCount() int { return 0 }
 
 type fakeDataBroadcastSession struct {
+	stream.Session
 	module databroadcast.DataBroadcastModule
 }
 

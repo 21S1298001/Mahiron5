@@ -11,7 +11,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/job"
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
+	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 )
@@ -60,20 +60,8 @@ type ProgramManager interface {
 }
 
 type StreamManager interface {
-	GetOrCreate(context.Context, string, string) (interface {
-		ChannelStream(context.Context, bool, io.Writer) error
-		ProgramStream(context.Context, *program.Program, bool, io.Writer) error
-		ServiceStream(context.Context, uint16, bool, io.Writer) error
-		ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
-		DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
-	}, error)
-	GetExisting(string, string) (interface {
-		ChannelStream(context.Context, bool, io.Writer) error
-		ProgramStream(context.Context, *program.Program, bool, io.Writer) error
-		ServiceStream(context.Context, uint16, bool, io.Writer) error
-		ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
-		DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
-	}, bool)
+	GetOrCreate(context.Context, string, string) (stream.Session, error)
+	GetExisting(string, string) (stream.Session, bool)
 	ActiveSessionCount() int
 }
 

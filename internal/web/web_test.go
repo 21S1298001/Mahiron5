@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -17,7 +16,6 @@ import (
 	"github.com/21S1298001/mahiron/internal/program"
 	"github.com/21S1298001/mahiron/internal/service"
 	"github.com/21S1298001/mahiron/internal/stream"
-	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	"github.com/21S1298001/mahiron/internal/tuner"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
 	"github.com/ogen-go/ogen/otelogen"
@@ -203,23 +201,11 @@ func TestNewWebUsesConfiguredMeterProvider(t *testing.T) {
 
 type testStreamManager struct{}
 
-func (testStreamManager) GetOrCreate(context.Context, string, string) (interface {
-	ChannelStream(context.Context, bool, io.Writer) error
-	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
-	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
-	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
-}, error) {
+func (testStreamManager) GetOrCreate(context.Context, string, string) (stream.Session, error) {
 	return nil, stream.ErrChannelNotFound
 }
 
-func (testStreamManager) GetExisting(string, string) (interface {
-	ChannelStream(context.Context, bool, io.Writer) error
-	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
-	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
-	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
-}, bool) {
+func (testStreamManager) GetExisting(string, string) (stream.Session, bool) {
 	return nil, false
 }
 

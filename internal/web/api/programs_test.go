@@ -357,26 +357,14 @@ type fakeProgramStreamManager struct {
 	session fakeProgramStreamSession
 }
 
-func (m fakeProgramStreamManager) GetOrCreate(context.Context, string, string) (interface {
-	ChannelStream(context.Context, bool, io.Writer) error
-	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
-	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
-	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
-}, error) {
+func (m fakeProgramStreamManager) GetOrCreate(context.Context, string, string) (stream.Session, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.session, nil
 }
 
-func (m fakeProgramStreamManager) GetExisting(string, string) (interface {
-	ChannelStream(context.Context, bool, io.Writer) error
-	ProgramStream(context.Context, *program.Program, bool, io.Writer) error
-	ServiceStream(context.Context, uint16, bool, io.Writer) error
-	ObserveDataBroadcast(context.Context, uint16, bool, func(databroadcast.DataBroadcastEvent) error) error
-	DataBroadcastModule(uint16, byte, uint16) (databroadcast.DataBroadcastModule, bool)
-}, bool) {
+func (m fakeProgramStreamManager) GetExisting(string, string) (stream.Session, bool) {
 	return m.session, m.err == nil
 }
 
@@ -385,6 +373,7 @@ func (m fakeProgramStreamManager) ActiveSessionCount() int {
 }
 
 type fakeProgramStreamSession struct {
+	stream.Session
 	data string
 	err  error
 }
