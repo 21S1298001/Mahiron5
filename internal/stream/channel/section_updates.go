@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"log/slog"
 
+	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -17,6 +18,11 @@ const sectionQueueSize = 64
 // because a data carousel can emit far more sections per second than
 // EIT/CDT/SDTT, and must not be allowed to starve them.
 const carouselQueueSize = 256
+
+// dataBroadcastQueueSize bounds completed DSM-CC section work without
+// blocking the TS demux loop. DII is handled synchronously so the carousel is
+// always registered before its DDB blocks enter this queue.
+const dataBroadcastQueueSize = 1024
 
 // EITSectionUpdater persists EIT sections observed on the stream.
 type EITSectionUpdater interface {
@@ -70,8 +76,43 @@ func (s *Session) observeSection(section ts.Section) {
 }
 
 func (s *Session) observePIDSection(section ts.PIDSection) {
-	if s.dataBroadcast != nil {
+	if s.dataBroadcast == nil {
+		return
+	}
+	if section.Section.TableID() != ts.TableIDDSMCCDDB {
 		s.dataBroadcast.Observe(section)
+		return
+	}
+	s.dataBroadcastWG.Add(1)
+	select {
+	case s.dataBroadcastQueue <- section:
+	default:
+		s.dataBroadcastWG.Done()
+		observability.RecordDataBroadcastCarouselEvent(context.Background(), s.typ, s.channel, "ddb_queue", "overflow")
+		slog.Warn("data broadcast DDB queue overflow", "type", s.typ, "channel", s.channel)
+	}
+}
+
+func (s *Session) runDataBroadcastUpdates(ctx context.Context) {
+	defer close(s.dataBroadcastDone)
+	for {
+		select {
+		case <-ctx.Done():
+			// Sections were already accepted from the demuxer. Finish the bounded
+			// backlog so a final module completion is not lost on input shutdown.
+			for {
+				select {
+				case section := <-s.dataBroadcastQueue:
+					s.dataBroadcast.Observe(section)
+					s.dataBroadcastWG.Done()
+				default:
+					return
+				}
+			}
+		case section := <-s.dataBroadcastQueue:
+			s.dataBroadcast.Observe(section)
+			s.dataBroadcastWG.Done()
+		}
 	}
 }
 

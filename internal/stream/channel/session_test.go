@@ -132,6 +132,28 @@ func TestSessionSectionUpdaterCoalescesRepeatedEITPF(t *testing.T) {
 	}
 }
 
+func TestSessionDataBroadcastDDBQueueIsBounded(t *testing.T) {
+	session := &Session{
+		channel:            "27",
+		typ:                "GR",
+		dataBroadcast:      databroadcast.NewDataBroadcastHub(),
+		dataBroadcastQueue: make(chan ts.PIDSection, 1),
+	}
+	ddb := streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("block"))
+	section := ts.PIDSection{PID: 0x0200, Section: ddb}
+
+	session.observePIDSection(section)
+	session.observePIDSection(section)
+
+	if got := len(session.dataBroadcastQueue); got != 1 {
+		t.Fatalf("DDB queue length = %d, want 1", got)
+	}
+	// Balance the wait group for the accepted item because this focused test
+	// intentionally does not start the worker.
+	<-session.dataBroadcastQueue
+	session.dataBroadcastWG.Done()
+}
+
 func TestSessionSectionUpdaterRetriesEITPFOnUpsertFailure(t *testing.T) {
 	key := epgClockTestKey{networkID: 4, serviceID: 101}
 	section := streamBuildEIT(ts.TableIDEITPF0, key, 10)

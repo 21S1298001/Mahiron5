@@ -17,25 +17,28 @@ import (
 )
 
 type Session struct {
-	input             source.ChannelInput
-	handle            source.InputHandle
-	channel           string
-	descrambler       source.Descrambler
-	mu                sync.Mutex
-	stopped           bool
-	typ               string
-	rawDemuxer        *demux.Demuxer
-	decodedDemuxer    *demux.Demuxer
-	eitUpdater        EITSectionUpdater
-	logoUpdater       LogoUpdater
-	logoCarousel      *ts.DSMCCLogoCarousel
-	dataBroadcast     *databroadcast.DataBroadcastHub
-	sectionCancel     context.CancelFunc
-	sectionDone       chan struct{}
-	sectionQueue      chan ts.Section
-	carouselQueue     chan ts.Section
-	sectionUpdateMu   sync.Mutex
-	eitPFFingerprints map[eitPFSectionKey]uint32
+	input              source.ChannelInput
+	handle             source.InputHandle
+	channel            string
+	descrambler        source.Descrambler
+	mu                 sync.Mutex
+	stopped            bool
+	typ                string
+	rawDemuxer         *demux.Demuxer
+	decodedDemuxer     *demux.Demuxer
+	eitUpdater         EITSectionUpdater
+	logoUpdater        LogoUpdater
+	logoCarousel       *ts.DSMCCLogoCarousel
+	dataBroadcast      *databroadcast.DataBroadcastHub
+	sectionCancel      context.CancelFunc
+	sectionDone        chan struct{}
+	sectionQueue       chan ts.Section
+	carouselQueue      chan ts.Section
+	dataBroadcastQueue chan ts.PIDSection
+	dataBroadcastDone  chan struct{}
+	dataBroadcastWG    sync.WaitGroup
+	sectionUpdateMu    sync.Mutex
+	eitPFFingerprints  map[eitPFSectionKey]uint32
 }
 
 // ChannelSession is the shared TS streaming, demux, and data-broadcast
@@ -72,12 +75,10 @@ func NewSession(config Config) *Session {
 		logoCarousel:  ts.NewDSMCCLogoCarousel(),
 		dataBroadcast: databroadcast.NewDataBroadcastHub().WithMetricLabels(config.Type, config.Channel),
 	}
-	sectionCtx, sectionCancel := context.WithCancel(context.Background())
-	session.sectionCancel = sectionCancel
-	session.sectionDone = make(chan struct{})
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
-	go session.runSectionUpdates(sectionCtx)
+	session.dataBroadcastQueue = make(chan ts.PIDSection, dataBroadcastQueueSize)
+	session.startUpdateWorkersLocked()
 	session.rawDemuxer = demux.New(func(ctx context.Context, dst io.Writer) error { return input.Subscribe(ctx, source.StreamRaw, dst) }, func() {
 		session.stopSectionUpdates()
 		if config.OnStop != nil {
@@ -195,6 +196,7 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 				<-done
 				return nil
 			case err := <-done:
+				s.dataBroadcastWG.Wait()
 				// PID-section observers may have queued the final carousel event
 				// immediately before the finite/disconnected input completed. Drain
 				// those events so a completed module notification is not lost.
@@ -268,6 +270,7 @@ func (s *Session) stopSectionUpdates() {
 	s.mu.Lock()
 	cancel := s.sectionCancel
 	done := s.sectionDone
+	dataBroadcastDone := s.dataBroadcastDone
 	s.sectionCancel = nil
 	s.mu.Unlock()
 	if cancel != nil {
@@ -276,6 +279,21 @@ func (s *Session) stopSectionUpdates() {
 	if done != nil {
 		<-done
 	}
+	if dataBroadcastDone != nil {
+		<-dataBroadcastDone
+	}
+}
+
+func (s *Session) startUpdateWorkersLocked() {
+	if s.sectionCancel != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.sectionCancel = cancel
+	s.sectionDone = make(chan struct{})
+	s.dataBroadcastDone = make(chan struct{})
+	go s.runSectionUpdates(ctx)
+	go s.runDataBroadcastUpdates(ctx)
 }
 
 var (
@@ -317,6 +335,7 @@ func (s *Session) streamDemuxer(decode bool) (*demux.Demuxer, error) {
 	demuxer := s.rawDemuxer
 	_, nativeDecode := s.input.(interface{ SupportsDecodedInput() bool })
 	if nativeDecode && demuxer.Stopped() {
+		s.startUpdateWorkersLocked()
 		demuxer = demux.New(func(ctx context.Context, dst io.Writer) error {
 			return s.input.Subscribe(ctx, source.StreamRaw, dst)
 		}, nil, s.observeSection).WithPIDSections(s.observePIDSection).WithPackets(s.dataBroadcast.ObservePacket).WithMetricLabels(s.typ, s.channel)
