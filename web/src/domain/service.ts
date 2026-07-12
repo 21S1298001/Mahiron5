@@ -4,6 +4,14 @@ export function isVisibleService(service: Service) {
   return service.type === 0x01 || service.type === 0xad
 }
 
+export function openServiceMetricValue(
+  openServiceCount: number,
+  hasServiceData: boolean,
+  visibleServiceCount: number,
+) {
+  return `${openServiceCount}/${hasServiceData ? visibleServiceCount : '-'}`
+}
+
 export function isTerrestrialService(service: Service) {
   // remoteControlKeyId is set from TSInformationDescriptor (tag 0xCD), terrestrial NIT only
   return !isSatelliteService(service) && service.remoteControlKeyId != null
