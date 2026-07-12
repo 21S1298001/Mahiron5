@@ -161,7 +161,7 @@ func apiDataBroadcastESEvent(event *stream.DataBroadcastESEvent) any {
 			value["timeMode"] = item.TimeMode
 			value["eventMessageType"] = item.EventMessageType
 			value["eventMessageId"] = item.EventMessageID
-			value["privateDataByte"] = item.PrivateData
+			value["privateDataByte"] = bytesToNumbers(item.PrivateData)
 			if item.EventMessageNPT != nil {
 				value["eventMessageNPT"] = *item.EventMessageNPT
 			}
@@ -187,11 +187,19 @@ func apiDataBroadcastBIT(bit *stream.DataBroadcastBIT) any {
 		}
 		broadcasters = append(broadcasters, map[string]any{
 			"broadcasterId": broadcaster.BroadcasterID, "broadcasterName": broadcaster.BroadcasterName,
-			"services": services, "affiliations": broadcaster.Affiliations,
+			"services": services, "affiliations": bytesToNumbers(broadcaster.Affiliations),
 			"affiliationBroadcasters": affiliated, "terrestrialBroadcasterId": broadcaster.TerrestrialBroadcasterID,
 		})
 	}
 	return map[string]any{"originalNetworkId": bit.OriginalNetworkID, "version": bit.Version, "broadcasters": broadcasters, "rawSectionHex": bit.RawSectionHex}
+}
+
+func bytesToNumbers(values []byte) []int {
+	result := make([]int, len(values))
+	for i, value := range values {
+		result[i] = int(value)
+	}
+	return result
 }
 
 func apiDataBroadcastPMT(serviceItemID int64, pmt *stream.DataBroadcastPMT) any {
