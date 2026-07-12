@@ -1,5 +1,10 @@
 # Changelog
 
+## [v5.0.6](https://github.com/rokoucha/Mahiron/compare/v5.0.5...v5.0.6) - 2026-07-12
+
+- Improve data broadcast event support by @rokoucha in https://github.com/rokoucha/Mahiron/pull/33
+- Encode data broadcast byte fields as number arrays by @rokoucha in https://github.com/rokoucha/Mahiron/pull/35
+
 ## [v5.0.5](https://github.com/rokoucha/Mahiron/compare/v5.0.4...v5.0.5) - 2026-07-11
 
 - Update dependency @types/node to v24.13.3 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/21
