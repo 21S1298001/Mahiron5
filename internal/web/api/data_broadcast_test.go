@@ -122,6 +122,9 @@ func TestGetServiceDataBroadcastModuleReturnsETagAndNotModified(t *testing.T) {
 	if got := rec.Header().Get("ETag"); got != `"dsmcc-test"` {
 		t.Fatalf("ETag = %q", got)
 	}
+	if got := rec.Header().Get("Cache-Control"); got != "private, no-cache" {
+		t.Fatalf("Cache-Control = %q", got)
+	}
 	if got := rec.Body.String(); got != "module" {
 		t.Fatalf("body = %q", got)
 	}
@@ -131,13 +134,16 @@ func TestGetServiceDataBroadcastModuleReturnsETagAndNotModified(t *testing.T) {
 		ID:           100101,
 		ComponentTag: 0x40,
 		ModuleId:     2,
-		IfNoneMatch:  apigen.NewOptString(`"dsmcc-test"`),
+		IfNoneMatch:  apigen.NewOptString(`W/"other", W/"dsmcc-test"`),
 	}, rec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rec.Code != http.StatusNotModified {
 		t.Fatalf("status = %d, want 304", rec.Code)
+	}
+	if got := rec.Header().Get("ETag"); got != `"dsmcc-test"` {
+		t.Fatalf("304 ETag = %q", got)
 	}
 }
 

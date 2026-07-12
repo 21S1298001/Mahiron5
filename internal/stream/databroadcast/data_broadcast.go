@@ -149,8 +149,10 @@ type DataBroadcastHub struct {
 
 type dataBroadcastService struct {
 	pmt         *DataBroadcastPMT
+	pmtSection  string
 	pidToTag    map[uint16]byte
 	carousels   map[byte]*ts.DSMCCCarousel
+	diiSections map[byte]string
 	programInfo *DataBroadcastProgramInfo
 	currentTime *DataBroadcastCurrentTime
 	pcr         *DataBroadcastPCR
@@ -316,6 +318,12 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 	})
 	h.mu.Lock()
 	service := h.serviceLocked(pmt.ProgramNumber)
+	pmtSection := string(section.Section)
+	if service.pmtSection == pmtSection {
+		h.mu.Unlock()
+		return
+	}
+	service.pmtSection = pmtSection
 	service.pmt = &DataBroadcastPMT{
 		ServiceID:     pmt.ProgramNumber,
 		Version:       pmt.VersionNumber,
@@ -391,6 +399,13 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 		h.mu.Unlock()
 		return
 	}
+	service := h.services[serviceID]
+	diiSection := string(section.Section)
+	if service.diiSections[componentTag] == diiSection {
+		h.mu.Unlock()
+		return
+	}
+	service.diiSections[componentTag] = diiSection
 	infos := carousel.ObserveDII(dii)
 	modules := make([]DataBroadcastModule, 0, len(infos))
 	for _, info := range infos {
@@ -474,8 +489,9 @@ func (h *DataBroadcastHub) serviceLocked(serviceID uint16) *dataBroadcastService
 	service := h.services[serviceID]
 	if service == nil {
 		service = &dataBroadcastService{
-			pidToTag:  map[uint16]byte{},
-			carousels: map[byte]*ts.DSMCCCarousel{},
+			pidToTag:    map[uint16]byte{},
+			carousels:   map[byte]*ts.DSMCCCarousel{},
+			diiSections: map[byte]string{},
 		}
 		h.services[serviceID] = service
 	}

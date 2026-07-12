@@ -188,8 +188,11 @@ func TestSessionObserveDataBroadcastEmitsSnapshotAndModule(t *testing.T) {
 	componentTag := byte(0x40)
 	moduleData := []byte("bml")
 	input := append(streamSectionPackets(ts.PIDPAT, streamBuildPAT(1, serviceID, pmtPID), 0), streamSectionPackets(pmtPID, streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag), 1)...)
-	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 2)...)
-	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 3)...)
+	input = append(input, streamSectionPackets(pmtPID, streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag), 2)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 3)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 4)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 5)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 6)...)
 	session := NewSession(Config{
 		Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(input, streamtest.ClosedStart()), nil),
 		Channel:   "27",
@@ -216,6 +219,17 @@ func TestSessionObserveDataBroadcastEmitsSnapshotAndModule(t *testing.T) {
 	}
 	if gotModule == nil {
 		t.Fatalf("events did not include moduleUpdated: %#v", events)
+	}
+	for _, eventType := range []string{"pmt", "moduleListUpdated", "moduleUpdated"} {
+		count := 0
+		for _, event := range events {
+			if event.Type == eventType {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Fatalf("%s event count = %d, want 1; events: %#v", eventType, count, events)
+		}
 	}
 	if gotModule.ComponentTag != componentTag || gotModule.ModuleID != 2 {
 		t.Fatalf("module = componentTag:%#x moduleID:%#x", gotModule.ComponentTag, gotModule.ModuleID)
