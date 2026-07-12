@@ -42,6 +42,15 @@ type DSMCCModule struct {
 	Generation uint64
 }
 
+type DSMCCDDBResult string
+
+const (
+	DSMCCDDBIgnored   DSMCCDDBResult = "ignored"
+	DSMCCDDBBlock     DSMCCDDBResult = "block"
+	DSMCCDDBDuplicate DSMCCDDBResult = "duplicate"
+	DSMCCDDBCompleted DSMCCDDBResult = "completed"
+)
+
 type DSMCCCarousel struct {
 	limits         DSMCCCarouselLimits
 	modules        map[uint16]*dsmccModuleState
@@ -115,29 +124,41 @@ func (c *DSMCCCarousel) ObserveDII(dii *DSMCCDII) []DSMCCModuleInfo {
 }
 
 func (c *DSMCCCarousel) ObserveDDB(ddb *DSMCCDDB) (*DSMCCModule, bool, error) {
+	module, complete, _, err := c.ObserveDDBWithResult(ddb)
+	return module, complete, err
+}
+
+// ObserveDDBWithResult observes a data block and also reports whether it was
+// new, duplicate, ignored, or completed a module. The result is intended for
+// receiver diagnostics and does not change the assembly semantics.
+func (c *DSMCCCarousel) ObserveDDBWithResult(ddb *DSMCCDDB) (*DSMCCModule, bool, DSMCCDDBResult, error) {
 	state := c.modules[ddb.ModuleID]
 	if state == nil || state.completed || state.downloadID != ddb.DownloadID || state.info.Version != ddb.ModuleVersion || state.blockSize == 0 {
-		return nil, false, nil
+		return nil, false, DSMCCDDBIgnored, nil
 	}
 	blockNumber := int(ddb.BlockNumber)
 	if blockNumber >= len(state.received) {
-		return nil, false, nil
+		return nil, false, DSMCCDDBIgnored, nil
 	}
 	off := blockNumber * int(state.blockSize)
 	if off >= len(state.data) {
-		return nil, false, nil
+		return nil, false, DSMCCDDBIgnored, nil
 	}
 	end := off + len(ddb.Data)
 	if end > len(state.data) {
 		end = len(state.data)
 	}
-	if !state.received[blockNumber] {
+	duplicate := state.received[blockNumber]
+	if !duplicate {
 		state.received[blockNumber] = true
 		state.count++
 	}
 	copy(state.data[off:end], ddb.Data[:end-off])
 	if state.count < len(state.received) {
-		return nil, false, nil
+		if duplicate {
+			return nil, false, DSMCCDDBDuplicate, nil
+		}
+		return nil, false, DSMCCDDBBlock, nil
 	}
 	state.completed = true
 	state.received = nil
@@ -147,10 +168,10 @@ func (c *DSMCCCarousel) ObserveDDB(ddb *DSMCCDDB) (*DSMCCModule, bool, error) {
 	}
 	if c.completedBytes > c.limits.MaxCompletedBytes {
 		c.remove(ddb.ModuleID)
-		return nil, false, ErrDSMCCCarouselBudgetExceeded
+		return nil, false, DSMCCDDBIgnored, ErrDSMCCCarouselBudgetExceeded
 	}
 	module := state.module()
-	return &module, true, nil
+	return &module, true, DSMCCDDBCompleted, nil
 }
 
 func (c *DSMCCCarousel) Module(moduleID uint16) (DSMCCModule, bool) {
@@ -159,6 +180,38 @@ func (c *DSMCCCarousel) Module(moduleID uint16) (DSMCCModule, bool) {
 		return DSMCCModule{}, false
 	}
 	return state.module(), true
+}
+
+// ModuleInfo returns DII metadata for an announced module, including modules
+// whose DDB blocks have not completed yet.
+func (c *DSMCCCarousel) ModuleInfo(moduleID uint16) (DSMCCModuleInfo, bool) {
+	state := c.modules[moduleID]
+	if state == nil {
+		return DSMCCModuleInfo{}, false
+	}
+	return cloneDSMCCModuleInfo(state.info), true
+}
+
+// Restore completes an announced module from a receiver cache. It succeeds
+// only when all DII identity fields match the current in-flight state.
+func (c *DSMCCCarousel) Restore(module DSMCCModule) bool {
+	state := c.modules[module.ModuleID]
+	if state == nil || state.completed || state.downloadID != module.DownloadID || state.info.Version != module.Version || state.info.ModuleSize != module.Size || uint32(len(module.Data)) != module.Size {
+		return false
+	}
+	state.data = append(state.data[:0], module.Data...)
+	state.received = nil
+	state.count = 0
+	state.completed = true
+	c.inFlightBytes -= uint64(state.info.ModuleSize)
+	c.completedBytes += uint64(state.info.ModuleSize)
+	for c.completedBytes > c.limits.MaxCompletedBytes && c.evictOldestCompletedExcept(module.ModuleID) {
+	}
+	if c.completedBytes > c.limits.MaxCompletedBytes {
+		c.remove(module.ModuleID)
+		return false
+	}
+	return true
 }
 
 func (c *DSMCCCarousel) Modules() []DSMCCModule {

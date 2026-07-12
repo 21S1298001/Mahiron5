@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"path"
 	"slices"
+	"strings"
 	"sync"
+	"time"
 
+	"github.com/21S1298001/mahiron/internal/observability"
 	"github.com/21S1298001/mahiron/ts"
 )
 
@@ -67,6 +71,7 @@ type DataBroadcastModule struct {
 	Complete     bool
 	ETag         string
 	Data         []byte
+	Metadata     *ts.DSMCCModuleMetadata
 }
 
 type DataBroadcastProgramInfo struct {
@@ -141,19 +146,32 @@ type DataBroadcastAffiliatedBroadcaster struct {
 }
 
 type DataBroadcastHub struct {
-	mu       sync.Mutex
-	services map[uint16]*dataBroadcastService
-	subs     map[uint16]map[chan DataBroadcastEvent]struct{}
-	bit      *DataBroadcastBIT
+	mu          sync.Mutex
+	services    map[uint16]*dataBroadcastService
+	subs        map[uint16]map[chan DataBroadcastEvent]struct{}
+	bit         *DataBroadcastBIT
+	channelType string
+	channelID   string
+	moduleCache *ModuleCache
 }
 
 type dataBroadcastService struct {
-	pmt         *DataBroadcastPMT
-	pidToTag    map[uint16]byte
-	carousels   map[byte]*ts.DSMCCCarousel
-	programInfo *DataBroadcastProgramInfo
-	currentTime *DataBroadcastCurrentTime
-	pcr         *DataBroadcastPCR
+	pmt          *DataBroadcastPMT
+	pmtSection   string
+	pidToTag     map[uint16]byte
+	carousels    map[byte]*ts.DSMCCCarousel
+	diiSections  map[byte]string
+	moduleStarts map[dataBroadcastModuleKey]time.Time
+	programInfo  *DataBroadcastProgramInfo
+	currentTime  *DataBroadcastCurrentTime
+	pcr          *DataBroadcastPCR
+}
+
+type dataBroadcastModuleKey struct {
+	componentTag byte
+	downloadID   uint32
+	moduleID     uint16
+	version      byte
 }
 
 func NewDataBroadcastHub() *DataBroadcastHub {
@@ -161,6 +179,21 @@ func NewDataBroadcastHub() *DataBroadcastHub {
 		services: map[uint16]*dataBroadcastService{},
 		subs:     map[uint16]map[chan DataBroadcastEvent]struct{}{},
 	}
+}
+
+func (h *DataBroadcastHub) WithMetricLabels(channelType, channelID string) *DataBroadcastHub {
+	h.channelType = channelType
+	h.channelID = channelID
+	return h
+}
+
+func (h *DataBroadcastHub) WithModuleCache(cache *ModuleCache) *DataBroadcastHub {
+	h.moduleCache = cache
+	return h
+}
+
+func (h *DataBroadcastHub) recordCarousel(operation, result string) {
+	observability.RecordDataBroadcastCarouselEvent(context.Background(), h.channelType, h.channelID, operation, result)
 }
 
 func (h *DataBroadcastHub) Subscribe(ctx context.Context, serviceID uint16) (DataBroadcastSnapshot, <-chan DataBroadcastEvent, func()) {
@@ -289,6 +322,35 @@ func (h *DataBroadcastHub) Module(serviceID uint16, componentTag byte, moduleID 
 	return apiModule(componentTag, module, true), true
 }
 
+// DDBPriority returns the cache priority announced by DII and whether the
+// block belongs to the BML entry document. It is intentionally read-only and
+// used by the channel session before placing DDB work on a bounded queue.
+func (h *DataBroadcastHub) DDBPriority(section ts.PIDSection) (priority byte, entryDocument bool) {
+	ddb, err := ts.ParseDSMCCDDB(section.Section)
+	if err != nil {
+		return 0, false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	_, _, carousel, ok := h.carouselByPIDLocked(section.PID)
+	if !ok {
+		return 0, false
+	}
+	info, ok := carousel.ModuleInfo(ddb.ModuleID)
+	if !ok || info.Version != ddb.ModuleVersion {
+		return 0, false
+	}
+	metadata, ok := info.Metadata()
+	if !ok {
+		return 0, false
+	}
+	if metadata.CachingPriority != nil {
+		priority = *metadata.CachingPriority
+	}
+	name := strings.ToLower(path.Base(metadata.Name))
+	return priority, name == "index.bml" || name == "index.xhtml"
+}
+
 func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 	pmt, err := ts.ParsePMT(section.Section)
 	if err != nil {
@@ -316,6 +378,12 @@ func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {
 	})
 	h.mu.Lock()
 	service := h.serviceLocked(pmt.ProgramNumber)
+	pmtSection := string(section.Section)
+	if service.pmtSection == pmtSection {
+		h.mu.Unlock()
+		return
+	}
+	service.pmtSection = pmtSection
 	service.pmt = &DataBroadcastPMT{
 		ServiceID:     pmt.ProgramNumber,
 		Version:       pmt.VersionNumber,
@@ -383,18 +451,37 @@ func (h *DataBroadcastHub) observeES(section ts.PIDSection) {
 func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 	dii, err := ts.ParseDSMCCDII(section.Section)
 	if err != nil {
+		h.recordCarousel("dii", "invalid")
 		return
 	}
 	h.mu.Lock()
 	serviceID, componentTag, carousel, ok := h.carouselByPIDLocked(section.PID)
 	if !ok {
 		h.mu.Unlock()
+		h.recordCarousel("dii", "unmapped")
 		return
 	}
+	service := h.services[serviceID]
+	diiSection := string(section.Section)
+	if service.diiSections[componentTag] == diiSection {
+		h.mu.Unlock()
+		h.recordCarousel("dii", "duplicate")
+		return
+	}
+	service.diiSections[componentTag] = diiSection
 	infos := carousel.ObserveDII(dii)
+	now := time.Now()
+	for key := range service.moduleStarts {
+		if key.componentTag == componentTag {
+			delete(service.moduleStarts, key)
+		}
+	}
 	modules := make([]DataBroadcastModule, 0, len(infos))
+	restored := make([]DataBroadcastModule, 0)
 	for _, info := range infos {
-		modules = append(modules, DataBroadcastModule{
+		key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version}
+		service.moduleStarts[key] = now
+		module := DataBroadcastModule{
 			ComponentTag: componentTag,
 			ModuleID:     info.ModuleID,
 			DownloadID:   dii.DownloadID,
@@ -402,7 +489,20 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 			Size:         info.ModuleSize,
 			Info:         append([]byte(nil), info.Info...),
 			ETag:         moduleETag(dii.DownloadID, info.ModuleID, info.Version, info.ModuleSize),
-		})
+		}
+		if metadata, ok := info.Metadata(); ok {
+			module.Metadata = &metadata
+		}
+		modules = append(modules, module)
+		cacheKey := h.moduleCacheKey(serviceID, componentTag, dii.DownloadID, info.ModuleID, info.Version, info.ModuleSize)
+		if cached, found := h.moduleCache.Get(cacheKey); found && carousel.Restore(cached) {
+			modules[len(modules)-1].Complete = true
+			restored = append(restored, apiModule(componentTag, cached, false))
+			delete(service.moduleStarts, dataBroadcastModuleKey{componentTag: componentTag, downloadID: dii.DownloadID, moduleID: info.ModuleID, version: info.Version})
+			h.recordCarousel("cache", "hit")
+		} else if h.moduleCache != nil {
+			h.recordCarousel("cache", "miss")
+		}
 	}
 	event := DataBroadcastEvent{Type: "moduleListUpdated", ModuleList: &DataBroadcastModuleList{
 		ComponentTag: componentTag,
@@ -411,28 +511,51 @@ func (h *DataBroadcastHub) observeDII(section ts.PIDSection) {
 		Modules:      modules,
 	}}
 	h.broadcastLocked(serviceID, event)
+	for i := range restored {
+		h.broadcastLocked(serviceID, DataBroadcastEvent{Type: "moduleUpdated", Module: &restored[i]})
+	}
 	h.mu.Unlock()
+	h.recordCarousel("dii", "accepted")
 }
 
 func (h *DataBroadcastHub) observeDDB(section ts.PIDSection) {
 	ddb, err := ts.ParseDSMCCDDB(section.Section)
 	if err != nil {
+		h.recordCarousel("ddb", "invalid")
 		return
 	}
 	h.mu.Lock()
 	serviceID, componentTag, carousel, ok := h.carouselByPIDLocked(section.PID)
 	if !ok {
 		h.mu.Unlock()
+		h.recordCarousel("ddb", "unmapped")
 		return
 	}
-	module, complete, err := carousel.ObserveDDB(ddb)
+	module, complete, result, err := carousel.ObserveDDBWithResult(ddb)
 	if err != nil || !complete {
 		h.mu.Unlock()
+		if err != nil {
+			h.recordCarousel("ddb", "error")
+		} else {
+			h.recordCarousel("ddb", string(result))
+		}
 		return
 	}
+	key := dataBroadcastModuleKey{componentTag: componentTag, downloadID: module.DownloadID, moduleID: module.ModuleID, version: module.Version}
+	started, timed := h.services[serviceID].moduleStarts[key]
+	delete(h.services[serviceID].moduleStarts, key)
 	event := DataBroadcastEvent{Type: "moduleUpdated", Module: ptr(apiModule(componentTag, *module, false))}
+	h.moduleCache.Put(h.moduleCacheKey(serviceID, componentTag, module.DownloadID, module.ModuleID, module.Version, module.Size), *module)
 	h.broadcastLocked(serviceID, event)
 	h.mu.Unlock()
+	h.recordCarousel("ddb", "completed")
+	if timed {
+		observability.RecordDataBroadcastModuleDuration(context.Background(), h.channelType, h.channelID, time.Since(started).Milliseconds())
+	}
+}
+
+func (h *DataBroadcastHub) moduleCacheKey(serviceID uint16, componentTag byte, downloadID uint32, moduleID uint16, version byte, size uint32) ModuleCacheKey {
+	return ModuleCacheKey{ChannelType: h.channelType, ChannelID: h.channelID, ServiceID: serviceID, ComponentTag: componentTag, DownloadID: downloadID, ModuleID: moduleID, Version: version, Size: size}
 }
 
 func (h *DataBroadcastHub) observeEIT(section ts.Section) {
@@ -474,8 +597,10 @@ func (h *DataBroadcastHub) serviceLocked(serviceID uint16) *dataBroadcastService
 	service := h.services[serviceID]
 	if service == nil {
 		service = &dataBroadcastService{
-			pidToTag:  map[uint16]byte{},
-			carousels: map[byte]*ts.DSMCCCarousel{},
+			pidToTag:     map[uint16]byte{},
+			carousels:    map[byte]*ts.DSMCCCarousel{},
+			diiSections:  map[byte]string{},
+			moduleStarts: map[dataBroadcastModuleKey]time.Time{},
 		}
 		h.services[serviceID] = service
 	}
@@ -561,6 +686,9 @@ func apiModule(componentTag byte, module ts.DSMCCModule, includeData bool) DataB
 		Complete:     true,
 		ETag:         moduleETag(module.DownloadID, module.ModuleID, module.Version, module.Size),
 	}
+	if metadata, ok := (ts.DSMCCModuleInfo{Info: module.Info}).Metadata(); ok {
+		result.Metadata = &metadata
+	}
 	if includeData {
 		result.Data = append([]byte(nil), module.Data...)
 	}
@@ -595,6 +723,12 @@ func cloneModules(modules []DataBroadcastModule) []DataBroadcastModule {
 		result[i] = module
 		result[i].Info = append([]byte(nil), module.Info...)
 		result[i].Data = append([]byte(nil), module.Data...)
+		if module.Metadata != nil {
+			metadata := *module.Metadata
+			metadata.ExpireData = append([]byte(nil), metadata.ExpireData...)
+			metadata.ActivationData = append([]byte(nil), metadata.ActivationData...)
+			result[i].Metadata = &metadata
+		}
 	}
 	return result
 }

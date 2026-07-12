@@ -14,6 +14,7 @@ import (
 	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 func TestAPIDataBroadcastBITUsesWebBMLFieldNames(t *testing.T) {
@@ -75,6 +76,17 @@ func TestAPIDataBroadcastByteFieldsEncodeAsNumberArrays(t *testing.T) {
 	}
 }
 
+func TestAPIDataBroadcastModuleExposesParsedMetadata(t *testing.T) {
+	priority := byte(80)
+	payload := apiDataBroadcastModule(100101, &databroadcast.DataBroadcastModule{
+		Metadata: &ts.DSMCCModuleMetadata{Name: "index.bml", Type: "text/bml", CachingPriority: &priority},
+	})
+	metadata := payload["metadata"].(map[string]any)
+	if metadata["name"] != "index.bml" || metadata["type"] != "text/bml" || metadata["cachingPriority"] != &priority {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+}
+
 func TestGetServiceDataBroadcastEventsWritesSnapshot(t *testing.T) {
 	handler := testProgramHandler(t)
 	handler.streamManager = fakeDataBroadcastStreamManager{session: fakeDataBroadcastSession{}}
@@ -122,6 +134,9 @@ func TestGetServiceDataBroadcastModuleReturnsETagAndNotModified(t *testing.T) {
 	if got := rec.Header().Get("ETag"); got != `"dsmcc-test"` {
 		t.Fatalf("ETag = %q", got)
 	}
+	if got := rec.Header().Get("Cache-Control"); got != "private, no-cache" {
+		t.Fatalf("Cache-Control = %q", got)
+	}
 	if got := rec.Body.String(); got != "module" {
 		t.Fatalf("body = %q", got)
 	}
@@ -131,13 +146,16 @@ func TestGetServiceDataBroadcastModuleReturnsETagAndNotModified(t *testing.T) {
 		ID:           100101,
 		ComponentTag: 0x40,
 		ModuleId:     2,
-		IfNoneMatch:  apigen.NewOptString(`"dsmcc-test"`),
+		IfNoneMatch:  apigen.NewOptString(`W/"other", W/"dsmcc-test"`),
 	}, rec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rec.Code != http.StatusNotModified {
 		t.Fatalf("status = %d, want 304", rec.Code)
+	}
+	if got := rec.Header().Get("ETag"); got != `"dsmcc-test"` {
+		t.Fatalf("304 ETag = %q", got)
 	}
 }
 

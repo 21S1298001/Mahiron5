@@ -132,6 +132,87 @@ func TestSessionSectionUpdaterCoalescesRepeatedEITPF(t *testing.T) {
 	}
 }
 
+func TestSessionDataBroadcastDDBQueueIsBounded(t *testing.T) {
+	session := &Session{
+		channel:            "27",
+		typ:                "GR",
+		dataBroadcast:      databroadcast.NewDataBroadcastHub(),
+		dataBroadcastQueue: make(chan ts.PIDSection, 1),
+	}
+	ddb := streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("block"))
+	section := ts.PIDSection{PID: 0x0200, Section: ddb}
+
+	session.observePIDSection(section)
+	session.observePIDSection(section)
+
+	if got := len(session.dataBroadcastQueue); got != 1 {
+		t.Fatalf("DDB queue length = %d, want 1", got)
+	}
+	// Balance the wait group for the accepted item because this focused test
+	// intentionally does not start the worker.
+	<-session.dataBroadcastQueue
+	session.dataBroadcastWG.Done()
+}
+
+func TestSessionPrioritizesEntryDocumentDDB(t *testing.T) {
+	serviceID, pmtPID, carouselPID := uint16(101), uint16(0x0100), uint16(0x0200)
+	componentTag := byte(0x40)
+	hub := databroadcast.NewDataBroadcastHub()
+	hub.Observe(ts.PIDSection{PID: pmtPID, Section: streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag)})
+	moduleInfo := []byte{ts.DSMCCModuleDescriptorName, 9, 'i', 'n', 'd', 'e', 'x', '.', 'b', 'm', 'l'}
+	hub.Observe(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 1, moduleInfo)})
+	session := &Session{
+		channel:                    "27",
+		typ:                        "GR",
+		dataBroadcast:              hub,
+		dataBroadcastQueue:         make(chan ts.PIDSection, 1),
+		dataBroadcastPriorityQueue: make(chan ts.PIDSection, 1),
+	}
+
+	session.observePIDSection(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("bml!"))})
+
+	if got := len(session.dataBroadcastPriorityQueue); got != 1 {
+		t.Fatalf("priority DDB queue length = %d, want 1", got)
+	}
+	if got := len(session.dataBroadcastQueue); got != 0 {
+		t.Fatalf("normal DDB queue length = %d, want 0", got)
+	}
+	<-session.dataBroadcastPriorityQueue
+	session.dataBroadcastWG.Done()
+}
+
+func TestSessionRestoresDataBroadcastModuleAcrossSessions(t *testing.T) {
+	serviceID, pmtPID, carouselPID := uint16(101), uint16(0x0100), uint16(0x0200)
+	componentTag := byte(0x40)
+	moduleData := []byte("bml")
+	cache := databroadcast.NewModuleCache(1024)
+	base := append(streamSectionPackets(ts.PIDPAT, streamBuildPAT(1, serviceID, pmtPID), 0), streamSectionPackets(pmtPID, streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag), 1)...)
+	base = append(base, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 2)...)
+	firstInput := append(append([]byte(nil), base...), streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 3)...)
+	first := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(firstInput, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleCache: cache})
+	if err := first.ObserveDataBroadcast(t.Context(), serviceID, false, func(databroadcast.DataBroadcastEvent) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	second := NewSession(Config{Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(base, streamtest.ClosedStart()), nil), Channel: "27", Type: "GR", ModuleCache: cache})
+	restored := false
+	if err := second.ObserveDataBroadcast(t.Context(), serviceID, false, func(event databroadcast.DataBroadcastEvent) error {
+		if event.Type == "moduleUpdated" && event.Module != nil && event.Module.ModuleID == 2 {
+			restored = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !restored {
+		t.Fatal("second session did not restore completed module from cache")
+	}
+	module, ok := second.DataBroadcastModule(serviceID, componentTag, 2)
+	if !ok || string(module.Data) != string(moduleData) {
+		t.Fatalf("restored module = %q, %v", module.Data, ok)
+	}
+}
+
 func TestSessionSectionUpdaterRetriesEITPFOnUpsertFailure(t *testing.T) {
 	key := epgClockTestKey{networkID: 4, serviceID: 101}
 	section := streamBuildEIT(ts.TableIDEITPF0, key, 10)
@@ -188,8 +269,11 @@ func TestSessionObserveDataBroadcastEmitsSnapshotAndModule(t *testing.T) {
 	componentTag := byte(0x40)
 	moduleData := []byte("bml")
 	input := append(streamSectionPackets(ts.PIDPAT, streamBuildPAT(1, serviceID, pmtPID), 0), streamSectionPackets(pmtPID, streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag), 1)...)
-	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 2)...)
-	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 3)...)
+	input = append(input, streamSectionPackets(pmtPID, streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag), 2)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 3)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDII(t, 1, uint16(len(moduleData)), 2, uint32(len(moduleData)), 1, []byte("index.bml")), 4)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 5)...)
+	input = append(input, streamSectionPackets(carouselPID, streamBuildDSMCCDDB(t, 1, 2, 1, 0, moduleData), 6)...)
 	session := NewSession(Config{
 		Broadcast: source.NewBroadcast(streamtest.NewFinitePacketSource(input, streamtest.ClosedStart()), nil),
 		Channel:   "27",
@@ -216,6 +300,17 @@ func TestSessionObserveDataBroadcastEmitsSnapshotAndModule(t *testing.T) {
 	}
 	if gotModule == nil {
 		t.Fatalf("events did not include moduleUpdated: %#v", events)
+	}
+	for _, eventType := range []string{"pmt", "moduleListUpdated", "moduleUpdated"} {
+		count := 0
+		for _, event := range events {
+			if event.Type == eventType {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Fatalf("%s event count = %d, want 1; events: %#v", eventType, count, events)
+		}
 	}
 	if gotModule.ComponentTag != componentTag || gotModule.ModuleID != 2 {
 		t.Fatalf("module = componentTag:%#x moduleID:%#x", gotModule.ComponentTag, gotModule.ModuleID)

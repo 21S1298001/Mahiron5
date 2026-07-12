@@ -8,10 +8,12 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/21S1298001/mahiron/internal/stream"
 	"github.com/21S1298001/mahiron/internal/stream/databroadcast"
 	apigen "github.com/21S1298001/mahiron/internal/web/api/gen"
+	"github.com/21S1298001/mahiron/ts"
 )
 
 func GetServiceDataBroadcastEvents(ctx context.Context, h *Handler, params apigen.GetServiceDataBroadcastEventsParams, w http.ResponseWriter) error {
@@ -68,16 +70,30 @@ func GetServiceDataBroadcastModule(ctx context.Context, h *Handler, params apige
 		w.WriteHeader(http.StatusNotFound)
 		return nil
 	}
-	if value, ok := params.IfNoneMatch.Get(); ok && value == module.ETag {
+	// DSM-CC module URLs are stable while their contents are versioned by the
+	// DII moduleVersion/downloadId pair represented in the ETag. Allow clients
+	// to retain the bytes and revalidate them instead of downloading the same
+	// carousel module for every BML reference.
+	w.Header().Set("Cache-Control", "private, no-cache")
+	w.Header().Set("ETag", module.ETag)
+	if value, ok := params.IfNoneMatch.Get(); ok && etagMatches(value, module.ETag) {
 		w.WriteHeader(http.StatusNotModified)
 		return nil
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("ETag", module.ETag)
 	w.WriteHeader(http.StatusOK)
 	_, err = w.Write(module.Data)
 	return err
+}
+
+func etagMatches(ifNoneMatch, etag string) bool {
+	for value := range strings.SplitSeq(ifNoneMatch, ",") {
+		value = strings.TrimSpace(value)
+		if value == "*" || value == etag || strings.TrimPrefix(value, "W/") == etag {
+			return true
+		}
+	}
+	return false
 }
 
 func writeDataBroadcastSSE(w io.Writer, serviceItemID int64, event databroadcast.DataBroadcastEvent) error {
@@ -260,8 +276,28 @@ func apiDataBroadcastModule(serviceItemID int64, module *databroadcast.DataBroad
 		"version":      module.Version,
 		"size":         module.Size,
 		"info":         module.Info,
+		"metadata":     apiDataBroadcastModuleMetadata(module.Metadata),
 		"complete":     module.Complete,
 		"etag":         module.ETag,
 		"url":          fmt.Sprintf("/api/services/%d/data-broadcast/modules/%d/%d", serviceItemID, module.ComponentTag, module.ModuleID),
+	}
+}
+
+func apiDataBroadcastModuleMetadata(metadata *ts.DSMCCModuleMetadata) any {
+	if metadata == nil {
+		return nil
+	}
+	return map[string]any{
+		"type":                     metadata.Type,
+		"name":                     metadata.Name,
+		"crc32":                    metadata.CRC32,
+		"estimatedDownloadSeconds": metadata.EstimatedDownloadSeconds,
+		"cachingPriority":          metadata.CachingPriority,
+		"expireMode":               metadata.ExpireMode,
+		"expireDataByte":           bytesToNumbers(metadata.ExpireData),
+		"activationMode":           metadata.ActivationMode,
+		"activationDataByte":       bytesToNumbers(metadata.ActivationData),
+		"compressionType":          metadata.CompressionType,
+		"originalSize":             metadata.OriginalSize,
 	}
 }

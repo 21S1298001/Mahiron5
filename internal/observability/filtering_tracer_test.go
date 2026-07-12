@@ -55,6 +55,8 @@ func TestRecordJobRunMetrics(t *testing.T) {
 	RecordStreamContinuityCounterError(t.Context(), "GR", "27")
 	RecordStreamSubscriberError(t.Context(), "GR", "write")
 	RecordStreamSubscriberOverflow(t.Context(), "GR", "packet_overflow")
+	RecordDataBroadcastCarouselEvent(t.Context(), "GR", "27", "dii", "duplicate")
+	RecordDataBroadcastModuleDuration(t.Context(), "GR", "27", 321)
 	RecordTunerAcquire(t.Context(), "GR", "success", false, 12)
 	RecordTunerProcessStart(t.Context(), "GR", "27", "success")
 	RecordTunerProcessExit(t.Context(), "GR", "27", "success")
@@ -103,6 +105,12 @@ func TestRecordJobRunMetrics(t *testing.T) {
 	}
 	if got := int64Sum(data, MetricStreamSubscriberOverflow); got != 1 {
 		t.Fatalf("%s = %d, want 1", MetricStreamSubscriberOverflow, got)
+	}
+	if got := int64Sum(data, MetricDataBroadcastCarouselEvents); got != 1 {
+		t.Fatalf("%s = %d, want 1", MetricDataBroadcastCarouselEvents, got)
+	}
+	if got := int64HistogramCount(data, MetricDataBroadcastModuleDuration); got != 1 {
+		t.Fatalf("%s count = %d, want 1", MetricDataBroadcastModuleDuration, got)
 	}
 	if got := int64Sum(data, MetricTunerAcquireRequests); got != 1 {
 		t.Fatalf("%s = %d, want 1", MetricTunerAcquireRequests, got)
