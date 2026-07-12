@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -42,6 +43,35 @@ func TestAPIDataBroadcastPCRAndNPTUseWebBMLFieldNames(t *testing.T) {
 	pcr := apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "pcr", PCR: &stream.DataBroadcastPCR{PCRBase: 10, PCRExtension: 20}})["pcr"].(map[string]any)
 	if pcr["pcrBase"] != uint64(10) || pcr["pcrExtension"] != uint16(20) {
 		t.Fatalf("pcr = %#v", pcr)
+	}
+}
+
+func TestAPIDataBroadcastByteFieldsEncodeAsNumberArrays(t *testing.T) {
+	payloads := []map[string]any{
+		apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "bit", BIT: &stream.DataBroadcastBIT{Broadcasters: []stream.DataBroadcastBroadcaster{{Affiliations: []byte{1, 128, 255}}}}}),
+		apiDataBroadcastEvent(1, stream.DataBroadcastEvent{Type: "esEventUpdated", ESEvent: &stream.DataBroadcastESEvent{Events: []databroadcast.DataBroadcastGeneralEvent{{Type: "immediateEvent", PrivateData: []byte{0, 127, 255}}}}}),
+	}
+	for _, payload := range payloads {
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(encoded, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if bit, ok := decoded["bit"].(map[string]any); ok {
+			affiliations := bit["broadcasters"].([]any)[0].(map[string]any)["affiliations"]
+			if _, ok := affiliations.([]any); !ok {
+				t.Fatalf("affiliations encoded as %T: %s", affiliations, encoded)
+			}
+		}
+		if es, ok := decoded["esEvent"].(map[string]any); ok {
+			privateData := es["events"].([]any)[0].(map[string]any)["privateDataByte"]
+			if _, ok := privateData.([]any); !ok {
+				t.Fatalf("privateDataByte encoded as %T: %s", privateData, encoded)
+			}
+		}
 	}
 }
 
