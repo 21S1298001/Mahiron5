@@ -23,6 +23,7 @@ const carouselQueueSize = 256
 // blocking the TS demux loop. DII is handled synchronously so the carousel is
 // always registered before its DDB blocks enter this queue.
 const dataBroadcastQueueSize = 1024
+const dataBroadcastPriorityQueueSize = 256
 
 // EITSectionUpdater persists EIT sections observed on the stream.
 type EITSectionUpdater interface {
@@ -83,37 +84,60 @@ func (s *Session) observePIDSection(section ts.PIDSection) {
 		s.dataBroadcast.Observe(section)
 		return
 	}
+	priority, entryDocument := s.dataBroadcast.DDBPriority(section)
+	queue := s.dataBroadcastQueue
+	operation := "ddb_queue"
+	if entryDocument || priority > 0 {
+		queue = s.dataBroadcastPriorityQueue
+		operation = "ddb_priority_queue"
+	}
 	s.dataBroadcastWG.Add(1)
 	select {
-	case s.dataBroadcastQueue <- section:
+	case queue <- section:
 	default:
 		s.dataBroadcastWG.Done()
-		observability.RecordDataBroadcastCarouselEvent(context.Background(), s.typ, s.channel, "ddb_queue", "overflow")
-		slog.Warn("data broadcast DDB queue overflow", "type", s.typ, "channel", s.channel)
+		observability.RecordDataBroadcastCarouselEvent(context.Background(), s.typ, s.channel, operation, "overflow")
+		slog.Warn("data broadcast DDB queue overflow", "type", s.typ, "channel", s.channel, "priority", priority, "entryDocument", entryDocument)
 	}
 }
 
 func (s *Session) runDataBroadcastUpdates(ctx context.Context) {
 	defer close(s.dataBroadcastDone)
 	for {
+		// Always consume already-queued entry/high-cache-priority work before
+		// normal modules. The fallback select prevents normal work starvation
+		// when the priority queue is momentarily empty.
+		select {
+		case section := <-s.dataBroadcastPriorityQueue:
+			s.observeQueuedDDB(section)
+			continue
+		default:
+		}
 		select {
 		case <-ctx.Done():
 			// Sections were already accepted from the demuxer. Finish the bounded
 			// backlog so a final module completion is not lost on input shutdown.
 			for {
 				select {
+				case section := <-s.dataBroadcastPriorityQueue:
+					s.observeQueuedDDB(section)
 				case section := <-s.dataBroadcastQueue:
-					s.dataBroadcast.Observe(section)
-					s.dataBroadcastWG.Done()
+					s.observeQueuedDDB(section)
 				default:
 					return
 				}
 			}
+		case section := <-s.dataBroadcastPriorityQueue:
+			s.observeQueuedDDB(section)
 		case section := <-s.dataBroadcastQueue:
-			s.dataBroadcast.Observe(section)
-			s.dataBroadcastWG.Done()
+			s.observeQueuedDDB(section)
 		}
 	}
+}
+
+func (s *Session) observeQueuedDDB(section ts.PIDSection) {
+	s.dataBroadcast.Observe(section)
+	s.dataBroadcastWG.Done()
 }
 
 func (s *Session) runSectionUpdates(ctx context.Context) {

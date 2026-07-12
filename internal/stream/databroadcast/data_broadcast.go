@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"path"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -312,6 +314,35 @@ func (h *DataBroadcastHub) Module(serviceID uint16, componentTag byte, moduleID 
 		return DataBroadcastModule{}, false
 	}
 	return apiModule(componentTag, module, true), true
+}
+
+// DDBPriority returns the cache priority announced by DII and whether the
+// block belongs to the BML entry document. It is intentionally read-only and
+// used by the channel session before placing DDB work on a bounded queue.
+func (h *DataBroadcastHub) DDBPriority(section ts.PIDSection) (priority byte, entryDocument bool) {
+	ddb, err := ts.ParseDSMCCDDB(section.Section)
+	if err != nil {
+		return 0, false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	_, _, carousel, ok := h.carouselByPIDLocked(section.PID)
+	if !ok {
+		return 0, false
+	}
+	info, ok := carousel.ModuleInfo(ddb.ModuleID)
+	if !ok || info.Version != ddb.ModuleVersion {
+		return 0, false
+	}
+	metadata, ok := info.Metadata()
+	if !ok {
+		return 0, false
+	}
+	if metadata.CachingPriority != nil {
+		priority = *metadata.CachingPriority
+	}
+	name := strings.ToLower(path.Base(metadata.Name))
+	return priority, name == "index.bml" || name == "index.xhtml"
 }
 
 func (h *DataBroadcastHub) observePMT(section ts.PIDSection) {

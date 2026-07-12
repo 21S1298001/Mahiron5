@@ -154,6 +154,33 @@ func TestSessionDataBroadcastDDBQueueIsBounded(t *testing.T) {
 	session.dataBroadcastWG.Done()
 }
 
+func TestSessionPrioritizesEntryDocumentDDB(t *testing.T) {
+	serviceID, pmtPID, carouselPID := uint16(101), uint16(0x0100), uint16(0x0200)
+	componentTag := byte(0x40)
+	hub := databroadcast.NewDataBroadcastHub()
+	hub.Observe(ts.PIDSection{PID: pmtPID, Section: streamBuildDataBroadcastPMT(serviceID, carouselPID, componentTag)})
+	moduleInfo := []byte{ts.DSMCCModuleDescriptorName, 9, 'i', 'n', 'd', 'e', 'x', '.', 'b', 'm', 'l'}
+	hub.Observe(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDII(t, 1, 4, 2, 4, 1, moduleInfo)})
+	session := &Session{
+		channel:                    "27",
+		typ:                        "GR",
+		dataBroadcast:              hub,
+		dataBroadcastQueue:         make(chan ts.PIDSection, 1),
+		dataBroadcastPriorityQueue: make(chan ts.PIDSection, 1),
+	}
+
+	session.observePIDSection(ts.PIDSection{PID: carouselPID, Section: streamBuildDSMCCDDB(t, 1, 2, 1, 0, []byte("bml!"))})
+
+	if got := len(session.dataBroadcastPriorityQueue); got != 1 {
+		t.Fatalf("priority DDB queue length = %d, want 1", got)
+	}
+	if got := len(session.dataBroadcastQueue); got != 0 {
+		t.Fatalf("normal DDB queue length = %d, want 0", got)
+	}
+	<-session.dataBroadcastPriorityQueue
+	session.dataBroadcastWG.Done()
+}
+
 func TestSessionSectionUpdaterRetriesEITPFOnUpsertFailure(t *testing.T) {
 	key := epgClockTestKey{networkID: 4, serviceID: 101}
 	section := streamBuildEIT(ts.TableIDEITPF0, key, 10)

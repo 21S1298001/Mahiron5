@@ -17,28 +17,29 @@ import (
 )
 
 type Session struct {
-	input              source.ChannelInput
-	handle             source.InputHandle
-	channel            string
-	descrambler        source.Descrambler
-	mu                 sync.Mutex
-	stopped            bool
-	typ                string
-	rawDemuxer         *demux.Demuxer
-	decodedDemuxer     *demux.Demuxer
-	eitUpdater         EITSectionUpdater
-	logoUpdater        LogoUpdater
-	logoCarousel       *ts.DSMCCLogoCarousel
-	dataBroadcast      *databroadcast.DataBroadcastHub
-	sectionCancel      context.CancelFunc
-	sectionDone        chan struct{}
-	sectionQueue       chan ts.Section
-	carouselQueue      chan ts.Section
-	dataBroadcastQueue chan ts.PIDSection
-	dataBroadcastDone  chan struct{}
-	dataBroadcastWG    sync.WaitGroup
-	sectionUpdateMu    sync.Mutex
-	eitPFFingerprints  map[eitPFSectionKey]uint32
+	input                      source.ChannelInput
+	handle                     source.InputHandle
+	channel                    string
+	descrambler                source.Descrambler
+	mu                         sync.Mutex
+	stopped                    bool
+	typ                        string
+	rawDemuxer                 *demux.Demuxer
+	decodedDemuxer             *demux.Demuxer
+	eitUpdater                 EITSectionUpdater
+	logoUpdater                LogoUpdater
+	logoCarousel               *ts.DSMCCLogoCarousel
+	dataBroadcast              *databroadcast.DataBroadcastHub
+	sectionCancel              context.CancelFunc
+	sectionDone                chan struct{}
+	sectionQueue               chan ts.Section
+	carouselQueue              chan ts.Section
+	dataBroadcastQueue         chan ts.PIDSection
+	dataBroadcastPriorityQueue chan ts.PIDSection
+	dataBroadcastDone          chan struct{}
+	dataBroadcastWG            sync.WaitGroup
+	sectionUpdateMu            sync.Mutex
+	eitPFFingerprints          map[eitPFSectionKey]uint32
 }
 
 // ChannelSession is the shared TS streaming, demux, and data-broadcast
@@ -78,6 +79,7 @@ func NewSession(config Config) *Session {
 	session.sectionQueue = make(chan ts.Section, sectionQueueSize)
 	session.carouselQueue = make(chan ts.Section, carouselQueueSize)
 	session.dataBroadcastQueue = make(chan ts.PIDSection, dataBroadcastQueueSize)
+	session.dataBroadcastPriorityQueue = make(chan ts.PIDSection, dataBroadcastPriorityQueueSize)
 	session.startUpdateWorkersLocked()
 	session.rawDemuxer = demux.New(func(ctx context.Context, dst io.Writer) error { return input.Subscribe(ctx, source.StreamRaw, dst) }, func() {
 		session.stopSectionUpdates()

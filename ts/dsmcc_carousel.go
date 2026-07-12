@@ -182,6 +182,16 @@ func (c *DSMCCCarousel) Module(moduleID uint16) (DSMCCModule, bool) {
 	return state.module(), true
 }
 
+// ModuleInfo returns DII metadata for an announced module, including modules
+// whose DDB blocks have not completed yet.
+func (c *DSMCCCarousel) ModuleInfo(moduleID uint16) (DSMCCModuleInfo, bool) {
+	state := c.modules[moduleID]
+	if state == nil {
+		return DSMCCModuleInfo{}, false
+	}
+	return cloneDSMCCModuleInfo(state.info), true
+}
+
 func (c *DSMCCCarousel) Modules() []DSMCCModule {
 	result := make([]DSMCCModule, 0, len(c.modules))
 	for _, state := range c.modules {
