@@ -1,4 +1,4 @@
-package local
+package channel
 
 import (
 	"context"
@@ -12,5 +12,5 @@ func (s *Session) programStream(ctx context.Context, p *program.Program, decode 
 	if err != nil {
 		return err
 	}
-	return s.broadcast.WithUser(ctx, func(ctx context.Context) error { return s.rawDemuxer.SubscribeProgram(ctx, d, p, dst) })
+	return s.input.WithUser(ctx, func(ctx context.Context) error { return s.rawDemuxer.SubscribeProgram(ctx, d, p, dst) })
 }

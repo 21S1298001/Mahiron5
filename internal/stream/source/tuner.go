@@ -2,10 +2,13 @@ package source
 
 import (
 	"context"
+	"errors"
 
 	"github.com/21S1298001/mahiron/internal/config"
 	"github.com/21S1298001/mahiron/internal/tuner"
 )
+
+var ErrChannelNotFound = errors.New("channel not found")
 
 type TunerDevice = tuner.Device
 

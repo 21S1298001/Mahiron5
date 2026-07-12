@@ -1,4 +1,4 @@
-package local
+package channel
 
 import (
 	"bytes"
@@ -445,7 +445,7 @@ func TestSessionStopsSectionUpdatesWhenRawDemuxerStops(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("section updater did not stop after raw demuxer stopped")
 	}
-	if !stopped.Load() {
+	if !streamtest.Eventually(time.Second, stopped.Load) {
 		t.Fatal("session onStop callback was not called")
 	}
 }
@@ -517,6 +517,45 @@ func TestSessionRecreatesDecodedDemuxerAfterAllDecodedSubscribersDetach(t *testi
 	rawCancel()
 	if err := <-rawDone; err != nil {
 		t.Fatalf("raw stream error = %v, want nil", err)
+	}
+}
+
+func TestStoppingSessionDoesNotStopSharedInputPeer(t *testing.T) {
+	packetSource := newInfiniteRepeatingSource(streamtest.TestPacket(0x0100, 1))
+	broadcast := source.NewBroadcast(packetSource, nil)
+	first := NewChannelSession(Config{Broadcast: broadcast, Channel: "27", Type: "GR"})
+	second := NewChannelSession(Config{Broadcast: broadcast, Channel: "28", Type: "GR"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	firstDone := make(chan error, 1)
+	secondDone := make(chan error, 1)
+	go func() { firstDone <- first.ChannelStream(ctx, false, io.Discard) }()
+	go func() { secondDone <- second.ChannelStream(ctx, false, io.Discard) }()
+	if !streamtest.Eventually(time.Second, func() bool {
+		return first.rawDemuxer.PacketSubscriberCount() == 1 && second.rawDemuxer.PacketSubscriberCount() == 1
+	}) {
+		t.Fatal("peer sessions did not attach")
+	}
+
+	if err := first.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-packetSource.done:
+		t.Fatal("stopping one session stopped the shared physical input")
+	default:
+	}
+	if second.rawDemuxer.Stopped() {
+		t.Fatal("stopping one session stopped its peer demuxer")
+	}
+
+	cancel()
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatal(err)
 	}
 }
 
