@@ -3,6 +3,7 @@ package ts
 import (
 	"bytes"
 	"encoding/binary"
+	"sync"
 )
 
 const (
@@ -229,6 +230,7 @@ type CommonDataAnnouncement struct {
 }
 
 type DSMCCLogoCarousel struct {
+	mu      sync.Mutex
 	modules map[uint16]*dsmccLogoModuleState
 }
 
@@ -244,14 +246,54 @@ func NewDSMCCLogoCarousel() *DSMCCLogoCarousel {
 	return &DSMCCLogoCarousel{modules: map[uint16]*dsmccLogoModuleState{}}
 }
 
+// AcceptsSection reports whether a DSM-CC section belongs to a logo module.
+// DII sections register the LOGO-00 through LOGO-05 modules announced by the
+// carousel; DDB sections are accepted only when they match one of those
+// registered modules. This lets callers discard unrelated data-broadcast
+// carousels before placing their high-rate DDB sections on a work queue.
+func (c *DSMCCLogoCarousel) AcceptsSection(section Section) bool {
+	if c == nil {
+		return false
+	}
+	switch section.TableID() {
+	case TableIDDSMCCDII:
+		dii, err := ParseDSMCCDII(section)
+		if err != nil {
+			return false
+		}
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.observeDII(dii)
+	case TableIDDSMCCDDB:
+		ddb, err := ParseDSMCCDDB(section)
+		if err != nil {
+			return false
+		}
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		module := c.modules[ddb.ModuleID]
+		return module != nil && module.downloadID == ddb.DownloadID && module.info.Version == ddb.ModuleVersion
+	default:
+		return false
+	}
+}
+
 func (c *DSMCCLogoCarousel) ObserveDII(dii *DSMCCDII) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.observeDII(dii)
+}
+
+func (c *DSMCCLogoCarousel) observeDII(dii *DSMCCDII) bool {
 	if c.modules == nil {
 		c.modules = map[uint16]*dsmccLogoModuleState{}
 	}
+	accepted := false
 	for _, module := range dii.Modules {
 		if !module.IsLogoModule() {
 			continue
 		}
+		accepted = true
 		current := c.modules[module.ModuleID]
 		if current == nil || current.downloadID != dii.DownloadID || current.info.Version != module.Version || current.info.ModuleSize != module.ModuleSize {
 			c.modules[module.ModuleID] = &dsmccLogoModuleState{
@@ -262,10 +304,16 @@ func (c *DSMCCLogoCarousel) ObserveDII(dii *DSMCCDII) {
 			}
 		}
 	}
+	return accepted
 }
 
 func (c *DSMCCLogoCarousel) ObserveDDB(ddb *DSMCCDDB) ([]CommonLogoImage, error) {
-	if c == nil || c.modules == nil {
+	if c == nil {
+		return nil, nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.modules == nil {
 		return nil, nil
 	}
 	module := c.modules[ddb.ModuleID]

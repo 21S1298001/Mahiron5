@@ -42,6 +42,9 @@ type eitPFSectionKey struct {
 func (s *Session) observeSection(section ts.Section) {
 	switch section.TableID() {
 	case ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB:
+		if s.logoUpdater == nil || !s.logoCarousel.AcceptsSection(section) {
+			return
+		}
 		select {
 		case s.carouselQueue <- section:
 		default:
