@@ -1,5 +1,16 @@
 # Changelog
 
+## [v5.0.7](https://github.com/rokoucha/Mahiron/compare/v5.0.6...v5.0.7) - 2026-07-13
+
+- Share remote channel streams across subscribers by @rokoucha in https://github.com/rokoucha/Mahiron/pull/36
+- Unify local and remote channel sessions by @rokoucha in https://github.com/rokoucha/Mahiron/pull/38
+- Remove obsolete internal compatibility layers by @rokoucha in https://github.com/rokoucha/Mahiron/pull/39
+- Filter unrelated DSM-CC carousels before queueing by @rokoucha in https://github.com/rokoucha/Mahiron/pull/40
+- Improve data broadcast module loading and caching by @rokoucha in https://github.com/rokoucha/Mahiron/pull/41
+- 視聴中サービス表示のちらつきを修正 by @rokoucha in https://github.com/rokoucha/Mahiron/pull/42
+- Update dependency eslint to v10.7.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/43
+- Update module github.com/ogen-go/ogen to v1.23.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/44
+
 ## [v5.0.6](https://github.com/rokoucha/Mahiron/compare/v5.0.5...v5.0.6) - 2026-07-12
 
 - Improve data broadcast event support by @rokoucha in https://github.com/rokoucha/Mahiron/pull/33
