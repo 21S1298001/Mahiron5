@@ -332,7 +332,10 @@ func TestContinuityMonitorAcceptsSignaledDiscontinuityWithoutPayload(t *testing.
 func TestContinuityMonitorAcceptsOneIdenticalDuplicate(t *testing.T) {
 	monitor := &continuityMonitor{}
 	packet := streamtest.TestPacket(0x0100, 1)
-	if monitor.observe(packet) != nil || monitor.observe(packet) != nil {
+	if monitor.observe(packet) != nil {
+		t.Fatal("first packet reported continuity error")
+	}
+	if monitor.observe(packet) != nil {
 		t.Fatal("identical duplicate reported continuity error")
 	}
 	if monitor.observe(packet) == nil {
