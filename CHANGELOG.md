@@ -1,5 +1,14 @@
 # Changelog
 
+## [v5.0.9](https://github.com/rokoucha/Mahiron/compare/v5.0.8...v5.0.9) - 2026-07-21
+
+- Update dependency vite to v8.1.5 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/52
+- Update module modernc.org/sqlite to v1.54.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/53
+- Update actions/setup-go action to v7 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/55
+- Update actions/setup-node action to v7 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/56
+- Improve data broadcast carousel recovery by @rokoucha in https://github.com/rokoucha/Mahiron/pull/51
+- Restore tagpr release state by @rokoucha in https://github.com/rokoucha/Mahiron/pull/57
+
 ## [v5.0.8](https://github.com/rokoucha/Mahiron/compare/v5.0.7...v5.0.8) - 2026-07-17
 
 - Update dependency typescript-eslint to v8.64.0 by @renovate[bot] in https://github.com/rokoucha/Mahiron/pull/45
