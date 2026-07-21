@@ -31,7 +31,7 @@ var (
 // module. ID is stable for the immutable module identity, not its name.
 type ModuleResource struct {
 	ID              string
-	ContentLocation string
+	ContentLocation *string
 	ContentType     string
 	Data            []byte
 }
@@ -98,7 +98,7 @@ func parseModuleEntity(data []byte, metadata *ts.DSMCCModuleMetadata) ([]ModuleR
 			if len(data) > maxDecodedModuleBytes {
 				return nil, fmt.Errorf("%w: decoded size exceeds limit", ErrModuleResourceLimit)
 			}
-			return []ModuleResource{{ID: "0", ContentLocation: metadata.Name, ContentType: mediaType, Data: append([]byte(nil), data...)}}, nil
+			return []ModuleResource{{ID: "0", ContentType: mediaType, Data: append([]byte(nil), data...)}}, nil
 		}
 	}
 	headEnd := bytes.Index(data, []byte("\r\n\r\n"))
@@ -119,7 +119,7 @@ func parseModuleEntity(data []byte, metadata *ts.DSMCCModuleMetadata) ([]ModuleR
 		if len(body) > maxDecodedModuleBytes {
 			return nil, fmt.Errorf("%w: decoded size exceeds limit", ErrModuleResourceLimit)
 		}
-		return []ModuleResource{{ID: "0", ContentLocation: headers.Get("Content-Location"), ContentType: mediaType, Data: append([]byte(nil), body...)}}, nil
+		return []ModuleResource{{ID: "0", ContentType: mediaType, Data: append([]byte(nil), body...)}}, nil
 	}
 	boundary := params["boundary"]
 	if boundary == "" {
@@ -153,7 +153,8 @@ func parseModuleEntity(data []byte, metadata *ts.DSMCCModuleMetadata) ([]ModuleR
 			return nil, fmt.Errorf("%w: decoded size exceeds limit", ErrModuleResourceLimit)
 		}
 		totalBytes += len(partData)
-		resources = append(resources, ModuleResource{ID: strconv.Itoa(len(resources)), ContentLocation: part.Header.Get("Content-Location"), ContentType: partType, Data: partData})
+		contentLocation := part.Header.Get("Content-Location")
+		resources = append(resources, ModuleResource{ID: strconv.Itoa(len(resources)), ContentLocation: &contentLocation, ContentType: partType, Data: partData})
 	}
 	if len(resources) == 0 {
 		return nil, fmt.Errorf("%w: empty multipart module", ErrMalformedModule)

@@ -349,7 +349,11 @@ func (s *SQLiteModuleStore) Put(key ModuleCacheKey, module ts.DSMCCModule) bool 
 		if data == nil {
 			data = []byte{}
 		}
-		if err := queries.InsertResource(ctx, cachedb.InsertResourceParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size), ResourceID: resource.ID, ContentLocation: resource.ContentLocation, ContentType: resource.ContentType, Data: data}); err != nil {
+		contentLocation := sql.NullString{}
+		if resource.ContentLocation != nil {
+			contentLocation = sql.NullString{String: *resource.ContentLocation, Valid: true}
+		}
+		if err := queries.InsertResource(ctx, cachedb.InsertResourceParams{ChannelType: key.ChannelType, ChannelID: key.ChannelID, ServiceID: int64(key.ServiceID), ComponentTag: int64(key.ComponentTag), DownloadID: int64(key.DownloadID), ModuleID: int64(key.ModuleID), Version: int64(key.Version), Size: int64(key.Size), ResourceID: resource.ID, ContentLocation: contentLocation, ContentType: resource.ContentType, Data: data}); err != nil {
 			return false
 		}
 	}
@@ -384,7 +388,11 @@ func (s *SQLiteModuleStore) GetDecodedResources(key ModuleVersionKey) ([]ModuleR
 			return nil, false
 		}
 		size = row.Size
-		resources = append(resources, ModuleResource{ID: row.ResourceID, ContentLocation: row.ContentLocation, ContentType: row.ContentType, Data: row.Data})
+		var contentLocation *string
+		if row.ContentLocation.Valid {
+			contentLocation = &row.ContentLocation.String
+		}
+		resources = append(resources, ModuleResource{ID: row.ResourceID, ContentLocation: contentLocation, ContentType: row.ContentType, Data: row.Data})
 	}
 	if len(resources) == 0 {
 		return nil, false

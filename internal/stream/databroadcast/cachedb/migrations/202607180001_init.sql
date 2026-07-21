@@ -16,6 +16,6 @@ CREATE TABLE data_broadcast_resources (
     channel_type TEXT NOT NULL, channel_id TEXT NOT NULL, service_id INTEGER NOT NULL,
     component_tag INTEGER NOT NULL, download_id INTEGER NOT NULL, module_id INTEGER NOT NULL,
     version INTEGER NOT NULL, size INTEGER NOT NULL, resource_id TEXT NOT NULL,
-    content_location TEXT NOT NULL, content_type TEXT NOT NULL, data BLOB NOT NULL,
+    content_location TEXT, content_type TEXT NOT NULL, data BLOB NOT NULL,
     PRIMARY KEY (channel_type, channel_id, service_id, component_tag, download_id, module_id, version, size, resource_id)
 );

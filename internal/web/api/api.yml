@@ -611,6 +611,13 @@ paths:
           content: {}
   /services/{id}/data-broadcast/state:
     get:
+      description: >-
+        Returns the current data-broadcast snapshot. Modules whose status is
+        "rejected" are announced for diagnostics but must be excluded from a
+        receiver's DII download list because no resource will become available.
+        URL fields in the payload are absolute paths rooted at the API mount;
+        clients deployed through a subpath proxy should construct request URLs
+        from the endpoint paths instead.
       tags:
         - services
         - stream
@@ -639,6 +646,13 @@ paths:
           content: {}
   /services/{id}/data-broadcast/events:
     get:
+      description: >-
+        Streams data-broadcast state changes. Modules whose status is
+        "rejected" are announced for diagnostics but must be excluded from a
+        receiver's DII download list because no resource will become available.
+        URL fields in event payloads are absolute paths rooted at the API mount;
+        clients deployed through a subpath proxy should construct request URLs
+        from the endpoint paths instead.
       tags:
         - services
         - stream
@@ -685,6 +699,11 @@ paths:
           content: {}
   /services/{id}/data-broadcast/components/{componentTag}/carousels/{downloadId}/modules/{moduleId}/versions/{moduleVersion}:
     get:
+      description: >-
+        Returns the decoded resource manifest. contentLocation is null when the
+        complete module maps directly to one module-scoped resource, and is a
+        string only for a named multipart resource. rawUrl and resource url
+        values are absolute paths rooted at the API mount.
       tags:
         - services
         - stream

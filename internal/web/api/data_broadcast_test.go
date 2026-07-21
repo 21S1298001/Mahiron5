@@ -47,6 +47,34 @@ func TestAPIDataBroadcastPCRAndNPTUseWebBMLFieldNames(t *testing.T) {
 	}
 }
 
+func TestAPIDataBroadcastProgramInfoAndCurrentTimeUseLowerCamelCase(t *testing.T) {
+	programPayload, err := json.Marshal(apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "programInfo", ProgramInfo: &databroadcast.DataBroadcastProgramInfo{ServiceID: 101, EventIDs: []uint16{1}, RawSectionHex: "00"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentPayload, err := json.Marshal(apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "currentTime", CurrentTime: &databroadcast.DataBroadcastCurrentTime{JSTTimeUnixMilli: 123}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(programPayload); !strings.Contains(got, `"serviceId":101`) || !strings.Contains(got, `"eventIds":[1]`) || !strings.Contains(got, `"rawSectionHex":"00"`) || strings.Contains(got, "ServiceID") {
+		t.Fatalf("programInfo = %s", got)
+	}
+	if got := string(currentPayload); !strings.Contains(got, `"jstTimeUnixMilli":123`) || strings.Contains(got, "JSTTimeUnixMilli") {
+		t.Fatalf("currentTime = %s", got)
+	}
+}
+
+func TestAPIDataBroadcastDirectModuleHasNullContentLocation(t *testing.T) {
+	manifest := apiDataBroadcastModuleManifest(1, databroadcast.DataBroadcastModule{}, []databroadcast.ModuleResource{{ID: "0", ContentType: "text/bml"}})
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"contentLocation":null`) {
+		t.Fatalf("manifest = %s", encoded)
+	}
+}
+
 func TestAPIDataBroadcastByteFieldsEncodeAsNumberArrays(t *testing.T) {
 	payloads := []map[string]any{
 		apiDataBroadcastEvent(1, databroadcast.DataBroadcastEvent{Type: "bit", BIT: &databroadcast.DataBroadcastBIT{Broadcasters: []databroadcast.DataBroadcastBroadcaster{{Affiliations: []byte{1, 128, 255}}}}}),
@@ -209,10 +237,11 @@ func TestGetServiceDataBroadcastModuleRawReportsEvictedGeneration(t *testing.T) 
 func TestGetServiceDataBroadcastModuleVersionUsesCachedResources(t *testing.T) {
 	handler := testProgramHandler(t)
 	module := databroadcast.DataBroadcastModule{ComponentTag: 0x40, DownloadID: 7, ModuleID: 2, Version: 3, ETag: `"dsmcc-test"`, Data: []byte("not a MIME entity")}
+	contentLocation := "index.bml"
 	handler.streamManager = fakeDataBroadcastStreamManager{
 		session:         fakeDataBroadcastSession{module: module},
 		existing:        true,
-		cachedResources: []databroadcast.ModuleResource{{ID: "0", ContentLocation: "index.bml", ContentType: "text/bml", Data: []byte("cached")}},
+		cachedResources: []databroadcast.ModuleResource{{ID: "0", ContentLocation: &contentLocation, ContentType: "text/bml", Data: []byte("cached")}},
 	}
 	rec := httptest.NewRecorder()
 	err := handler.GetServiceDataBroadcastModuleVersion(context.Background(), apigen.GetServiceDataBroadcastModuleVersionParams{ID: 100101, ComponentTag: 0x40, DownloadId: 7, ModuleId: 2, ModuleVersion: 3}, rec)

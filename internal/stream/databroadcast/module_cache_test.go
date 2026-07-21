@@ -178,7 +178,7 @@ func TestSQLiteModuleStorePersistsDecodedResources(t *testing.T) {
 	raw := []byte("Content-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\nContent-Location: index.bml\r\nContent-Type: text/bml\r\n\r\ncontent\r\n--x--\r\n")
 	store.Put(key, ts.DSMCCModule{Info: []byte{}, Data: raw})
 	resources, ok := store.GetDecodedResources(key.VersionKey())
-	if !ok || len(resources) != 1 || resources[0].ContentLocation != "index.bml" || string(resources[0].Data) != "content" {
+	if !ok || len(resources) != 1 || resources[0].ContentLocation == nil || *resources[0].ContentLocation != "index.bml" || string(resources[0].Data) != "content" {
 		t.Fatalf("resources = %#v, found = %v", resources, ok)
 	}
 	store.touchMu.Lock()
@@ -199,6 +199,20 @@ func TestSQLiteModuleStorePersistsDecodedResources(t *testing.T) {
 	}
 	if want := int64(len(raw) + len("content")); storedBytes != want {
 		t.Fatalf("stored bytes = %d, want %d", storedBytes, want)
+	}
+}
+
+func TestSQLiteModuleStorePersistsModuleScopedResource(t *testing.T) {
+	store, err := NewSQLiteModuleStore(filepath.Join(t.TempDir(), "cache.sqlite3"), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	key := ModuleCacheKey{ChannelType: "GR", ChannelID: "27", ServiceID: 101, ComponentTag: 0x40, DownloadID: 1, ModuleID: 2, Version: 3, Size: 100}
+	store.Put(key, ts.DSMCCModule{Data: []byte("Content-Type: text/bml\r\nContent-Location: index.bml\r\n\r\ncontent")})
+	resources, ok := store.GetDecodedResources(key.VersionKey())
+	if !ok || len(resources) != 1 || resources[0].ContentLocation != nil {
+		t.Fatalf("resources = %#v, found = %v", resources, ok)
 	}
 }
 

@@ -16,7 +16,7 @@ func TestDecodeModuleResourcesMultipart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resources) != 2 || resources[0].ContentLocation != "startup.bml" || resources[0].ContentType != "text/bml" || string(resources[1].Data) != "PNG" {
+	if len(resources) != 2 || resources[0].ContentLocation == nil || *resources[0].ContentLocation != "startup.bml" || resources[0].ContentType != "text/bml" || string(resources[1].Data) != "PNG" {
 		t.Fatalf("resources = %#v", resources)
 	}
 }
@@ -46,7 +46,17 @@ func TestDecodeModuleResourcesDirectMapping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resources) != 1 || resources[0].ContentLocation != "startup.bml" || resources[0].ContentType != "text/bml" || string(resources[0].Data) != "<body/>" {
+	if len(resources) != 1 || resources[0].ContentLocation != nil || resources[0].ContentType != "text/bml" || string(resources[0].Data) != "<body/>" {
+		t.Fatalf("resources = %#v", resources)
+	}
+}
+
+func TestDecodeModuleResourcesSingleEntityIsModuleScoped(t *testing.T) {
+	resources, err := DecodeModuleResources(DataBroadcastModule{Data: []byte("Content-Type: text/bml\r\nContent-Location: startup.bml\r\n\r\n<body/>")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resources) != 1 || resources[0].ContentLocation != nil || resources[0].ContentType != "text/bml" {
 		t.Fatalf("resources = %#v", resources)
 	}
 }
@@ -57,7 +67,7 @@ func TestDecodeModuleResourcesSkipsIncompleteMultipartPart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resources) != 1 || resources[0].ContentLocation != "startup.bml" {
+	if len(resources) != 1 || resources[0].ContentLocation == nil || *resources[0].ContentLocation != "startup.bml" {
 		t.Fatalf("resources = %#v", resources)
 	}
 }

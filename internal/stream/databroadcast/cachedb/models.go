@@ -4,6 +4,10 @@
 
 package cachedb
 
+import (
+	"database/sql"
+)
+
 type DataBroadcastModule struct {
 	ChannelType  string `json:"channel_type"`
 	ChannelID    string `json:"channel_id"`
@@ -31,16 +35,16 @@ type DataBroadcastModuleTombstone struct {
 }
 
 type DataBroadcastResource struct {
-	ChannelType     string `json:"channel_type"`
-	ChannelID       string `json:"channel_id"`
-	ServiceID       int64  `json:"service_id"`
-	ComponentTag    int64  `json:"component_tag"`
-	DownloadID      int64  `json:"download_id"`
-	ModuleID        int64  `json:"module_id"`
-	Version         int64  `json:"version"`
-	Size            int64  `json:"size"`
-	ResourceID      string `json:"resource_id"`
-	ContentLocation string `json:"content_location"`
-	ContentType     string `json:"content_type"`
-	Data            []byte `json:"data"`
+	ChannelType     string         `json:"channel_type"`
+	ChannelID       string         `json:"channel_id"`
+	ServiceID       int64          `json:"service_id"`
+	ComponentTag    int64          `json:"component_tag"`
+	DownloadID      int64          `json:"download_id"`
+	ModuleID        int64          `json:"module_id"`
+	Version         int64          `json:"version"`
+	Size            int64          `json:"size"`
+	ResourceID      string         `json:"resource_id"`
+	ContentLocation sql.NullString `json:"content_location"`
+	ContentType     string         `json:"content_type"`
+	Data            []byte         `json:"data"`
 }

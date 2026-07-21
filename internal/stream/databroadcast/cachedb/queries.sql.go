@@ -7,6 +7,7 @@ package cachedb
 
 import (
 	"context"
+	"database/sql"
 )
 
 const deleteModule = `-- name: DeleteModule :exec
@@ -145,11 +146,11 @@ type GetResourcesParams struct {
 }
 
 type GetResourcesRow struct {
-	Size            int64  `json:"size"`
-	ResourceID      string `json:"resource_id"`
-	ContentLocation string `json:"content_location"`
-	ContentType     string `json:"content_type"`
-	Data            []byte `json:"data"`
+	Size            int64          `json:"size"`
+	ResourceID      string         `json:"resource_id"`
+	ContentLocation sql.NullString `json:"content_location"`
+	ContentType     string         `json:"content_type"`
+	Data            []byte         `json:"data"`
 }
 
 func (q *Queries) GetResources(ctx context.Context, arg GetResourcesParams) ([]GetResourcesRow, error) {
@@ -276,18 +277,18 @@ INSERT INTO data_broadcast_resources(channel_type,channel_id,service_id,componen
 `
 
 type InsertResourceParams struct {
-	ChannelType     string `json:"channel_type"`
-	ChannelID       string `json:"channel_id"`
-	ServiceID       int64  `json:"service_id"`
-	ComponentTag    int64  `json:"component_tag"`
-	DownloadID      int64  `json:"download_id"`
-	ModuleID        int64  `json:"module_id"`
-	Version         int64  `json:"version"`
-	Size            int64  `json:"size"`
-	ResourceID      string `json:"resource_id"`
-	ContentLocation string `json:"content_location"`
-	ContentType     string `json:"content_type"`
-	Data            []byte `json:"data"`
+	ChannelType     string         `json:"channel_type"`
+	ChannelID       string         `json:"channel_id"`
+	ServiceID       int64          `json:"service_id"`
+	ComponentTag    int64          `json:"component_tag"`
+	DownloadID      int64          `json:"download_id"`
+	ModuleID        int64          `json:"module_id"`
+	Version         int64          `json:"version"`
+	Size            int64          `json:"size"`
+	ResourceID      string         `json:"resource_id"`
+	ContentLocation sql.NullString `json:"content_location"`
+	ContentType     string         `json:"content_type"`
+	Data            []byte         `json:"data"`
 }
 
 func (q *Queries) InsertResource(ctx context.Context, arg InsertResourceParams) error {

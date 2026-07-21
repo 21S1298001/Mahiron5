@@ -264,9 +264,9 @@ func apiDataBroadcastEvent(serviceItemID int64, event databroadcast.DataBroadcas
 	case "moduleUpdated":
 		result["module"] = apiDataBroadcastModule(serviceItemID, event.Module)
 	case "programInfo":
-		result["programInfo"] = event.ProgramInfo
+		result["programInfo"] = apiDataBroadcastProgramInfo(event.ProgramInfo)
 	case "currentTime":
-		result["currentTime"] = event.CurrentTime
+		result["currentTime"] = apiDataBroadcastCurrentTime(event.CurrentTime)
 	case "esEventUpdated":
 		result["esEvent"] = apiDataBroadcastESEvent(event.ESEvent)
 	case "bit":
@@ -283,11 +283,25 @@ func apiDataBroadcastSnapshot(serviceItemID int64, snapshot databroadcast.DataBr
 		"revision":    snapshot.Revision,
 		"pmt":         apiDataBroadcastPMT(serviceItemID, snapshot.PMT),
 		"components":  apiDataBroadcastComponents(serviceItemID, snapshot.Components),
-		"programInfo": snapshot.ProgramInfo,
-		"currentTime": snapshot.CurrentTime,
+		"programInfo": apiDataBroadcastProgramInfo(snapshot.ProgramInfo),
+		"currentTime": apiDataBroadcastCurrentTime(snapshot.CurrentTime),
 		"bit":         apiDataBroadcastBIT(snapshot.BIT),
 		"pcr":         apiDataBroadcastPCR(snapshot.PCR),
 	}
+}
+
+func apiDataBroadcastProgramInfo(info *databroadcast.DataBroadcastProgramInfo) any {
+	if info == nil {
+		return nil
+	}
+	return map[string]any{"serviceId": info.ServiceID, "eventIds": info.EventIDs, "rawSectionHex": info.RawSectionHex}
+}
+
+func apiDataBroadcastCurrentTime(current *databroadcast.DataBroadcastCurrentTime) any {
+	if current == nil {
+		return nil
+	}
+	return map[string]any{"jstTimeUnixMilli": current.JSTTimeUnixMilli}
 }
 
 func apiDataBroadcastPCR(pcr *databroadcast.DataBroadcastPCR) any {
