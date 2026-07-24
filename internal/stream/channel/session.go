@@ -187,6 +187,10 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 		return waitContext(ctx)
 	}
 	return s.input.WithUser(ctx, func(ctx context.Context) error {
+		rawDemuxer, err := s.streamDemuxer(false)
+		if err != nil {
+			return err
+		}
 		snapshot, events, unsubscribe := s.dataBroadcast.Subscribe(ctx, serviceID)
 		defer unsubscribe()
 		if err := observe(databroadcast.DataBroadcastEvent{Type: "snapshot", Revision: snapshot.Revision, Snapshot: snapshot}); err != nil {
@@ -200,7 +204,7 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 			// hooks. This subscription only owns the source lifetime; queueing the
 			// high-volume DSM-CC sections here as well can overflow while a large
 			// initial snapshot is being written to an SSE client.
-			done <- s.rawDemuxer.KeepAlive(observeCtx)
+			done <- rawDemuxer.KeepAlive(observeCtx)
 		}()
 		for {
 			select {

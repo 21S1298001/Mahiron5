@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -336,6 +337,29 @@ func TestRemoteSessionTracksDataBroadcastObserver(t *testing.T) {
 	}
 	if got := session.Users(); len(got) != 0 {
 		t.Fatalf("users after observation = %+v", got)
+	}
+}
+
+func TestRemoteSessionRestartsDataBroadcastStreamAfterUpstreamEnds(t *testing.T) {
+	packet := streamtest.TestPacket(0x0100, 1)
+	var requests atomic.Int32
+	session := newTestRemoteSession(streamtest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/api/channels/GR/27/stream" {
+			return streamtest.StringResponse(http.StatusNotFound, ""), nil
+		}
+		requests.Add(1)
+		return streamtest.StringResponse(http.StatusOK, string(packet)), nil
+	}))
+
+	for range 2 {
+		if err := session.ObserveDataBroadcast(t.Context(), 101, false, func(databroadcast.DataBroadcastEvent) error {
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := requests.Load(); got != 2 {
+		t.Fatalf("remote stream requests = %d, want 2", got)
 	}
 }
 
