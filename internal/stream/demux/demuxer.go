@@ -106,6 +106,18 @@ func (e *Demuxer) ObserveSectionsPassive(ctx context.Context, accept func(ts.Sec
 	return e.observeSections(ctx, accept, observe, attached, false)
 }
 
+// KeepAlive starts the demuxer, if necessary, and keeps it running until ctx is
+// canceled without queueing sections for the caller. It is intended for users
+// that consume state produced by the demuxer's hooks rather than observing
+// sections directly.
+func (e *Demuxer) KeepAlive(ctx context.Context) error {
+	return e.observeSections(ctx, func(ts.Section) bool {
+		return false
+	}, func(ts.Section) error {
+		return nil
+	}, nil, true)
+}
+
 func (e *Demuxer) observeSections(ctx context.Context, accept func(ts.Section) bool, observe func(ts.Section) error, attached chan<- struct{}, start bool) error {
 	sub := &sectionSubscription{
 		accept:     accept,

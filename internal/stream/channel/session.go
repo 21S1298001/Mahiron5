@@ -196,9 +196,11 @@ func (s *Session) ObserveDataBroadcast(ctx context.Context, serviceID uint16, de
 		defer cancel()
 		done := make(chan error, 1)
 		go func() {
-			done <- s.rawDemuxer.ObserveSections(observeCtx, acceptDataBroadcastSection, func(ts.Section) error {
-				return nil
-			})
+			// Data-broadcast state is updated by the demuxer's packet and section
+			// hooks. This subscription only owns the source lifetime; queueing the
+			// high-volume DSM-CC sections here as well can overflow while a large
+			// initial snapshot is being written to an SSE client.
+			done <- s.rawDemuxer.KeepAlive(observeCtx)
 		}()
 		for {
 			select {
@@ -398,15 +400,6 @@ func (s *Session) subscribeDecodedMux(ctx context.Context, dst io.Writer) error 
 		rawErr = nil
 	}
 	return errors.Join(err, rawErr)
-}
-
-func acceptDataBroadcastSection(section ts.Section) bool {
-	switch section.TableID() {
-	case ts.TableIDPMT, ts.TableIDDSMCCDII, ts.TableIDDSMCCDDB, ts.TableIDDSMCCStream, ts.TableIDBIT, ts.TableIDTOT:
-		return true
-	default:
-		return ts.IsEITPF(section.TableID())
-	}
 }
 
 func waitContext(ctx context.Context) error {

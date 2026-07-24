@@ -178,6 +178,42 @@ func TestPacketDemuxerToleratesStalledSubscriberWithinBuffer(t *testing.T) {
 	}
 }
 
+func TestKeepAliveDoesNotQueueSections(t *testing.T) {
+	engine := New(func(ctx context.Context, _ io.Writer) error {
+		<-ctx.Done()
+		return nil
+	}, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	returned := make(chan error, 1)
+	go func() {
+		returned <- engine.KeepAlive(ctx)
+	}()
+
+	if !streamtest.Eventually(time.Second, func() bool {
+		engine.mu.Lock()
+		defer engine.mu.Unlock()
+		return len(engine.sections) == 1
+	}) {
+		t.Fatal("keep-alive subscription did not attach")
+	}
+
+	packet := ts.Packet(make([]byte, ts.PacketSize))
+	section := ts.PIDSection{Section: ts.Section{ts.TableIDTOT}}
+	for range sectionSubscriberBuffer * 2 {
+		engine.dispatch(packet, []ts.PIDSection{section})
+	}
+	select {
+	case err := <-returned:
+		t.Fatalf("KeepAlive returned while sections were dispatched: %v", err)
+	default:
+	}
+
+	cancel()
+	if err := <-returned; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("KeepAlive error = %v, want nil or context canceled", err)
+	}
+}
+
 func TestPacketDemuxerWaitsForWriterOnContextCancel(t *testing.T) {
 	packet := streamtest.TestPacket(0x0100, 1)
 	start := make(chan struct{})
